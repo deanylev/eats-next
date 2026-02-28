@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { updateRestaurant } from '@/app/actions';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
@@ -39,8 +39,18 @@ type Props = {
   };
 };
 
-type StatusFilter = 'untriedLiked' | 'liked' | 'wanted' | 'disliked';
+type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
 type CategoryFilter = 'area' | 'type' | 'mealType';
+type UrlState = {
+  city: string;
+  mealType: string;
+  category: CategoryFilter;
+  status: StatusFilter;
+  excluded: string[];
+};
+
+const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
+const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'mealType']);
 
 const mealLabel = (meal: string): string => {
   if (meal === 'snack') {
@@ -64,6 +74,37 @@ const mealLabel = (meal: string): string => {
 
 const byAlpha = (a: string, b: string): number => a.localeCompare(b);
 
+const readUrlState = (): UrlState => {
+  if (typeof window === 'undefined') {
+    return {
+      city: '',
+      mealType: 'Any',
+      category: 'area',
+      status: 'untriedLiked',
+      excluded: []
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const statusFromUrl = params.get('status');
+  const categoryFromUrl = params.get('category');
+  const mealTypeFromUrl = params.get('mealType');
+  const cityFromUrl = params.get('city');
+  const excludedFromUrl = params.getAll('exclude');
+
+  return {
+    city: cityFromUrl?.trim() ?? '',
+    mealType: mealTypeFromUrl?.trim() || 'Any',
+    category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)
+      ? (categoryFromUrl as CategoryFilter)
+      : 'area',
+    status: statusFromUrl && statusFilterSet.has(statusFromUrl as StatusFilter)
+      ? (statusFromUrl as StatusFilter)
+      : 'untriedLiked',
+    excluded: excludedFromUrl.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+  };
+};
+
 const isUrl = (value: string): boolean => {
   try {
     const parsed = new URL(value);
@@ -75,7 +116,10 @@ const isUrl = (value: string): boolean => {
 
 export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, embedded = false, adminTools }: Props) {
   const triedCount = restaurants.filter((restaurant) => restaurant.status === 'liked').length;
-  const wantedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
+  const untriedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
+  const [hasInitializedFilters, setHasInitializedFilters] = useState(false);
+  const skipNextExcludeReset = useRef(false);
+  const skipNextExcludePrune = useRef(false);
 
   const [status, setStatus] = useState<StatusFilter>('untriedLiked');
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -83,12 +127,29 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
 
+  useEffect(() => {
+    if (embedded) {
+      setHasInitializedFilters(true);
+      return;
+    }
+
+    const urlState = readUrlState();
+    skipNextExcludeReset.current = urlState.excluded.length > 0;
+    skipNextExcludePrune.current = urlState.excluded.length > 0;
+    setStatus(urlState.status);
+    setSelectedCity(urlState.city);
+    setSelectedMealType(urlState.mealType);
+    setCategory(urlState.category);
+    setExcluded(urlState.excluded);
+    setHasInitializedFilters(true);
+  }, [embedded]);
+
   const statusFilteredRestaurants = useMemo(() => {
     if (status === 'liked') {
       return restaurants.filter((restaurant) => restaurant.status === 'liked');
     }
 
-    if (status === 'wanted') {
+    if (status === 'untried') {
       return restaurants.filter((restaurant) => restaurant.status === 'untried');
     }
 
@@ -116,6 +177,10 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
   }, [statusFilteredRestaurants]);
 
   useEffect(() => {
+    if (!hasInitializedFilters) {
+      return;
+    }
+
     if (!selectedCity) {
       const melbourneExists = [...citiesByCountry.values()].some((cityMap) => cityMap.has('Melbourne'));
       if (melbourneExists) {
@@ -135,7 +200,7 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
       const firstCity = [...citiesByCountry.values()][0]?.keys().next().value ?? '';
       setSelectedCity(firstCity);
     }
-  }, [citiesByCountry, selectedCity]);
+  }, [citiesByCountry, hasInitializedFilters, selectedCity]);
 
   const cityRestaurants = useMemo(
     () => statusFilteredRestaurants.filter((restaurant) => restaurant.cityName === selectedCity),
@@ -205,12 +270,71 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
   }, [category, mealFilteredRestaurants, selectedCity]);
 
   useEffect(() => {
+    if (!hasInitializedFilters || !selectedCity) {
+      return;
+    }
+
+    if (skipNextExcludePrune.current) {
+      skipNextExcludePrune.current = false;
+      return;
+    }
+
     setExcluded((current) => current.filter((entry) => headings.includes(entry)));
-  }, [headings]);
+  }, [hasInitializedFilters, headings, selectedCity]);
 
   useEffect(() => {
+    if (!hasInitializedFilters) {
+      return;
+    }
+
+    if (skipNextExcludeReset.current) {
+      skipNextExcludeReset.current = false;
+      return;
+    }
+
     setExcluded([]);
-  }, [status, selectedCity, selectedMealType, category]);
+  }, [category, hasInitializedFilters, selectedCity, selectedMealType, status]);
+
+  useEffect(() => {
+    if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (selectedCity) {
+      params.set('city', selectedCity);
+    } else {
+      params.delete('city');
+    }
+
+    if (selectedMealType !== 'Any') {
+      params.set('mealType', selectedMealType);
+    } else {
+      params.delete('mealType');
+    }
+
+    if (category !== 'area') {
+      params.set('category', category);
+    } else {
+      params.delete('category');
+    }
+
+    if (status !== 'untriedLiked') {
+      params.set('status', status);
+    } else {
+      params.delete('status');
+    }
+
+    params.delete('exclude');
+    for (const entry of excluded) {
+      params.append('exclude', entry);
+    }
+
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, [category, embedded, excluded, hasInitializedFilters, selectedCity, selectedMealType, status]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
@@ -257,7 +381,7 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
         return false;
       }
 
-      if (filter === 'wanted') {
+      if (filter === 'untried') {
         return restaurant.status === 'untried';
       }
 
@@ -277,14 +401,14 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot}>
       {title ? <div className={styles.title}>{title}</div> : null}
       <div className={styles.countSummary}>
-        <span id="numPlacesTried">{triedCount}</span> places tried, <span id="numPlacesWanted">{wantedCount}</span>{' '}
+        <span>{triedCount}</span> places tried, {untriedCount}{' '}
         wanting to try, and counting!
       </div>
       <div className={styles.body}>
         <div className={styles.sorting}>
           <div>
             <label htmlFor="city">City:</label>
-            <select id="city" value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
+            <select value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
               {[...citiesByCountry.entries()].map(([country, cityMap]) => (
                 <optgroup key={country} label={country}>
                   {[...cityMap.entries()].map(([city, count]) => (
@@ -299,7 +423,6 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
           <div>
             <label htmlFor="mealType">Meal Type:</label>
             <select
-              id="mealType"
               value={selectedMealType}
               onChange={(event) => setSelectedMealType(event.target.value)}
               disabled={category === 'mealType'}
@@ -315,7 +438,6 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
           <div>
             <label htmlFor="category">Categorise By:</label>
             <select
-              id="category"
               value={category}
               onChange={(event) => setCategory(event.target.value as CategoryFilter)}
             >
@@ -329,7 +451,6 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
           <div>
             <label htmlFor="status">Status:</label>
             <select
-              id="status"
               value={status}
               onChange={(event) => setStatus(event.target.value as StatusFilter)}
             >
@@ -339,8 +460,8 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
               <option value="liked" disabled={statusCount('liked') === 0}>
                 Liked ({statusCount('liked')})
               </option>
-              <option value="wanted" disabled={statusCount('wanted') === 0}>
-                Want to Try ({statusCount('wanted')})
+              <option value="untried" disabled={statusCount('untried') === 0}>
+                Want to Try ({statusCount('untried')})
               </option>
               <option value="disliked" disabled={statusCount('disliked') === 0}>
                 Disliked ({statusCount('disliked')})
