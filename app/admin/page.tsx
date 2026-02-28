@@ -1,10 +1,12 @@
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import {
   createCity,
   createCountry,
   createRestaurant,
   createRestaurantType,
   getCmsData,
+  logoutAdmin,
   updateCity,
   updateCountry,
   updateRestaurantType
@@ -14,12 +16,19 @@ import { ErrorConfirm } from '@/app/components/error-confirm';
 import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
 import { SuccessConfirm } from '@/app/components/success-confirm';
+import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 
 import styles from './style.module.scss';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
+  const hasSession = token ? Boolean(await verifyAdminJwt(token)) : false;
+  if (!hasSession) {
+    redirect('/admin/login');
+  }
+
   const data = await getCmsData();
   const cookieStore = cookies();
   const encodedErrorMessage = cookieStore.get('admin_error_message')?.value ?? null;
@@ -31,8 +40,12 @@ export default async function HomePage() {
     <div className={styles.root}>
       <main>
         <header className={styles.hero}>
-          <h1>Restaurants CMS</h1>
-          <p>Manage countries, cities, types, and restaurants.</p>
+          <div className={styles.heroTop}>
+            <h1>Eats Admin</h1>
+            <form action={logoutAdmin}>
+              <button type="submit">Log Out</button>
+            </form>
+          </div>
         </header>
         <ErrorConfirm message={errorMessage} />
         <SuccessConfirm message={successMessage} />

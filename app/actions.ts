@@ -3,6 +3,12 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { asc, eq, inArray } from 'drizzle-orm';
+import {
+  ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_TTL_SECONDS,
+  createAdminJwt,
+  verifyAdminJwt
+} from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import {
   cities,
@@ -38,6 +44,7 @@ const getErrorText = (error: unknown): string => {
 
 const ADMIN_ERROR_COOKIE = 'admin_error_message';
 const ADMIN_SUCCESS_COOKIE = 'admin_success_message';
+const ADMIN_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const bounce = (errorMessage: string): never => {
   cookies().set(ADMIN_ERROR_COOKIE, encodeURIComponent(errorMessage), {
@@ -49,8 +56,64 @@ const bounce = (errorMessage: string): never => {
   redirect('/admin');
 };
 
+const requireAdminSession = async (): Promise<void> => {
+  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
+  if (!token) {
+    redirect('/admin/login');
+  }
+
+  const session = await verifyAdminJwt(token);
+  if (!session) {
+    cookies().set(ADMIN_SESSION_COOKIE, '', {
+      httpOnly: true,
+      maxAge: 0,
+      path: '/',
+      sameSite: 'lax'
+    });
+    redirect('/admin/login');
+  }
+};
+
+export const loginAdmin = async (formData: FormData): Promise<void> => {
+  const expectedUsername = process.env.ADMIN_USERNAME;
+  const expectedPassword = process.env.ADMIN_PASSWORD;
+  const username = String(formData.get('username') ?? '').trim();
+  const password = String(formData.get('password') ?? '');
+
+  if (!expectedUsername || !expectedPassword) {
+    redirect('/admin/login?error=misconfigured');
+  }
+
+  if (username !== expectedUsername || password !== expectedPassword) {
+    redirect('/admin/login?error=invalid');
+  }
+
+  const token = await createAdminJwt(username);
+  cookies().set(ADMIN_SESSION_COOKIE, token, {
+    httpOnly: true,
+    maxAge: ADMIN_SESSION_TTL_SECONDS,
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  });
+
+  redirect('/admin');
+};
+
+export const logoutAdmin = async (): Promise<void> => {
+  cookies().set(ADMIN_SESSION_COOKIE, '', {
+    httpOnly: true,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  });
+  redirect('/admin/login');
+};
+
 export const createCountry = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const parsed = countryInputSchema.parse({
       name: formData.get('name')
@@ -68,9 +131,10 @@ export const createCountry = async (formData: FormData): Promise<void> => {
 
 export const updateCountry = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(countryId)) {
+    if (!ADMIN_ID_REGEX.test(countryId)) {
       throw new Error('Invalid country id.');
     }
 
@@ -98,9 +162,10 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
 
 export const deleteCountry = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(countryId)) {
+    if (!ADMIN_ID_REGEX.test(countryId)) {
       throw new Error('Invalid country id.');
     }
 
@@ -121,6 +186,7 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
 
 export const createCity = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const parsed = cityInputSchema.parse({
       name: formData.get('name'),
@@ -148,9 +214,10 @@ export const createCity = async (formData: FormData): Promise<void> => {
 
 export const updateCity = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const cityId = String(formData.get('cityId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cityId)) {
+    if (!ADMIN_ID_REGEX.test(cityId)) {
       throw new Error('Invalid city id.');
     }
 
@@ -187,9 +254,10 @@ export const updateCity = async (formData: FormData): Promise<void> => {
 
 export const deleteCity = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const cityId = String(formData.get('cityId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cityId)) {
+    if (!ADMIN_ID_REGEX.test(cityId)) {
       throw new Error('Invalid city id.');
     }
 
@@ -217,6 +285,7 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
 
 export const createRestaurantType = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const parsed = restaurantTypeInputSchema.parse({
       name: formData.get('name'),
@@ -236,9 +305,10 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const updateRestaurantType = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(typeId)) {
+    if (!ADMIN_ID_REGEX.test(typeId)) {
       throw new Error('Invalid type id.');
     }
 
@@ -268,9 +338,10 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const deleteRestaurantType = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(typeId)) {
+    if (!ADMIN_ID_REGEX.test(typeId)) {
       throw new Error('Invalid type id.');
     }
 
@@ -300,6 +371,7 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const createRestaurant = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const parsed = restaurantInputSchema.parse({
       cityId: formData.get('cityId'),
@@ -392,9 +464,10 @@ export const createRestaurant = async (formData: FormData): Promise<void> => {
 
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(restaurantId)) {
+    if (!ADMIN_ID_REGEX.test(restaurantId)) {
       throw new Error('Invalid restaurant id.');
     }
 
@@ -494,9 +567,10 @@ export const updateRestaurant = async (formData: FormData): Promise<void> => {
 
 export const deleteRestaurant = async (formData: FormData): Promise<void> => {
   try {
+    await requireAdminSession();
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(restaurantId)) {
+    if (!ADMIN_ID_REGEX.test(restaurantId)) {
       throw new Error('Invalid restaurant id.');
     }
 

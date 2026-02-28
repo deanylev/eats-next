@@ -1,59 +1,23 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 
-const unauthorizedResponse = () =>
-  new NextResponse('Authentication required.', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Admin", charset="UTF-8"'
-    }
-  });
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value ?? '';
+  const session = token ? await verifyAdminJwt(token) : null;
 
-const parseBasicAuth = (headerValue: string): { username: string; password: string } | null => {
-  const [scheme, encoded] = headerValue.split(' ');
-  if (scheme !== 'Basic' || !encoded) {
-    return null;
-  }
-
-  try {
-    const decoded = atob(encoded);
-    const separatorIndex = decoded.indexOf(':');
-    if (separatorIndex < 0) {
-      return null;
+  if (pathname === '/admin/login') {
+    if (session) {
+      return NextResponse.redirect(new URL('/admin', request.url));
     }
 
-    return {
-      username: decoded.slice(0, separatorIndex),
-      password: decoded.slice(separatorIndex + 1)
-    };
-  } catch {
-    return null;
-  }
-};
-
-export function middleware(request: NextRequest) {
-  const expectedUsername = process.env.ADMIN_USERNAME;
-  const expectedPassword = process.env.ADMIN_PASSWORD;
-
-  if (!expectedUsername || !expectedPassword) {
-    return new NextResponse(
-      'Missing ADMIN_USERNAME or ADMIN_PASSWORD environment variables.',
-      { status: 500 }
-    );
+    return NextResponse.next();
   }
 
-  const authorization = request.headers.get('authorization');
-  if (!authorization) {
-    return unauthorizedResponse();
-  }
-
-  const credentials = parseBasicAuth(authorization);
-  if (!credentials) {
-    return unauthorizedResponse();
-  }
-
-  if (credentials.username !== expectedUsername || credentials.password !== expectedPassword) {
-    return unauthorizedResponse();
+  if (!session) {
+    const loginUrl = new URL('/admin/login', request.url);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
@@ -62,4 +26,3 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: ['/admin/:path*']
 };
-

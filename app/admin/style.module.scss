@@ -141,6 +141,13 @@ h5 {
   }
 }
 
+.heroTop {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 .error {
   background: rgba(255, 87, 87, 0.15);
   border: 1px solid #e8a61a;
