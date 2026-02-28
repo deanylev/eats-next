@@ -1,6 +1,8 @@
 'use server';
 
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { asc, eq, inArray } from 'drizzle-orm';
 import {
@@ -45,6 +47,10 @@ const getErrorText = (error: unknown): string => {
 const ADMIN_ERROR_COOKIE = 'admin_error_message';
 const ADMIN_SUCCESS_COOKIE = 'admin_success_message';
 const ADMIN_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_BLOCK_MS = 15 * 60 * 1000;
+const MAX_FAILED_LOGIN_ATTEMPTS = 8;
+const loginAttemptsByIp = new Map<string, { count: number; firstFailedAt: number; blockedUntil: number }>();
 
 const bounce = (errorMessage: string): never => {
   cookies().set(ADMIN_ERROR_COOKIE, encodeURIComponent(errorMessage), {
@@ -74,9 +80,71 @@ const requireAdminSession = async (): Promise<void> => {
   }
 };
 
+const normalizedSha256 = (value: string): Buffer =>
+  createHash('sha256').update(value.normalize('NFKC')).digest();
+
+const safeCompare = (left: string, right: string): boolean => {
+  const leftHash = normalizedSha256(left);
+  const rightHash = normalizedSha256(right);
+  return timingSafeEqual(leftHash, rightHash);
+};
+
+const getClientIp = (): string => {
+  const headerStore = headers();
+  const forwardedFor = headerStore.get('x-forwarded-for') ?? '';
+  const firstForwarded = forwardedFor
+    .split(',')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0);
+  const realIp = headerStore.get('x-real-ip')?.trim() ?? '';
+  return firstForwarded || realIp || 'unknown';
+};
+
+const isIpBlocked = (ip: string, now: number): boolean => {
+  const record = loginAttemptsByIp.get(ip);
+  if (!record) {
+    return false;
+  }
+
+  if (record.blockedUntil > now) {
+    return true;
+  }
+
+  if (record.blockedUntil > 0 && record.blockedUntil <= now) {
+    loginAttemptsByIp.delete(ip);
+  }
+
+  return false;
+};
+
+const markLoginFailure = (ip: string, now: number) => {
+  const current = loginAttemptsByIp.get(ip);
+  if (!current || now - current.firstFailedAt > LOGIN_WINDOW_MS) {
+    loginAttemptsByIp.set(ip, {
+      count: 1,
+      firstFailedAt: now,
+      blockedUntil: 0
+    });
+    return;
+  }
+
+  const nextCount = current.count + 1;
+  loginAttemptsByIp.set(ip, {
+    count: nextCount,
+    firstFailedAt: current.firstFailedAt,
+    blockedUntil: nextCount >= MAX_FAILED_LOGIN_ATTEMPTS ? now + LOGIN_BLOCK_MS : 0
+  });
+};
+
+const clearLoginFailures = (ip: string) => {
+  loginAttemptsByIp.delete(ip);
+};
+
 export const loginAdmin = async (formData: FormData): Promise<void> => {
   const expectedUsername = process.env.ADMIN_USERNAME;
   const expectedPassword = process.env.ADMIN_PASSWORD;
+  const now = Date.now();
+  const ip = getClientIp();
   const username = String(formData.get('username') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
@@ -84,10 +152,16 @@ export const loginAdmin = async (formData: FormData): Promise<void> => {
     redirect('/admin/login?error=misconfigured');
   }
 
-  if (username !== expectedUsername || password !== expectedPassword) {
+  if (isIpBlocked(ip, now)) {
+    redirect('/admin/login?error=rate');
+  }
+
+  if (!safeCompare(username, expectedUsername) || !safeCompare(password, expectedPassword)) {
+    markLoginFailure(ip, now);
     redirect('/admin/login?error=invalid');
   }
 
+  clearLoginFailures(ip);
   const token = await createAdminJwt(username);
   cookies().set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,

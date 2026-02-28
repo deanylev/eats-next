@@ -20,13 +20,21 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
     redirect('/admin');
   }
 
-  const hasError = Boolean(searchParams?.error);
+  const error = searchParams?.error ?? '';
+  const errorMessage =
+    error === 'rate'
+      ? 'Too many login attempts. Please wait and try again.'
+      : error === 'misconfigured'
+        ? 'Admin auth is not configured correctly.'
+        : error
+          ? 'Invalid username or password.'
+          : null;
 
   return (
     <div className={styles.root}>
       <main className={styles.card}>
         <h1>Admin Login</h1>
-        {hasError ? <p className={styles.error}>Invalid username or password.</p> : null}
+        {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
         <form action={loginAdmin}>
           <label>
             Username
