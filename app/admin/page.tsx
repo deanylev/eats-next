@@ -4,8 +4,12 @@ import {
   createCountry,
   createRestaurant,
   createRestaurantType,
-  getCmsData
+  getCmsData,
+  updateCity,
+  updateCountry,
+  updateRestaurantType
 } from '@/app/actions';
+import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { ErrorConfirm } from '@/app/components/error-confirm';
 import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
@@ -108,6 +112,105 @@ export default async function HomePage() {
             title={null}
             adminTools={{ cities: data.cities, types: data.types }}
           />
+        </section>
+
+        <section className={styles.panel}>
+          <h2>Manage Countries</h2>
+          <div className={styles.manageList}>
+            {data.countries.map((country) => (
+              <details key={country.id} className={styles.manageItem}>
+                <summary>{country.name}</summary>
+                <form action={updateCountry}>
+                  <input type="hidden" name="countryId" value={country.id} />
+                  <label>
+                    Country name
+                    <input name="name" required defaultValue={country.name} />
+                  </label>
+                  <div className={styles.manageActions}>
+                    <button type="submit">Save country</button>
+                  </div>
+                </form>
+                <AdminEntityDeleteForm
+                  entityType="country"
+                  entityId={country.id}
+                  entityName={country.name}
+                  buttonLabel="Delete country"
+                />
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <h2>Manage Cities</h2>
+          <div className={styles.manageList}>
+            {data.cities.map((city) => (
+              <details key={city.id} className={styles.manageItem}>
+                <summary>
+                  {city.name}, {city.countryName}
+                </summary>
+                <form action={updateCity}>
+                  <input type="hidden" name="cityId" value={city.id} />
+                  <label>
+                    City name
+                    <input name="name" required defaultValue={city.name} />
+                  </label>
+                  <label>
+                    Country
+                    <select name="countryId" required defaultValue={city.countryId}>
+                      {data.countries.map((country) => (
+                        <option key={`${city.id}-${country.id}`} value={country.id}>
+                          {country.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className={styles.manageActions}>
+                    <button type="submit">Save city</button>
+                  </div>
+                </form>
+                <AdminEntityDeleteForm
+                  entityType="city"
+                  entityId={city.id}
+                  entityName={`${city.name}, ${city.countryName}`}
+                  buttonLabel="Delete city"
+                />
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <h2>Manage Restaurant Types</h2>
+          <div className={styles.manageList}>
+            {data.types.map((type) => (
+              <details key={type.id} className={styles.manageItem}>
+                <summary>
+                  {type.emoji} {type.name}
+                </summary>
+                <form action={updateRestaurantType}>
+                  <input type="hidden" name="typeId" value={type.id} />
+                  <label>
+                    Type name
+                    <input name="name" required defaultValue={type.name} />
+                  </label>
+                  <label>
+                    Emoji
+                    <input name="emoji" required defaultValue={type.emoji} />
+                  </label>
+                  <div className={styles.manageActions}>
+                    <button type="submit">Save type</button>
+                  </div>
+                </form>
+                <AdminEntityDeleteForm
+                  entityType="type"
+                  entityId={type.id}
+                  entityName={`${type.emoji} ${type.name}`}
+                  buttonLabel="Delete type"
+                />
+              </details>
+            ))}
+          </div>
         </section>
       </main>
     </div>

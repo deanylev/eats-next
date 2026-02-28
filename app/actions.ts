@@ -66,6 +66,59 @@ export const createCountry = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
+export const updateCountry = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const countryId = String(formData.get('countryId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(countryId)) {
+      throw new Error('Invalid country id.');
+    }
+
+    const parsed = countryInputSchema.parse({
+      name: formData.get('name')
+    });
+
+    const updated = await db
+      .update(countries)
+      .set({
+        name: parsed.name
+      })
+      .where(eq(countries.id, countryId))
+      .returning({ id: countries.id });
+
+    if (updated.length === 0) {
+      throw new Error('Country not found.');
+    }
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
+export const deleteCountry = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const countryId = String(formData.get('countryId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(countryId)) {
+      throw new Error('Invalid country id.');
+    }
+
+    const deleted = await db
+      .delete(countries)
+      .where(eq(countries.id, countryId))
+      .returning({ id: countries.id });
+
+    if (deleted.length === 0) {
+      throw new Error('Country not found.');
+    }
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
 export const createCity = async (formData: FormData): Promise<void> => {
   try {
     const db = getDb();
@@ -93,6 +146,75 @@ export const createCity = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
+export const updateCity = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const cityId = String(formData.get('cityId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cityId)) {
+      throw new Error('Invalid city id.');
+    }
+
+    const parsed = cityInputSchema.parse({
+      name: formData.get('name'),
+      countryId: formData.get('countryId')
+    });
+
+    const foundCountry = await db.query.countries.findFirst({
+      where: eq(countries.id, parsed.countryId)
+    });
+    if (!foundCountry) {
+      throw new Error('Country not found.');
+    }
+
+    const updated = await db
+      .update(cities)
+      .set({
+        name: parsed.name,
+        countryId: parsed.countryId
+      })
+      .where(eq(cities.id, cityId))
+      .returning({ id: cities.id });
+
+    if (updated.length === 0) {
+      throw new Error('City not found.');
+    }
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
+export const deleteCity = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const cityId = String(formData.get('cityId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cityId)) {
+      throw new Error('Invalid city id.');
+    }
+
+    const inUseByRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.cityId, cityId)
+    });
+    if (inUseByRestaurant) {
+      throw new Error('Cannot delete this city because it has restaurants. Reassign or delete those restaurants first.');
+    }
+
+    const deleted = await db
+      .delete(cities)
+      .where(eq(cities.id, cityId))
+      .returning({ id: cities.id });
+
+    if (deleted.length === 0) {
+      throw new Error('City not found.');
+    }
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
 export const createRestaurantType = async (formData: FormData): Promise<void> => {
   try {
     const db = getDb();
@@ -105,6 +227,70 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
       name: parsed.name,
       emoji: parsed.emoji
     });
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
+export const updateRestaurantType = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const typeId = String(formData.get('typeId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(typeId)) {
+      throw new Error('Invalid type id.');
+    }
+
+    const parsed = restaurantTypeInputSchema.parse({
+      name: formData.get('name'),
+      emoji: formData.get('emoji')
+    });
+
+    const updated = await db
+      .update(restaurantTypes)
+      .set({
+        name: parsed.name,
+        emoji: parsed.emoji
+      })
+      .where(eq(restaurantTypes.id, typeId))
+      .returning({ id: restaurantTypes.id });
+
+    if (updated.length === 0) {
+      throw new Error('Restaurant type not found.');
+    }
+  } catch (error) {
+    bounce(getErrorText(error));
+  }
+
+  redirect('/admin');
+};
+
+export const deleteRestaurantType = async (formData: FormData): Promise<void> => {
+  try {
+    const db = getDb();
+    const typeId = String(formData.get('typeId') ?? '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(typeId)) {
+      throw new Error('Invalid type id.');
+    }
+
+    const inUseByRestaurant = await db.query.restaurantToTypes.findFirst({
+      where: eq(restaurantToTypes.restaurantTypeId, typeId)
+    });
+    if (inUseByRestaurant) {
+      throw new Error(
+        'Cannot delete this restaurant type because it is used by restaurants. Remove it from those restaurants first.'
+      );
+    }
+
+    const deleted = await db
+      .delete(restaurantTypes)
+      .where(eq(restaurantTypes.id, typeId))
+      .returning({ id: restaurantTypes.id });
+
+    if (deleted.length === 0) {
+      throw new Error('Restaurant type not found.');
+    }
   } catch (error) {
     bounce(getErrorText(error));
   }

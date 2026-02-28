@@ -175,3 +175,27 @@ h5 {
   border-radius: 10px;
   padding: 12px;
 }
+
+.manageList {
+  display: grid;
+  gap: 10px;
+}
+
+.manageItem {
+  border: 1px solid rgba(252, 246, 254, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+
+  summary {
+    margin-bottom: 10px;
+  }
+
+  form + form {
+    margin-top: 8px;
+  }
+}
+
+.manageActions {
+  display: flex;
+  gap: 8px;
+}
