@@ -269,7 +269,9 @@
       flex-direction: column;
       justify-content: center;
       max-width: 450px;
+      overflow: hidden;
       padding: 15px 20px;
+      position: relative;
 
       > div > a {
         color: #fff;
@@ -277,6 +279,72 @@
         overflow-wrap: break-word;
       }
     }
+  }
+}
+
+.luckyCard {
+  box-shadow: 0 0 0 1px rgba(232, 166, 26, 0.45), 0 0 24px rgba(232, 166, 26, 0.25);
+}
+
+.confettiLayer {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.confettiPiece {
+  animation: confettiFall 1400ms linear infinite;
+  background: #e8a61a;
+  border-radius: 2px;
+  display: block;
+  height: 9px;
+  left: calc(6% + (var(--piece-index) * 7%));
+  position: absolute;
+  top: -16px;
+  transform: translateY(0) rotate(0deg);
+  width: 5px;
+}
+
+.confettiPiece:nth-child(3n) {
+  background: #f3c459;
+}
+
+.confettiPiece:nth-child(3n + 1) {
+  background: #fcf6fe;
+}
+
+.confettiPiece:nth-child(odd) {
+  animation-duration: 1700ms;
+}
+
+.confettiPiece:nth-child(1) { --piece-index: 1; animation-delay: -220ms; }
+.confettiPiece:nth-child(2) { --piece-index: 2; animation-delay: -480ms; }
+.confettiPiece:nth-child(3) { --piece-index: 3; animation-delay: -70ms; }
+.confettiPiece:nth-child(4) { --piece-index: 4; animation-delay: -900ms; }
+.confettiPiece:nth-child(5) { --piece-index: 5; animation-delay: -1160ms; }
+.confettiPiece:nth-child(6) { --piece-index: 6; animation-delay: -300ms; }
+.confettiPiece:nth-child(7) { --piece-index: 7; animation-delay: -560ms; }
+.confettiPiece:nth-child(8) { --piece-index: 8; animation-delay: -1220ms; }
+.confettiPiece:nth-child(9) { --piece-index: 9; animation-delay: -820ms; }
+.confettiPiece:nth-child(10) { --piece-index: 10; animation-delay: -170ms; }
+.confettiPiece:nth-child(11) { --piece-index: 11; animation-delay: -1040ms; }
+.confettiPiece:nth-child(12) { --piece-index: 12; animation-delay: -650ms; }
+
+@keyframes confettiFall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 180px, 0) rotate(500deg);
   }
 }
 

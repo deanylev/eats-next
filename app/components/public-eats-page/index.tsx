@@ -55,6 +55,7 @@ type UrlState = {
 
 const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
 const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'mealType']);
+const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 const mealLabel = (meal: string): string => {
   if (meal === 'snack') {
@@ -141,6 +142,9 @@ export function PublicEatsPage({
   const [selectedMealType, setSelectedMealType] = useState<string>('Any');
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
+  const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
+  const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const luckyCardHasEnteredViewport = useRef<boolean>(false);
 
   useEffect(() => {
     if (embedded) {
@@ -388,6 +392,49 @@ export function PublicEatsPage({
       )
     );
   }, [category, excluded, mealFilteredRestaurants, selectedCity]);
+  const visibleRestaurantIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const places of grouped.values()) {
+      for (const place of places) {
+        ids.add(place.id);
+      }
+    }
+
+    return [...ids];
+  }, [grouped]);
+
+  useEffect(() => {
+    if (!luckyRestaurantId || typeof window === 'undefined') {
+      return;
+    }
+
+    luckyCardHasEnteredViewport.current = false;
+
+    const onScroll = (): void => {
+      const luckyCard = restaurantCardRefs.current[luckyRestaurantId];
+      if (!luckyCard) {
+        setLuckyRestaurantId(null);
+        luckyCardHasEnteredViewport.current = false;
+        return;
+      }
+
+      const rect = luckyCard.getBoundingClientRect();
+      const inViewport = rect.bottom > 0 && rect.top < window.innerHeight;
+      if (inViewport) {
+        luckyCardHasEnteredViewport.current = true;
+      } else if (luckyCardHasEnteredViewport.current) {
+        setLuckyRestaurantId(null);
+        luckyCardHasEnteredViewport.current = false;
+      }
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [luckyRestaurantId]);
 
   const statusCount = (filter: StatusFilter): number => {
     if (!selectedCity) {
@@ -534,6 +581,33 @@ export function PublicEatsPage({
             <button type="button" onClick={() => setExcluded([])}>
               Select All
             </button>
+            {!embedded ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (visibleRestaurantIds.length === 0) {
+                    return;
+                  }
+
+                  const luckyId = visibleRestaurantIds[Math.floor(Math.random() * visibleRestaurantIds.length)];
+                  const luckyCard = restaurantCardRefs.current[luckyId];
+                  if (!luckyCard) {
+                    return;
+                  }
+
+                  luckyCardHasEnteredViewport.current = false;
+                  setLuckyRestaurantId(luckyId);
+
+                  luckyCard.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                  });
+                }}
+                disabled={visibleRestaurantIds.length === 0}
+              >
+                I'm Feeling Lucky
+              </button>
+            ) : null}
           </div>
         </div>
         <div className={styles.placesContainer}>
@@ -548,7 +622,20 @@ export function PublicEatsPage({
                   .slice()
                   .sort((a, b) => a.name.localeCompare(b.name))
                   .map((place) => (
-                    <div className={styles.placeCard} key={`${heading}-${place.id}`}>
+                    <div
+                      className={`${styles.placeCard} ${luckyRestaurantId === place.id ? styles.luckyCard : ''}`}
+                      key={`${heading}-${place.id}`}
+                      ref={(element) => {
+                        restaurantCardRefs.current[place.id] = element;
+                      }}
+                    >
+                      {luckyRestaurantId === place.id ? (
+                        <div className={styles.confettiLayer} aria-hidden="true">
+                          {confettiPieceIndexes.map((index) => (
+                            <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
+                          ))}
+                        </div>
+                      ) : null}
                       <span>
                         {category !== 'type' ? (
                           <span className={styles.emojis}>{place.types.map((type) => type.emoji).join('')}</span>
