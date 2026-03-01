@@ -66,6 +66,12 @@ h5 {
     padding: 8px 10px;
   }
 
+  textarea:disabled {
+    background: #b7afbf;
+    color: #4a4152;
+    cursor: not-allowed;
+  }
+
   fieldset {
     border: 1px solid rgba(252, 246, 254, 0.3);
     border-radius: 8px;
@@ -119,6 +125,30 @@ h5 {
       display: inline-flex;
       gap: 5px;
     }
+  }
+
+  :global(.area-autosuggest) {
+    display: grid;
+    gap: 6px;
+
+    > span {
+      color: rgba(252, 246, 254, 0.8);
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  :global(.area-suggestion) {
+    background: rgba(232, 166, 26, 0.14);
+    border: 1px solid rgba(232, 166, 26, 0.45);
+    color: #f6deaa;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 10px;
+  }
+
+  :global(.area-suggestion:hover) {
+    background: rgba(232, 166, 26, 0.24);
   }
 
   a {

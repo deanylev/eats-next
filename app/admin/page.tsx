@@ -35,6 +35,24 @@ export default async function HomePage() {
   const encodedSuccessMessage = cookieStore.get('admin_success_message')?.value ?? null;
   const errorMessage = encodedErrorMessage ? decodeURIComponent(encodedErrorMessage) : null;
   const successMessage = encodedSuccessMessage ? decodeURIComponent(encodedSuccessMessage) : null;
+  const areaSuggestionsByCity = data.restaurants.reduce<Record<string, string[]>>((acc, restaurant) => {
+    const existingAreas = acc[restaurant.cityId] ?? [];
+    const normalizedSet = new Set(existingAreas.map((entry) => entry.toLowerCase()));
+
+    for (const area of restaurant.areas) {
+      const normalized = area.trim().toLowerCase();
+      if (normalized.length === 0 || normalizedSet.has(normalized)) {
+        continue;
+      }
+
+      existingAreas.push(area.trim());
+      normalizedSet.add(normalized);
+    }
+
+    existingAreas.sort((a, b) => a.localeCompare(b));
+    acc[restaurant.cityId] = existingAreas;
+    return acc;
+  }, {});
 
   return (
     <div className={styles.root}>
@@ -113,6 +131,8 @@ export default async function HomePage() {
               <RestaurantFormFields
                 cities={data.cities}
                 types={data.types}
+                areaSuggestionsByCity={areaSuggestionsByCity}
+                disableAreasUntilCitySelected
                 keyPrefix="create-restaurant"
                 submitLabel="Create restaurant"
                 disableSubmit={data.cities.length === 0 || data.types.length === 0}
@@ -128,7 +148,7 @@ export default async function HomePage() {
             defaultCityName={data.defaultCityName}
             embedded
             title={null}
-            adminTools={{ cities: data.cities, types: data.types }}
+            adminTools={{ cities: data.cities, types: data.types, areaSuggestionsByCity }}
           />
         </section>
 

@@ -38,6 +38,7 @@ type Props = {
   adminTools?: {
     cities: Array<{ id: string; name: string; countryName: string }>;
     types: Array<{ id: string; name: string; emoji: string }>;
+    areaSuggestionsByCity?: Record<string, string[]>;
   };
 };
 
@@ -628,6 +629,7 @@ export function PublicEatsPage({
                               <RestaurantFormFields
                                 cities={adminTools.cities}
                                 types={adminTools.types}
+                                areaSuggestionsByCity={adminTools.areaSuggestionsByCity}
                                 keyPrefix={`edit-restaurant-${place.id}`}
                                 submitLabel="Save changes"
                                 defaults={{
