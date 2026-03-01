@@ -31,6 +31,7 @@ type PublicRestaurant = {
 
 type Props = {
   restaurants: PublicRestaurant[];
+  defaultCityName?: string | null;
   title?: string | null;
   embedded?: boolean;
   adminTools?: {
@@ -43,6 +44,7 @@ type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
 type CategoryFilter = 'area' | 'type' | 'mealType';
 type UrlState = {
   city: string;
+  hasCityQuery: boolean;
   mealType: string;
   category: CategoryFilter;
   status: StatusFilter;
@@ -78,6 +80,7 @@ const readUrlState = (): UrlState => {
   if (typeof window === 'undefined') {
     return {
       city: '',
+      hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
       status: 'untriedLiked',
@@ -90,10 +93,12 @@ const readUrlState = (): UrlState => {
   const categoryFromUrl = params.get('category');
   const mealTypeFromUrl = params.get('mealType');
   const cityFromUrl = params.get('city');
+  const hasCityQuery = params.has('city');
   const excludedFromUrl = params.getAll('exclude');
 
   return {
     city: cityFromUrl?.trim() ?? '',
+    hasCityQuery,
     mealType: mealTypeFromUrl?.trim() || 'Any',
     category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)
       ? (categoryFromUrl as CategoryFilter)
@@ -114,12 +119,19 @@ const isUrl = (value: string): boolean => {
   }
 };
 
-export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, embedded = false, adminTools }: Props) {
+export function PublicEatsPage({
+  restaurants,
+  defaultCityName = null,
+  title = `Dean's Favourite Eats`,
+  embedded = false,
+  adminTools
+}: Props) {
   const triedCount = restaurants.filter((restaurant) => restaurant.status === 'liked').length;
   const untriedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
   const [hasInitializedFilters, setHasInitializedFilters] = useState(false);
   const skipNextExcludeReset = useRef(false);
   const skipNextExcludePrune = useRef(false);
+  const hasExplicitCityQuery = useRef(false);
 
   const [status, setStatus] = useState<StatusFilter>('untriedLiked');
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -134,6 +146,7 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
     }
 
     const urlState = readUrlState();
+    hasExplicitCityQuery.current = urlState.hasCityQuery;
     skipNextExcludeReset.current = urlState.excluded.length > 0;
     skipNextExcludePrune.current = urlState.excluded.length > 0;
     setStatus(urlState.status);
@@ -181,10 +194,12 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
       return;
     }
 
+    const preferredDefaultCity = defaultCityName?.trim() || 'Melbourne';
+    const defaultCityExists = [...citiesByCountry.values()].some((cityMap) => cityMap.has(preferredDefaultCity));
+
     if (!selectedCity) {
-      const melbourneExists = [...citiesByCountry.values()].some((cityMap) => cityMap.has('Melbourne'));
-      if (melbourneExists) {
-        setSelectedCity('Melbourne');
+      if (!hasExplicitCityQuery.current && defaultCityExists) {
+        setSelectedCity(preferredDefaultCity);
         return;
       }
 
@@ -200,7 +215,7 @@ export function PublicEatsPage({ restaurants, title = `Dean's Favourite Eats`, e
       const firstCity = [...citiesByCountry.values()][0]?.keys().next().value ?? '';
       setSelectedCity(firstCity);
     }
-  }, [citiesByCountry, hasInitializedFilters, selectedCity]);
+  }, [citiesByCountry, defaultCityName, hasInitializedFilters, selectedCity]);
 
   const cityRestaurants = useMemo(
     () => statusFilteredRestaurants.filter((restaurant) => restaurant.cityName === selectedCity),

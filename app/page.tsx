@@ -6,5 +6,5 @@ export const dynamic = 'force-dynamic';
 export default async function RootPage() {
   const data = await getCmsData();
 
-  return <PublicEatsPage restaurants={data.restaurants} />;
+  return <PublicEatsPage restaurants={data.restaurants} defaultCityName={data.defaultCityName} />;
 }

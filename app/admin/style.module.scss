@@ -78,6 +78,13 @@ h5 {
     gap: 5px;
   }
 
+  label:has(> input[type='checkbox']) {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+    justify-self: start;
+  }
+
   button {
     cursor: pointer;
     width: fit-content;

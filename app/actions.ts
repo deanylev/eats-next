@@ -262,6 +262,7 @@ export const createCity = async (formData: FormData): Promise<void> => {
   try {
     await requireAdminSession();
     const db = getDb();
+    const setAsDefault = formData.get('isDefault') === 'on';
     const parsed = cityInputSchema.parse({
       name: formData.get('name'),
       countryId: formData.get('countryId')
@@ -275,9 +276,16 @@ export const createCity = async (formData: FormData): Promise<void> => {
       throw new Error('Country not found.');
     }
 
-    await db.insert(cities).values({
-      name: parsed.name,
-      countryId: parsed.countryId
+    await db.transaction(async (tx) => {
+      if (setAsDefault) {
+        await tx.update(cities).set({ isDefault: false });
+      }
+
+      await tx.insert(cities).values({
+        name: parsed.name,
+        countryId: parsed.countryId,
+        isDefault: setAsDefault
+      });
     });
   } catch (error) {
     bounce(getErrorText(error));
@@ -290,6 +298,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
   try {
     await requireAdminSession();
     const db = getDb();
+    const setAsDefault = formData.get('isDefault') === 'on';
     const cityId = String(formData.get('cityId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(cityId)) {
       throw new Error('Invalid city id.');
@@ -307,14 +316,21 @@ export const updateCity = async (formData: FormData): Promise<void> => {
       throw new Error('Country not found.');
     }
 
-    const updated = await db
-      .update(cities)
-      .set({
-        name: parsed.name,
-        countryId: parsed.countryId
-      })
-      .where(eq(cities.id, cityId))
-      .returning({ id: cities.id });
+    const updated = await db.transaction(async (tx) => {
+      if (setAsDefault) {
+        await tx.update(cities).set({ isDefault: false });
+      }
+
+      return tx
+        .update(cities)
+        .set({
+          name: parsed.name,
+          countryId: parsed.countryId,
+          ...(setAsDefault ? { isDefault: true } : {})
+        })
+        .where(eq(cities.id, cityId))
+        .returning({ id: cities.id });
+    });
 
     if (updated.length === 0) {
       throw new Error('City not found.');
@@ -671,6 +687,7 @@ export const getCmsData = async () => {
         .select({
           id: cities.id,
           name: cities.name,
+          isDefault: cities.isDefault,
           countryId: cities.countryId,
           countryName: countries.name
         })
@@ -740,6 +757,7 @@ export const getCmsData = async () => {
   return {
     countries: countryRows,
     cities: cityRows,
+    defaultCityName: cityRows.find((city) => city.isDefault)?.name ?? null,
     types: typeRows,
     restaurants: fullRestaurants
   };

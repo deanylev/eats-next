@@ -1,4 +1,5 @@
 import {
+  boolean,
   pgEnum,
   pgTable,
   primaryKey,
@@ -36,6 +37,7 @@ export const cities = pgTable(
       .references(() => countries.id, { onDelete: 'cascade' })
       .notNull(),
     name: text('name').notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull()
   },

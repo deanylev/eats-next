@@ -13,11 +13,10 @@ A vibe coded successor to [eats](https://github.com/deanylev/eats) that uses a C
 pnpm install
 ```
 
-4. Generate and push DB schema:
+4. Run migrations:
 
 ```bash
-pnpm db:generate
-pnpm db:push
+pnpm db:migrate
 ```
 
 5. Start:
@@ -27,7 +26,7 @@ pnpm dev
 ```
 
 Open [http://localhost:3000/admin](http://localhost:3000/admin).
-The `/admin` route is protected by HTTP Basic Auth using `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+Sign in at `/admin/login` using `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
 
 ## Import Existing Restaurants
 
@@ -51,17 +50,3 @@ Equivalent:
 ```bash
 pnpm exec tsx scripts/import-legacy-restaurants.ts /absolute/path/to/index.html
 ```
-
-## Rule Enforcement
-
-Restaurant validation includes:
-
-- Areas: zero or more free-form lines
-- Meal types: at least 1, at most 4 from `snack`, `breakfast`, `lunch`, `dinner`
-- At least 1 restaurant type
-- `referredBy`: required, accepts URL or free text
-- URL rules:
-  - `< 2` areas: URL must be Google Maps
-  - `>= 2` areas: URL must not be Google Maps
-- Status: `untried`, `liked`, `disliked`
-- If status is `disliked`, `dislikedReason` is required

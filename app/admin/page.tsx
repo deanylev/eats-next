@@ -82,6 +82,10 @@ export default async function HomePage() {
                   ))}
                 </select>
               </label>
+              <label>
+                <input name="isDefault" type="checkbox" />
+                Set as default city
+              </label>
               <button type="submit" disabled={data.countries.length === 0}>
                 Create city
               </button>
@@ -121,6 +125,7 @@ export default async function HomePage() {
           <h2>Current Restaurants</h2>
           <PublicEatsPage
             restaurants={data.restaurants}
+            defaultCityName={data.defaultCityName}
             embedded
             title={null}
             adminTools={{ cities: data.cities, types: data.types }}
@@ -161,6 +166,7 @@ export default async function HomePage() {
               <details key={city.id} className={styles.manageItem}>
                 <summary>
                   {city.name}, {city.countryName}
+                  {city.isDefault ? ' (Default)' : ''}
                 </summary>
                 <form action={updateCity}>
                   <input type="hidden" name="cityId" value={city.id} />
@@ -177,6 +183,10 @@ export default async function HomePage() {
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label>
+                    <input name="isDefault" type="checkbox" defaultChecked={city.isDefault} />
+                    Default city
                   </label>
                   <div className={styles.manageActions}>
                     <button type="submit">Save city</button>
