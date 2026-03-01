@@ -102,6 +102,27 @@
   }
 }
 
+.titleRow {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.adminLink {
+  align-self: flex-start;
+  background: #e8a61a;
+  border: 1px solid #f3c459;
+  border-radius: 8px;
+  color: #180321;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 10px;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
 .countSummary {
   margin-top: 2px;
 }

@@ -32,6 +32,7 @@ type PublicRestaurant = {
 type Props = {
   restaurants: PublicRestaurant[];
   defaultCityName?: string | null;
+  showAdminButton?: boolean;
   title?: string | null;
   embedded?: boolean;
   adminTools?: {
@@ -122,6 +123,7 @@ const isUrl = (value: string): boolean => {
 export function PublicEatsPage({
   restaurants,
   defaultCityName = null,
+  showAdminButton = false,
   title = `Dean's Favourite Eats`,
   embedded = false,
   adminTools
@@ -414,7 +416,16 @@ export function PublicEatsPage({
 
   return (
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot}>
-      {title ? <div className={styles.title}>{title}</div> : null}
+      {title || (showAdminButton && !embedded) ? (
+        <div className={styles.titleRow}>
+          {title ? <div className={styles.title}>{title}</div> : null}
+          {showAdminButton && !embedded ? (
+            <a className={styles.adminLink} href="/admin">
+              Admin
+            </a>
+          ) : null}
+        </div>
+      ) : null}
       <div className={styles.countSummary}>
         <span>{triedCount}</span> places tried, {untriedCount}{' '}
         wanting to try, and counting!
