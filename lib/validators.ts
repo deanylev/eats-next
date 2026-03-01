@@ -45,8 +45,12 @@ export const restaurantTypeInputSchema = z.object({
 const referredByInputSchema = z
   .string()
   .trim()
-  .min(1, 'Referred by is required.')
+  .optional()
   .superRefine((value, ctx) => {
+    if (!value || value.length === 0) {
+      return;
+    }
+
     try {
       const parsed = new URL(value);
       if (!['http:', 'https:'].includes(parsed.protocol)) {

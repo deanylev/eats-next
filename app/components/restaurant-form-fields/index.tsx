@@ -111,7 +111,7 @@ export function RestaurantFormFields({
 
       <label>
         Referred by (URL or free text)
-        <input name="referredBy" required defaultValue={defaults?.referredBy ?? ''} />
+        <input name="referredBy" defaultValue={defaults?.referredBy ?? ''} />
       </label>
 
       <fieldset>
