@@ -1,7 +1,18 @@
 import { z } from 'zod';
 import { mealTypeEnum, restaurantStatusEnum } from '@/lib/schema';
 
-const urlSchema = z.string().trim().url();
+const httpUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .refine((value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, 'URL must start with http:// or https://.');
 const googleMapsHostnames = ['google.com', 'www.google.com', 'maps.google.com', 'maps.app.goo.gl'];
 
 const isGoogleMapsUrl = (url: string): boolean => {
@@ -83,7 +94,7 @@ export const restaurantInputSchema = z
     notes: z.string().trim().min(1, 'Notes are required.'),
     referredBy: referredByInputSchema,
     typeIds: z.array(z.string().uuid('Invalid type id.')).min(1, 'Pick at least one type.'),
-    url: urlSchema,
+    url: httpUrlSchema,
     status: z.enum(restaurantStatusEnum.enumValues),
     dislikedReason: z.string().trim().optional()
   })

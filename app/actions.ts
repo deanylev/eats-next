@@ -1,6 +1,7 @@
 'use server';
 
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -29,7 +30,16 @@ import {
   restaurantTypeInputSchema
 } from '@/lib/validators';
 
-const getErrorText = (error: unknown): string => {
+class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UserFacingError';
+  }
+}
+
+const userFacingError = (message: string): UserFacingError => new UserFacingError(message);
+
+const getUserErrorText = (error: unknown): string => {
   if (error && typeof error === 'object' && 'issues' in error) {
     const maybeIssues = (error as { issues?: Array<{ message?: string }> }).issues;
     if (maybeIssues && maybeIssues.length > 0) {
@@ -38,10 +48,13 @@ const getErrorText = (error: unknown): string => {
   }
 
   if (error instanceof Error) {
-    return error.message;
+    if (error instanceof UserFacingError) {
+      return error.message;
+    }
   }
 
-  return 'Unknown error';
+  console.error('Unhandled action error', error);
+  return 'Something went wrong. Please try again.';
 };
 
 const isNextRedirectError = (error: unknown): boolean => {
@@ -79,7 +92,51 @@ const bounce = (errorMessage: string): never => {
   redirect('/admin');
 };
 
+const getTrustedForwardedValue = (value: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0) ?? '';
+};
+
+const assertSameOrigin = (): void => {
+  const headerStore = headers();
+  const origin = headerStore.get('origin');
+  const referer = headerStore.get('referer');
+  const host = getTrustedForwardedValue(headerStore.get('x-forwarded-host')) || headerStore.get('host')?.trim() || '';
+  const protocol =
+    getTrustedForwardedValue(headerStore.get('x-forwarded-proto')) ||
+    (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+
+  if (!host) {
+    throw userFacingError('Invalid request origin.');
+  }
+
+  const source = origin || referer;
+  if (!source) {
+    throw userFacingError('Invalid request origin.');
+  }
+
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(source);
+  } catch {
+    throw userFacingError('Invalid request origin.');
+  }
+
+  const expectedOrigin = `${protocol}://${host}`.toLowerCase();
+  const actualOrigin = `${parsedOrigin.protocol}//${parsedOrigin.host}`.toLowerCase();
+  if (actualOrigin !== expectedOrigin) {
+    throw userFacingError('Invalid request origin.');
+  }
+};
+
 const requireAdminSession = async (): Promise<void> => {
+  assertSameOrigin();
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
   if (!token) {
     redirect('/admin/login');
@@ -108,13 +165,22 @@ const safeCompare = (left: string, right: string): boolean => {
 
 const getClientIp = (): string => {
   const headerStore = headers();
-  const forwardedFor = headerStore.get('x-forwarded-for') ?? '';
-  const firstForwarded = forwardedFor
-    .split(',')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.length > 0);
+  const cfConnectingIp = headerStore.get('cf-connecting-ip')?.trim() ?? '';
+  if (cfConnectingIp && isIP(cfConnectingIp)) {
+    return cfConnectingIp;
+  }
+
   const realIp = headerStore.get('x-real-ip')?.trim() ?? '';
-  return firstForwarded || realIp || 'unknown';
+  if (realIp && isIP(realIp)) {
+    return realIp;
+  }
+
+  const firstForwarded = getTrustedForwardedValue(headerStore.get('x-forwarded-for'));
+  if (firstForwarded && isIP(firstForwarded)) {
+    return firstForwarded;
+  }
+
+  return 'unknown';
 };
 
 const isIpBlocked = (ip: string, now: number): boolean => {
@@ -158,6 +224,7 @@ const clearLoginFailures = (ip: string) => {
 };
 
 export const loginAdmin = async (formData: FormData): Promise<void> => {
+  assertSameOrigin();
   const expectedUsername = process.env.ADMIN_USERNAME;
   const expectedPassword = process.env.ADMIN_PASSWORD;
   const now = Date.now();
@@ -192,6 +259,7 @@ export const loginAdmin = async (formData: FormData): Promise<void> => {
 };
 
 export const logoutAdmin = async (): Promise<void> => {
+  assertSameOrigin();
   cookies().set(ADMIN_SESSION_COOKIE, '', {
     httpOnly: true,
     maxAge: 0,
@@ -214,7 +282,7 @@ export const createCountry = async (formData: FormData): Promise<void> => {
       name: parsed.name
     });
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -226,7 +294,7 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(countryId)) {
-      throw new Error('Invalid country id.');
+      throw userFacingError('Invalid country id.');
     }
 
     const parsed = countryInputSchema.parse({
@@ -242,10 +310,10 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
       .returning({ id: countries.id });
 
     if (updated.length === 0) {
-      throw new Error('Country not found.');
+      throw userFacingError('Country not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -257,7 +325,7 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(countryId)) {
-      throw new Error('Invalid country id.');
+      throw userFacingError('Invalid country id.');
     }
 
     const deleted = await db
@@ -266,10 +334,10 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
       .returning({ id: countries.id });
 
     if (deleted.length === 0) {
-      throw new Error('Country not found.');
+      throw userFacingError('Country not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -290,7 +358,7 @@ export const createCity = async (formData: FormData): Promise<void> => {
     });
 
     if (!foundCountry) {
-      throw new Error('Country not found.');
+      throw userFacingError('Country not found.');
     }
 
     await db.transaction(async (tx) => {
@@ -305,7 +373,7 @@ export const createCity = async (formData: FormData): Promise<void> => {
       });
     });
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -318,7 +386,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
     const setAsDefault = formData.get('isDefault') === 'on';
     const cityId = String(formData.get('cityId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(cityId)) {
-      throw new Error('Invalid city id.');
+      throw userFacingError('Invalid city id.');
     }
 
     const parsed = cityInputSchema.parse({
@@ -330,7 +398,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
       where: eq(countries.id, parsed.countryId)
     });
     if (!foundCountry) {
-      throw new Error('Country not found.');
+      throw userFacingError('Country not found.');
     }
 
     const updated = await db.transaction(async (tx) => {
@@ -350,10 +418,10 @@ export const updateCity = async (formData: FormData): Promise<void> => {
     });
 
     if (updated.length === 0) {
-      throw new Error('City not found.');
+      throw userFacingError('City not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -365,14 +433,14 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
     const db = getDb();
     const cityId = String(formData.get('cityId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(cityId)) {
-      throw new Error('Invalid city id.');
+      throw userFacingError('Invalid city id.');
     }
 
     const inUseByRestaurant = await db.query.restaurants.findFirst({
       where: eq(restaurants.cityId, cityId)
     });
     if (inUseByRestaurant) {
-      throw new Error('Cannot delete this city because it has restaurants. Reassign or delete those restaurants first.');
+      throw userFacingError('Cannot delete this city because it has restaurants. Reassign or delete those restaurants first.');
     }
 
     const deleted = await db
@@ -381,10 +449,10 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
       .returning({ id: cities.id });
 
     if (deleted.length === 0) {
-      throw new Error('City not found.');
+      throw userFacingError('City not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -404,7 +472,7 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
       emoji: parsed.emoji
     });
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -416,7 +484,7 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(typeId)) {
-      throw new Error('Invalid type id.');
+      throw userFacingError('Invalid type id.');
     }
 
     const parsed = restaurantTypeInputSchema.parse({
@@ -434,10 +502,10 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
       .returning({ id: restaurantTypes.id });
 
     if (updated.length === 0) {
-      throw new Error('Restaurant type not found.');
+      throw userFacingError('Restaurant type not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -449,14 +517,14 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(typeId)) {
-      throw new Error('Invalid type id.');
+      throw userFacingError('Invalid type id.');
     }
 
     const inUseByRestaurant = await db.query.restaurantToTypes.findFirst({
       where: eq(restaurantToTypes.restaurantTypeId, typeId)
     });
     if (inUseByRestaurant) {
-      throw new Error(
+      throw userFacingError(
         'Cannot delete this restaurant type because it is used by restaurants. Remove it from those restaurants first.'
       );
     }
@@ -467,10 +535,10 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
       .returning({ id: restaurantTypes.id });
 
     if (deleted.length === 0) {
-      throw new Error('Restaurant type not found.');
+      throw userFacingError('Restaurant type not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -488,7 +556,7 @@ export const createRestaurant = async (formData: FormData): Promise<void> => {
       sameSite: 'lax'
     });
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -514,7 +582,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
   });
 
   if (!foundCity) {
-    throw new Error('City not found.');
+    throw userFacingError('City not found.');
   }
 
   const existingTypes = await db
@@ -525,7 +593,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
   const invalidTypeIds = parsed.typeIds.filter((entry) => !foundTypeIds.has(entry));
 
   if (invalidTypeIds.length > 0) {
-    throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
+    throw userFacingError('One or more restaurant types are invalid.');
   }
 
   await db.transaction(async (tx) => {
@@ -545,7 +613,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
     const insertedRestaurant = insertedRestaurants[0];
 
     if (!insertedRestaurant) {
-      throw new Error('Could not create restaurant.');
+      throw userFacingError('Could not create restaurant.');
     }
 
     if (parsed.areas.length > 0) {
@@ -599,7 +667,7 @@ export const createRestaurantFromRoot = async (formData: FormData): Promise<void
       throw error;
     }
 
-    cookies().set(ROOT_CREATE_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+    cookies().set(ROOT_CREATE_ERROR_COOKIE, encodeURIComponent(getUserErrorText(error)), {
       httpOnly: false,
       maxAge: 60,
       path: '/',
@@ -628,7 +696,7 @@ export const updateRestaurant = async (formData: FormData): Promise<void> => {
     await requireAdminSession();
     await updateRestaurantRecord(formData);
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   redirect('/admin');
@@ -638,7 +706,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
   const db = getDb();
   const restaurantId = String(formData.get('restaurantId') ?? '').trim();
   if (!ADMIN_ID_REGEX.test(restaurantId)) {
-    throw new Error('Invalid restaurant id.');
+    throw userFacingError('Invalid restaurant id.');
   }
 
   const parsed = restaurantInputSchema.parse({
@@ -658,14 +726,14 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
     where: eq(restaurants.id, restaurantId)
   });
   if (!foundRestaurant) {
-    throw new Error('Restaurant not found.');
+    throw userFacingError('Restaurant not found.');
   }
 
   const foundCity = await db.query.cities.findFirst({
     where: eq(cities.id, parsed.cityId)
   });
   if (!foundCity) {
-    throw new Error('City not found.');
+    throw userFacingError('City not found.');
   }
 
   const uniqueTypeIds = Array.from(new Set(parsed.typeIds));
@@ -676,7 +744,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
   const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
   const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
   if (invalidTypeIds.length > 0) {
-    throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
+    throw userFacingError('One or more restaurant types are invalid.');
   }
 
   await db.transaction(async (tx) => {
@@ -773,7 +841,7 @@ export const updateRestaurantFromRoot = async (formData: FormData): Promise<void
 
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
     const safeRestaurantId = ADMIN_ID_REGEX.test(restaurantId) ? restaurantId : null;
-    cookies().set(ROOT_EDIT_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+    cookies().set(ROOT_EDIT_ERROR_COOKIE, encodeURIComponent(getUserErrorText(error)), {
       httpOnly: false,
       maxAge: 60,
       path: '/',
@@ -800,7 +868,7 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(restaurantId)) {
-      throw new Error('Invalid restaurant id.');
+      throw userFacingError('Invalid restaurant id.');
     }
 
     const deleted = await db
@@ -809,14 +877,14 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
       .where(and(eq(restaurants.id, restaurantId), isNull(restaurants.deletedAt)))
       .returning({ id: restaurants.id });
     if (deleted.length === 0) {
-      throw new Error('Restaurant not found.');
+      throw userFacingError('Restaurant not found.');
     }
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
     }
 
-    cookies().set(ROOT_DELETE_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+    cookies().set(ROOT_DELETE_ERROR_COOKIE, encodeURIComponent(getUserErrorText(error)), {
       httpOnly: false,
       maxAge: 60,
       path: '/',
@@ -840,7 +908,7 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(restaurantId)) {
-      throw new Error('Invalid restaurant id.');
+      throw userFacingError('Invalid restaurant id.');
     }
 
     const restored = await db
@@ -850,10 +918,10 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
       .returning({ id: restaurants.id });
 
     if (restored.length === 0) {
-      throw new Error('Deleted restaurant not found.');
+      throw userFacingError('Deleted restaurant not found.');
     }
   } catch (error) {
-    bounce(getErrorText(error));
+    bounce(getUserErrorText(error));
   }
 
   cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Restaurant restored successfully.'), {
