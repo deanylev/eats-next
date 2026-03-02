@@ -475,7 +475,7 @@ export function PublicEatsPage({
         </div>
       ) : null}
       <div className={styles.countSummary}>
-        <span>{triedCount}</span> places tried, {untriedCount}{' '}
+        <span className={styles.countNumber}>{triedCount}</span> places liked, <span className={styles.countNumber}>{untriedCount}</span>{' '}
         wanting to try, and counting!
       </div>
       <div className={styles.body}>
