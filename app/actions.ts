@@ -5,7 +5,7 @@ import { isIP } from 'node:net';
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
@@ -40,6 +40,14 @@ class UserFacingError extends Error {
 const userFacingError = (message: string): UserFacingError => new UserFacingError(message);
 
 const getUserErrorText = (error: unknown): string => {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = String((error as { code?: string }).code ?? '');
+    const constraint = String((error as { constraint?: string }).constraint ?? '');
+    if (code === '23505' && constraint === 'restaurants_unique_active_city_name_idx') {
+      return 'A restaurant with this name already exists in this city.';
+    }
+  }
+
   if (error && typeof error === 'object' && 'issues' in error) {
     const maybeIssues = (error as { issues?: Array<{ message?: string }> }).issues;
     if (maybeIssues && maybeIssues.length > 0) {
@@ -596,6 +604,17 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
     throw userFacingError('One or more restaurant types are invalid.');
   }
 
+  const duplicateRestaurant = await db.query.restaurants.findFirst({
+    where: and(
+      eq(restaurants.cityId, parsed.cityId),
+      isNull(restaurants.deletedAt),
+      sql`lower(${restaurants.name}) = lower(${parsed.name})`
+    )
+  });
+  if (duplicateRestaurant) {
+    throw userFacingError('A restaurant with this name already exists in this city.');
+  }
+
   await db.transaction(async (tx) => {
     const insertedRestaurants = await tx
       .insert(restaurants)
@@ -745,6 +764,18 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
   const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
   if (invalidTypeIds.length > 0) {
     throw userFacingError('One or more restaurant types are invalid.');
+  }
+
+  const duplicateRestaurant = await db.query.restaurants.findFirst({
+    where: and(
+      ne(restaurants.id, restaurantId),
+      eq(restaurants.cityId, parsed.cityId),
+      isNull(restaurants.deletedAt),
+      sql`lower(${restaurants.name}) = lower(${parsed.name})`
+    )
+  });
+  if (duplicateRestaurant) {
+    throw userFacingError('A restaurant with this name already exists in this city.');
   }
 
   await db.transaction(async (tx) => {
@@ -959,6 +990,7 @@ export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
           notes: restaurants.notes,
           referredBy: restaurants.referredBy,
           url: restaurants.url,
+          createdAt: restaurants.createdAt,
           status: restaurants.status,
           triedAt: restaurants.triedAt,
           deletedAt: restaurants.deletedAt,

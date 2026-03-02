@@ -36,6 +36,13 @@
       "when": 1772413200000,
       "tag": "0004_soft_delete_restaurants",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772452800000,
+      "tag": "0005_restaurant_unique_active_name",
+      "breakpoints": true
     }
   ]
 }

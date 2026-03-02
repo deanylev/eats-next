@@ -22,6 +22,7 @@ type PublicRestaurant = {
   notes: string;
   referredBy: string;
   url: string;
+  createdAt: string | Date;
   status: 'untried' | 'liked' | 'disliked';
   dislikedReason: string | null;
   areas: string[];
@@ -55,7 +56,7 @@ type Props = {
 };
 
 type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
-type CategoryFilter = 'area' | 'type';
+type CategoryFilter = 'area' | 'type' | 'recentlyAdded';
 type UrlState = {
   city: string;
   hasCityQuery: boolean;
@@ -66,7 +67,7 @@ type UrlState = {
 };
 
 const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
-const categoryFilterSet = new Set<CategoryFilter>(['area', 'type']);
+const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
 const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 const mealLabel = (meal: string): string => {
@@ -90,6 +91,29 @@ const mealLabel = (meal: string): string => {
 };
 
 const byAlpha = (a: string, b: string): number => a.localeCompare(b);
+
+const monthHeadingFormatter = new Intl.DateTimeFormat('en-AU', {
+  month: 'long',
+  year: 'numeric'
+});
+
+const getMonthHeadingKey = (dateValue: string | Date): string => {
+  const date = new Date(dateValue);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const getMonthHeadingLabel = (headingKey: string): string => {
+  const [yearString, monthString] = headingKey.split('-');
+  const year = Number(yearString);
+  const month = Number(monthString);
+  if (Number.isNaN(year) || Number.isNaN(month)) {
+    return headingKey;
+  }
+
+  return monthHeadingFormatter.format(new Date(year, month - 1, 1));
+};
 
 const readUrlState = (): UrlState => {
   if (typeof window === 'undefined') {
@@ -302,13 +326,26 @@ export function PublicEatsPage({
           values.add(type.name);
         }
       }
+
+      if (category === 'recentlyAdded') {
+        values.add(getMonthHeadingKey(restaurant.createdAt));
+      }
     }
 
-    return [...values].sort((a, b) => byAlpha(a, b));
+    const headingList = [...values];
+    if (category === 'recentlyAdded') {
+      return headingList.sort((a, b) => b.localeCompare(a));
+    }
+
+    return headingList.sort((a, b) => byAlpha(a, b));
   }, [category, mealFilteredRestaurants, selectedCity]);
 
   useEffect(() => {
     if (!hasInitializedFilters || !selectedCity) {
+      return;
+    }
+
+    if (category === 'recentlyAdded') {
       return;
     }
 
@@ -318,7 +355,7 @@ export function PublicEatsPage({
     }
 
     setExcluded((current) => current.filter((entry) => headings.includes(entry)));
-  }, [hasInitializedFilters, headings, selectedCity]);
+  }, [category, hasInitializedFilters, headings, selectedCity]);
 
   useEffect(() => {
     if (!hasInitializedFilters) {
@@ -387,8 +424,12 @@ export function PublicEatsPage({
         headingValues.push(...restaurant.types.map((type) => type.name));
       }
 
+      if (category === 'recentlyAdded') {
+        headingValues.push(getMonthHeadingKey(restaurant.createdAt));
+      }
+
       for (const heading of headingValues) {
-        if (excluded.includes(heading)) {
+        if (category !== 'recentlyAdded' && excluded.includes(heading)) {
           continue;
         }
 
@@ -396,6 +437,10 @@ export function PublicEatsPage({
         current.push(restaurant);
         map.set(heading, current);
       }
+    }
+
+    if (category === 'recentlyAdded') {
+      return new Map([...map.entries()].sort(([headingA], [headingB]) => headingB.localeCompare(headingA)));
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
@@ -618,6 +663,7 @@ export function PublicEatsPage({
             >
               <option value="area">Area</option>
               <option value="type">Type of Food</option>
+              <option value="recentlyAdded">Date Added</option>
             </select>
           </div>
           <div>
@@ -641,13 +687,15 @@ export function PublicEatsPage({
             </select>
           </div>
           <div className={styles.filterControls}>
-            <button
-              type="button"
-              onClick={() => setIsFilterDialogOpen(true)}
-              disabled={headings.length <= 1}
-            >
-              Filter {category === 'area' ? 'Areas' : 'Types'}
-            </button>
+            {category !== 'recentlyAdded' ? (
+              <button
+                type="button"
+                onClick={() => setIsFilterDialogOpen(true)}
+                disabled={headings.length <= 1}
+              >
+                Filter {category === 'area' ? 'Areas' : 'Types'}
+              </button>
+            ) : null}
             {!embedded ? (
               <button
                 type="button"
@@ -682,12 +730,18 @@ export function PublicEatsPage({
             <Fragment key={heading}>
               <span className={styles.heading}>
                 {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                {heading}
+                {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
               </span>
               <div>
                 {places
                   .slice()
-                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .sort((a, b) => {
+                    if (category === 'recentlyAdded') {
+                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                    }
+
+                    return a.name.localeCompare(b.name);
+                  })
                   .map((place) => (
                     <div
                       className={`${styles.placeCard} ${luckyRestaurantId === place.id ? styles.luckyCard : ''}`}
