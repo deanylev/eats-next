@@ -55,7 +55,7 @@ type Props = {
 };
 
 type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
-type CategoryFilter = 'area' | 'type' | 'mealType';
+type CategoryFilter = 'area' | 'type';
 type UrlState = {
   city: string;
   hasCityQuery: boolean;
@@ -66,7 +66,7 @@ type UrlState = {
 };
 
 const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
-const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'mealType']);
+const categoryFilterSet = new Set<CategoryFilter>(['area', 'type']);
 const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 const mealLabel = (meal: string): string => {
@@ -164,6 +164,7 @@ export function PublicEatsPage({
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -301,17 +302,9 @@ export function PublicEatsPage({
           values.add(type.name);
         }
       }
-
-      if (category === 'mealType') {
-        for (const mealType of restaurant.mealTypes) {
-          values.add(mealType);
-        }
-      }
     }
 
-    return [...values].sort((a, b) =>
-      byAlpha(category === 'mealType' ? mealLabel(a) : a, category === 'mealType' ? mealLabel(b) : b)
-    );
+    return [...values].sort((a, b) => byAlpha(a, b));
   }, [category, mealFilteredRestaurants, selectedCity]);
 
   useEffect(() => {
@@ -394,10 +387,6 @@ export function PublicEatsPage({
         headingValues.push(...restaurant.types.map((type) => type.name));
       }
 
-      if (category === 'mealType') {
-        headingValues.push(...restaurant.mealTypes);
-      }
-
       for (const heading of headingValues) {
         if (excluded.includes(heading)) {
           continue;
@@ -409,11 +398,7 @@ export function PublicEatsPage({
       }
     }
 
-    return new Map(
-      [...map.entries()].sort(([headingA], [headingB]) =>
-        byAlpha(category === 'mealType' ? mealLabel(headingA) : headingA, category === 'mealType' ? mealLabel(headingB) : headingB)
-      )
-    );
+    return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
   }, [category, excluded, mealFilteredRestaurants, selectedCity]);
   const visibleRestaurantIds = useMemo(() => {
     const ids = new Set<string>();
@@ -616,11 +601,7 @@ export function PublicEatsPage({
           </div>
           <div>
             <label htmlFor="mealType">Meal Type:</label>
-            <select
-              value={selectedMealType}
-              onChange={(event) => setSelectedMealType(event.target.value)}
-              disabled={category === 'mealType'}
-            >
+            <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
               <option value="Any">Any</option>
               {[...mealTypeCounts.keys()].map((meal) => (
                 <option key={meal} value={meal}>
@@ -637,9 +618,6 @@ export function PublicEatsPage({
             >
               <option value="area">Area</option>
               <option value="type">Type of Food</option>
-              <option value="mealType" disabled={selectedMealType !== 'Any'}>
-                Type of Meal
-              </option>
             </select>
           </div>
           <div>
@@ -662,44 +640,13 @@ export function PublicEatsPage({
               </option>
             </select>
           </div>
-          <div className={styles.filtersContainer}>
-            {headings.length > 1 && (category === 'area' || category === 'type')
-              ? headings.map((heading) => (
-                  <label key={heading}>
-                    <input
-                      type="checkbox"
-                      checked={!excluded.includes(heading)}
-                      onChange={(event) => {
-                        setExcluded((current) => {
-                          if (event.target.checked) {
-                            return current.filter((entry) => entry !== heading);
-                          }
-
-                          if (current.includes(heading)) {
-                            return current;
-                          }
-
-                          return [...current, heading];
-                        });
-                      }}
-                    />
-                    <span>
-                      {category === 'type'
-                        ? `${mealFilteredRestaurants
-                            .flatMap((restaurant) => restaurant.types)
-                            .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
-                        : heading}
-                    </span>
-                  </label>
-                ))
-              : null}
-          </div>
           <div className={styles.filterControls}>
-            <button type="button" onClick={() => setExcluded(headings)}>
-              Clear All
-            </button>
-            <button type="button" onClick={() => setExcluded([])}>
-              Select All
+            <button
+              type="button"
+              onClick={() => setIsFilterDialogOpen(true)}
+              disabled={headings.length <= 1}
+            >
+              Filter {category === 'area' ? 'Areas' : 'Types'}
             </button>
             {!embedded ? (
               <button
@@ -735,7 +682,7 @@ export function PublicEatsPage({
             <Fragment key={heading}>
               <span className={styles.heading}>
                 {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                {category === 'mealType' ? mealLabel(heading) : heading}
+                {heading}
               </span>
               <div>
                 {places
@@ -790,13 +737,9 @@ export function PublicEatsPage({
                         {category === 'type'
                           ? place.areas.join(', ')
                           : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
-                        {category === 'mealType'
-                          ? place.areas.length > 0
-                            ? ` (${place.areas.join(', ')})`
-                            : ''
-                          : selectedMealType === 'Any'
-                            ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
-                            : ''}
+                        {selectedMealType === 'Any'
+                          ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
+                          : ''}
                       </span>
 
                       <div>{place.notes}</div>
@@ -885,6 +828,67 @@ export function PublicEatsPage({
             </div>
           ) : null}
         </>
+      ) : null}
+      {isFilterDialogOpen ? (
+        <div className={styles.createDialogOverlay} onClick={() => setIsFilterDialogOpen(false)}>
+          <section
+            className={`${styles.createDialog} ${styles.filterDialog}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Filter ${category === 'area' ? 'Areas' : 'Types'}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.createDialogHeader}>
+              <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
+              <button
+                type="button"
+                className={styles.createDialogClose}
+                aria-label="Close filter dialog"
+                onClick={() => setIsFilterDialogOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.filterDialogActions}>
+              <button type="button" onClick={() => setExcluded(headings)}>
+                Clear All
+              </button>
+              <button type="button" onClick={() => setExcluded([])}>
+                Select All
+              </button>
+            </div>
+            <div className={styles.filtersContainer}>
+              {headings.map((heading) => (
+                <label key={heading}>
+                  <input
+                    type="checkbox"
+                    checked={!excluded.includes(heading)}
+                    onChange={(event) => {
+                      setExcluded((current) => {
+                        if (event.target.checked) {
+                          return current.filter((entry) => entry !== heading);
+                        }
+
+                        if (current.includes(heading)) {
+                          return current;
+                        }
+
+                        return [...current, heading];
+                      });
+                    }}
+                  />
+                  <span>
+                    {category === 'type'
+                      ? `${mealFilteredRestaurants
+                          .flatMap((restaurant) => restaurant.types)
+                          .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
+                      : heading}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        </div>
       ) : null}
       {canEditRestaurants && adminTools && editingRestaurant ? (
         <div className={styles.createDialogOverlay} onClick={() => setEditingRestaurantId(null)}>
