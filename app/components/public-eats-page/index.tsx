@@ -492,7 +492,6 @@ export function PublicEatsPage({
       return;
     }
 
-    window.confirm(rootCreateSuccessMessage);
     document.cookie = 'root_create_success_message=; Max-Age=0; path=/; SameSite=Lax';
     setIsCreateDialogOpen(false);
   }, [rootCreateSuccessMessage]);
@@ -514,7 +513,6 @@ export function PublicEatsPage({
       return;
     }
 
-    window.confirm(rootEditSuccessMessage);
     document.cookie = 'root_edit_success_message=; Max-Age=0; path=/; SameSite=Lax';
     setEditingRestaurantId(null);
   }, [rootEditSuccessMessage]);
@@ -915,17 +913,6 @@ export function PublicEatsPage({
                 if (!confirmed) {
                   event.preventDefault();
                   return;
-                }
-
-                setEditingRestaurantId(null);
-                const cardElement = restaurantCardRefs.current[editingRestaurant.id];
-                if (cardElement instanceof HTMLElement) {
-                  requestAnimationFrame(() => {
-                    cardElement.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'start'
-                    });
-                  });
                 }
               }}
             >
