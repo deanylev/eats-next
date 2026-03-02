@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { updateRestaurant } from '@/app/actions';
+import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
 
@@ -35,11 +35,23 @@ type Props = {
   showAdminButton?: boolean;
   title?: string | null;
   embedded?: boolean;
+  allowRestaurantEditing?: boolean;
   adminTools?: {
     cities: Array<{ id: string; name: string; countryName: string }>;
     types: Array<{ id: string; name: string; emoji: string }>;
     areaSuggestionsByCity?: Record<string, string[]>;
   };
+  createTools?: {
+    cities: Array<{ id: string; name: string; countryName: string }>;
+    types: Array<{ id: string; name: string; emoji: string }>;
+  };
+  rootCreateErrorMessage?: string | null;
+  rootCreateSuccessMessage?: string | null;
+  openCreateDialogByDefault?: boolean;
+  rootEditErrorMessage?: string | null;
+  rootEditSuccessMessage?: string | null;
+  rootDeleteErrorMessage?: string | null;
+  openEditRestaurantId?: string;
 };
 
 type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
@@ -128,7 +140,16 @@ export function PublicEatsPage({
   showAdminButton = false,
   title = `Dean's Favourite Eats`,
   embedded = false,
-  adminTools
+  allowRestaurantEditing = true,
+  adminTools,
+  createTools,
+  rootCreateErrorMessage = null,
+  rootCreateSuccessMessage = null,
+  openCreateDialogByDefault = false,
+  rootEditErrorMessage = null,
+  rootEditSuccessMessage = null,
+  rootDeleteErrorMessage = null,
+  openEditRestaurantId
 }: Props) {
   const triedCount = restaurants.filter((restaurant) => restaurant.status === 'liked').length;
   const untriedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
@@ -143,6 +164,8 @@ export function PublicEatsPage({
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
+  const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
 
@@ -403,6 +426,24 @@ export function PublicEatsPage({
 
     return [...ids];
   }, [grouped]);
+  const createAreaSuggestionsByCity = useMemo(() => {
+    const suggestions = new Map<string, Set<string>>();
+
+    for (const restaurant of restaurants) {
+      const areas = suggestions.get(restaurant.cityId) ?? new Set<string>();
+      for (const area of restaurant.areas) {
+        const normalized = area.trim();
+        if (normalized.length > 0) {
+          areas.add(normalized);
+        }
+      }
+      suggestions.set(restaurant.cityId, areas);
+    }
+
+    return Object.fromEntries(
+      [...suggestions.entries()].map(([cityId, areas]) => [cityId, [...areas].sort((a, b) => a.localeCompare(b))])
+    ) as Record<string, string[]>;
+  }, [restaurants]);
 
   useEffect(() => {
     if (!luckyRestaurantId || typeof window === 'undefined') {
@@ -436,6 +477,57 @@ export function PublicEatsPage({
     };
   }, [luckyRestaurantId]);
 
+  useEffect(() => {
+    if (!rootCreateErrorMessage) {
+      return;
+    }
+
+    window.confirm(rootCreateErrorMessage);
+    document.cookie = 'root_create_error_message=; Max-Age=0; path=/; SameSite=Lax';
+    setIsCreateDialogOpen(true);
+  }, [rootCreateErrorMessage]);
+
+  useEffect(() => {
+    if (!rootCreateSuccessMessage) {
+      return;
+    }
+
+    window.confirm(rootCreateSuccessMessage);
+    document.cookie = 'root_create_success_message=; Max-Age=0; path=/; SameSite=Lax';
+    setIsCreateDialogOpen(false);
+  }, [rootCreateSuccessMessage]);
+
+  useEffect(() => {
+    if (!rootEditErrorMessage) {
+      return;
+    }
+
+    window.confirm(rootEditErrorMessage);
+    document.cookie = 'root_edit_error_message=; Max-Age=0; path=/; SameSite=Lax';
+    if (openEditRestaurantId) {
+      setEditingRestaurantId(openEditRestaurantId);
+    }
+  }, [openEditRestaurantId, rootEditErrorMessage]);
+
+  useEffect(() => {
+    if (!rootEditSuccessMessage) {
+      return;
+    }
+
+    window.confirm(rootEditSuccessMessage);
+    document.cookie = 'root_edit_success_message=; Max-Age=0; path=/; SameSite=Lax';
+    setEditingRestaurantId(null);
+  }, [rootEditSuccessMessage]);
+
+  useEffect(() => {
+    if (!rootDeleteErrorMessage) {
+      return;
+    }
+
+    window.confirm(rootDeleteErrorMessage);
+    document.cookie = 'root_delete_error_message=; Max-Age=0; path=/; SameSite=Lax';
+  }, [rootDeleteErrorMessage]);
+
   const statusCount = (filter: StatusFilter): number => {
     if (!selectedCity) {
       return 0;
@@ -461,6 +553,36 @@ export function PublicEatsPage({
       return restaurant.status !== 'disliked';
     }).length;
   };
+  const createDefaultCityId = useMemo(() => {
+    if (!createTools || !selectedCity) {
+      return undefined;
+    }
+
+    return createTools.cities.find((city) => city.name === selectedCity)?.id;
+  }, [createTools, selectedCity]);
+  const createDefaultMealTypes = useMemo(() => {
+    if (selectedMealType === 'Any') {
+      return undefined;
+    }
+
+    return [selectedMealType];
+  }, [selectedMealType]);
+  const createDefaultStatus = useMemo(() => {
+    if (status === 'liked' || status === 'untried' || status === 'disliked') {
+      return status;
+    }
+
+    return undefined;
+  }, [status]);
+  const editingRestaurant = useMemo(() => {
+    if (!editingRestaurantId) {
+      return null;
+    }
+
+    return restaurants.find((restaurant) => restaurant.id === editingRestaurantId) ?? null;
+  }, [editingRestaurantId, restaurants]);
+  const canEditRestaurants = Boolean(adminTools) && allowRestaurantEditing;
+  const canDeleteRestaurants = Boolean(adminTools) && !embedded;
 
   return (
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot}>
@@ -684,62 +806,25 @@ export function PublicEatsPage({
                         <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
                       ) : null}
 
-                      {adminTools ? (
+                      {canEditRestaurants || canDeleteRestaurants ? (
                         <div className={styles.cardActions}>
-                          <details className={styles.editDetails}>
-                            <summary>Edit restaurant</summary>
-                            <form
-                              action={updateRestaurant}
-                              onSubmit={(event) => {
-                                const confirmed = window.confirm(`Save changes to "${place.name}"?`);
-                                if (!confirmed) {
-                                  event.preventDefault();
-                                  return;
-                                }
-
-                                const detailsElement = event.currentTarget.closest('details');
-                                const cardElement = event.currentTarget.closest(`.${styles.placeCard}`);
-                                if (detailsElement instanceof HTMLDetailsElement) {
-                                  detailsElement.open = false;
-                                }
-                                if (cardElement instanceof HTMLElement) {
-                                  requestAnimationFrame(() => {
-                                    cardElement.scrollIntoView({
-                                      behavior: 'smooth',
-                                      block: 'start'
-                                    });
-                                  });
-                                }
-                              }}
+                          {canEditRestaurants ? (
+                            <button
+                              type="button"
+                              className={styles.editButton}
+                              onClick={() => setEditingRestaurantId(place.id)}
                             >
-                              <input type="hidden" name="restaurantId" value={place.id} />
-                              <RestaurantFormFields
-                                cities={adminTools.cities}
-                                types={adminTools.types}
-                                areaSuggestionsByCity={adminTools.areaSuggestionsByCity}
-                                keyPrefix={`edit-restaurant-${place.id}`}
-                                submitLabel="Save changes"
-                                defaults={{
-                                  cityId: place.cityId,
-                                  areas: place.areas,
-                                  mealTypes: place.mealTypes,
-                                  name: place.name,
-                                  notes: place.notes,
-                                  referredBy: place.referredBy,
-                                  typeIds: place.types.map((type) => type.id),
-                                  url: place.url,
-                                  status: place.status,
-                                  dislikedReason: place.dislikedReason
-                                }}
-                              />
-                            </form>
-                          </details>
-                          <DeleteRestaurantForm
-                            restaurantId={place.id}
-                            restaurantName={place.name}
-                            className={styles.deleteForm}
-                            buttonClassName={styles.deleteButton}
-                          />
+                              Edit
+                            </button>
+                          ) : null}
+                          {canDeleteRestaurants ? (
+                            <DeleteRestaurantForm
+                              restaurantId={place.id}
+                              restaurantName={place.name}
+                              className={styles.deleteForm}
+                              buttonClassName={styles.deleteButton}
+                            />
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -749,6 +834,125 @@ export function PublicEatsPage({
           ))}
         </div>
       </div>
+      {createTools && !embedded ? (
+        <>
+          <button
+            type="button"
+            className={styles.addFab}
+            aria-label="Add restaurant"
+            title="Add restaurant"
+            onClick={() => setIsCreateDialogOpen(true)}
+          >
+            +
+          </button>
+          {isCreateDialogOpen ? (
+            <div className={styles.createDialogOverlay} onClick={() => setIsCreateDialogOpen(false)}>
+              <section
+                className={styles.createDialog}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Add Restaurant"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className={styles.createDialogHeader}>
+                  <h2>Add Restaurant</h2>
+                  <button
+                    type="button"
+                    className={styles.createDialogClose}
+                    aria-label="Close add restaurant dialog"
+                    onClick={() => setIsCreateDialogOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+                <form
+                  action={createRestaurantFromRoot}
+                >
+                  <RestaurantFormFields
+                    cities={createTools.cities}
+                    types={createTools.types}
+                    areaSuggestionsByCity={createAreaSuggestionsByCity}
+                    disableAreasUntilCitySelected
+                    keyPrefix="root-create-restaurant"
+                    submitLabel="Create restaurant"
+                    disableSubmit={createTools.cities.length === 0 || createTools.types.length === 0}
+                    defaults={{
+                      cityId: createDefaultCityId,
+                      mealTypes: createDefaultMealTypes,
+                      status: createDefaultStatus
+                    }}
+                  />
+                </form>
+              </section>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {canEditRestaurants && adminTools && editingRestaurant ? (
+        <div className={styles.createDialogOverlay} onClick={() => setEditingRestaurantId(null)}>
+          <section
+            className={styles.createDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit ${editingRestaurant.name}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.createDialogHeader}>
+              <h2>Edit {editingRestaurant.name}</h2>
+              <button
+                type="button"
+                className={styles.createDialogClose}
+                aria-label="Close edit restaurant dialog"
+                onClick={() => setEditingRestaurantId(null)}
+              >
+                ×
+              </button>
+            </div>
+            <form
+              action={embedded ? updateRestaurant : updateRestaurantFromRoot}
+              onSubmit={(event) => {
+                const confirmed = window.confirm(`Save changes to "${editingRestaurant.name}"?`);
+                if (!confirmed) {
+                  event.preventDefault();
+                  return;
+                }
+
+                setEditingRestaurantId(null);
+                const cardElement = restaurantCardRefs.current[editingRestaurant.id];
+                if (cardElement instanceof HTMLElement) {
+                  requestAnimationFrame(() => {
+                    cardElement.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start'
+                    });
+                  });
+                }
+              }}
+            >
+              <input type="hidden" name="restaurantId" value={editingRestaurant.id} />
+              <RestaurantFormFields
+                cities={adminTools.cities}
+                types={adminTools.types}
+                areaSuggestionsByCity={adminTools.areaSuggestionsByCity}
+                keyPrefix={`edit-restaurant-${editingRestaurant.id}`}
+                submitLabel="Save changes"
+                defaults={{
+                  cityId: editingRestaurant.cityId,
+                  areas: editingRestaurant.areas,
+                  mealTypes: editingRestaurant.mealTypes,
+                  name: editingRestaurant.name,
+                  notes: editingRestaurant.notes,
+                  referredBy: editingRestaurant.referredBy,
+                  typeIds: editingRestaurant.types.map((type) => type.id),
+                  url: editingRestaurant.url,
+                  status: editingRestaurant.status,
+                  dislikedReason: editingRestaurant.dislikedReason
+                }}
+              />
+            </form>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

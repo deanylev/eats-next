@@ -4,7 +4,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
@@ -44,8 +44,25 @@ const getErrorText = (error: unknown): string => {
   return 'Unknown error';
 };
 
+const isNextRedirectError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  if (!('digest' in error)) {
+    return false;
+  }
+
+  return String((error as { digest?: string }).digest ?? '').startsWith('NEXT_REDIRECT');
+};
+
 const ADMIN_ERROR_COOKIE = 'admin_error_message';
 const ADMIN_SUCCESS_COOKIE = 'admin_success_message';
+const ROOT_CREATE_ERROR_COOKIE = 'root_create_error_message';
+const ROOT_CREATE_SUCCESS_COOKIE = 'root_create_success_message';
+const ROOT_EDIT_ERROR_COOKIE = 'root_edit_error_message';
+const ROOT_EDIT_SUCCESS_COOKIE = 'root_edit_success_message';
+const ROOT_DELETE_ERROR_COOKIE = 'root_delete_error_message';
 const ADMIN_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_BLOCK_MS = 15 * 60 * 1000;
@@ -462,82 +479,7 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
 export const createRestaurant = async (formData: FormData): Promise<void> => {
   try {
     await requireAdminSession();
-    const db = getDb();
-    const parsed = restaurantInputSchema.parse({
-      cityId: formData.get('cityId'),
-      areas: parseAreas(formData.get('areas')),
-      mealTypes: formData.getAll('mealTypes'),
-      name: formData.get('name'),
-      notes: formData.get('notes'),
-      referredBy: formData.get('referredBy') ?? undefined,
-      typeIds: formData.getAll('typeIds'),
-      url: formData.get('url'),
-      status: formData.get('status'),
-      dislikedReason: formData.get('dislikedReason') ?? undefined
-    });
-
-    const foundCity = await db.query.cities.findFirst({
-      where: eq(cities.id, parsed.cityId)
-    });
-
-    if (!foundCity) {
-      throw new Error('City not found.');
-    }
-
-    const existingTypes = await db
-      .select({ id: restaurantTypes.id })
-      .from(restaurantTypes)
-      .where(inArray(restaurantTypes.id, parsed.typeIds));
-    const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
-    const invalidTypeIds = parsed.typeIds.filter((entry) => !foundTypeIds.has(entry));
-
-    if (invalidTypeIds.length > 0) {
-      throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
-    }
-
-    await db.transaction(async (tx) => {
-      const insertedRestaurants = await tx
-        .insert(restaurants)
-        .values({
-          cityId: parsed.cityId,
-          name: parsed.name,
-          notes: parsed.notes,
-          referredBy: parsed.referredBy ?? '',
-          url: parsed.url,
-          status: parsed.status,
-          triedAt: parsed.status === 'untried' ? null : new Date(),
-          dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
-        })
-        .returning({ id: restaurants.id });
-      const insertedRestaurant = insertedRestaurants[0];
-
-      if (!insertedRestaurant) {
-        throw new Error('Could not create restaurant.');
-      }
-
-      if (parsed.areas.length > 0) {
-        await tx.insert(restaurantAreas).values(
-          parsed.areas.map((area) => ({
-            restaurantId: insertedRestaurant.id,
-            area
-          }))
-          );
-      }
-
-      await tx.insert(restaurantMeals).values(
-        parsed.mealTypes.map((mealType) => ({
-          restaurantId: insertedRestaurant.id,
-          mealType
-        }))
-      );
-
-      await tx.insert(restaurantToTypes).values(
-        parsed.typeIds.map((restaurantTypeId) => ({
-          restaurantId: insertedRestaurant.id,
-          restaurantTypeId
-        }))
-      );
-    });
+    await createRestaurantRecord(formData);
 
     cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Restaurant created.'), {
       httpOnly: false,
@@ -552,102 +494,139 @@ export const createRestaurant = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
+const createRestaurantRecord = async (formData: FormData): Promise<void> => {
+  const db = getDb();
+  const parsed = restaurantInputSchema.parse({
+    cityId: formData.get('cityId'),
+    areas: parseAreas(formData.get('areas')),
+    mealTypes: formData.getAll('mealTypes'),
+    name: formData.get('name'),
+    notes: formData.get('notes'),
+    referredBy: formData.get('referredBy') ?? undefined,
+    typeIds: formData.getAll('typeIds'),
+    url: formData.get('url'),
+    status: formData.get('status'),
+    dislikedReason: formData.get('dislikedReason') ?? undefined
+  });
+
+  const foundCity = await db.query.cities.findFirst({
+    where: eq(cities.id, parsed.cityId)
+  });
+
+  if (!foundCity) {
+    throw new Error('City not found.');
+  }
+
+  const existingTypes = await db
+    .select({ id: restaurantTypes.id })
+    .from(restaurantTypes)
+    .where(inArray(restaurantTypes.id, parsed.typeIds));
+  const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
+  const invalidTypeIds = parsed.typeIds.filter((entry) => !foundTypeIds.has(entry));
+
+  if (invalidTypeIds.length > 0) {
+    throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
+  }
+
+  await db.transaction(async (tx) => {
+    const insertedRestaurants = await tx
+      .insert(restaurants)
+      .values({
+        cityId: parsed.cityId,
+        name: parsed.name,
+        notes: parsed.notes,
+        referredBy: parsed.referredBy ?? '',
+        url: parsed.url,
+        status: parsed.status,
+        triedAt: parsed.status === 'untried' ? null : new Date(),
+        dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
+      })
+      .returning({ id: restaurants.id });
+    const insertedRestaurant = insertedRestaurants[0];
+
+    if (!insertedRestaurant) {
+      throw new Error('Could not create restaurant.');
+    }
+
+    if (parsed.areas.length > 0) {
+      await tx.insert(restaurantAreas).values(
+        parsed.areas.map((area) => ({
+          restaurantId: insertedRestaurant.id,
+          area
+        }))
+      );
+    }
+
+    await tx.insert(restaurantMeals).values(
+      parsed.mealTypes.map((mealType) => ({
+        restaurantId: insertedRestaurant.id,
+        mealType
+      }))
+    );
+
+    await tx.insert(restaurantToTypes).values(
+      parsed.typeIds.map((restaurantTypeId) => ({
+        restaurantId: insertedRestaurant.id,
+        restaurantTypeId
+      }))
+    );
+  });
+};
+
+export const createRestaurantFromRoot = async (formData: FormData): Promise<void> => {
+  const referer = headers().get('referer') ?? '/';
+  const getRedirectTarget = (shouldOpenDialog: boolean): string => {
+    try {
+      const url = new URL(referer);
+      if (shouldOpenDialog) {
+        url.searchParams.set('openCreateDialog', '1');
+      } else {
+        url.searchParams.delete('openCreateDialog');
+      }
+
+      const query = url.searchParams.toString();
+      return `${url.pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return shouldOpenDialog ? '/?openCreateDialog=1' : '/';
+    }
+  };
+
+  try {
+    await requireAdminSession();
+    await createRestaurantRecord(formData);
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    cookies().set(ROOT_CREATE_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+      httpOnly: false,
+      maxAge: 60,
+      path: '/',
+      sameSite: 'lax'
+    });
+    redirect(getRedirectTarget(true));
+  }
+
+  cookies().set(ROOT_CREATE_ERROR_COOKIE, '', {
+    httpOnly: false,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'lax'
+  });
+  cookies().set(ROOT_CREATE_SUCCESS_COOKIE, encodeURIComponent('Restaurant created successfully.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/',
+    sameSite: 'lax'
+  });
+  redirect(getRedirectTarget(false));
+};
+
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
   try {
     await requireAdminSession();
-    const db = getDb();
-    const restaurantId = String(formData.get('restaurantId') ?? '').trim();
-    if (!ADMIN_ID_REGEX.test(restaurantId)) {
-      throw new Error('Invalid restaurant id.');
-    }
-
-    const parsed = restaurantInputSchema.parse({
-      cityId: formData.get('cityId'),
-      areas: parseAreas(formData.get('areas')),
-      mealTypes: formData.getAll('mealTypes'),
-      name: formData.get('name'),
-      notes: formData.get('notes'),
-      referredBy: formData.get('referredBy') ?? undefined,
-      typeIds: formData.getAll('typeIds'),
-      url: formData.get('url'),
-      status: formData.get('status'),
-      dislikedReason: formData.get('dislikedReason') ?? undefined
-    });
-
-    const foundRestaurant = await db.query.restaurants.findFirst({
-      where: eq(restaurants.id, restaurantId)
-    });
-    if (!foundRestaurant) {
-      throw new Error('Restaurant not found.');
-    }
-
-    const foundCity = await db.query.cities.findFirst({
-      where: eq(cities.id, parsed.cityId)
-    });
-    if (!foundCity) {
-      throw new Error('City not found.');
-    }
-
-    const uniqueTypeIds = Array.from(new Set(parsed.typeIds));
-    const existingTypes = await db
-      .select({ id: restaurantTypes.id })
-      .from(restaurantTypes)
-      .where(inArray(restaurantTypes.id, uniqueTypeIds));
-    const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
-    const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
-    if (invalidTypeIds.length > 0) {
-      throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
-    }
-
-    await db.transaction(async (tx) => {
-      const nextTriedAt =
-        parsed.status === 'untried'
-          ? null
-          : foundRestaurant.status === 'untried'
-            ? new Date()
-            : foundRestaurant.triedAt ?? new Date();
-
-      await tx
-        .update(restaurants)
-        .set({
-          cityId: parsed.cityId,
-          name: parsed.name,
-          notes: parsed.notes,
-          referredBy: parsed.referredBy ?? '',
-          url: parsed.url,
-          status: parsed.status,
-          triedAt: nextTriedAt,
-          dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
-        })
-        .where(eq(restaurants.id, restaurantId));
-
-      await tx.delete(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
-      await tx.delete(restaurantMeals).where(eq(restaurantMeals.restaurantId, restaurantId));
-      await tx.delete(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, restaurantId));
-
-      if (parsed.areas.length > 0) {
-        await tx.insert(restaurantAreas).values(
-          parsed.areas.map((area) => ({
-            restaurantId,
-            area
-          }))
-        );
-      }
-
-      await tx.insert(restaurantMeals).values(
-        parsed.mealTypes.map((mealType) => ({
-          restaurantId,
-          mealType
-        }))
-      );
-
-      await tx.insert(restaurantToTypes).values(
-        uniqueTypeIds.map((restaurantTypeId) => ({
-          restaurantId,
-          restaurantTypeId
-        }))
-      );
-    });
+    await updateRestaurantRecord(formData);
   } catch (error) {
     bounce(getErrorText(error));
   }
@@ -655,7 +634,167 @@ export const updateRestaurant = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
+const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
+  const db = getDb();
+  const restaurantId = String(formData.get('restaurantId') ?? '').trim();
+  if (!ADMIN_ID_REGEX.test(restaurantId)) {
+    throw new Error('Invalid restaurant id.');
+  }
+
+  const parsed = restaurantInputSchema.parse({
+    cityId: formData.get('cityId'),
+    areas: parseAreas(formData.get('areas')),
+    mealTypes: formData.getAll('mealTypes'),
+    name: formData.get('name'),
+    notes: formData.get('notes'),
+    referredBy: formData.get('referredBy') ?? undefined,
+    typeIds: formData.getAll('typeIds'),
+    url: formData.get('url'),
+    status: formData.get('status'),
+    dislikedReason: formData.get('dislikedReason') ?? undefined
+  });
+
+  const foundRestaurant = await db.query.restaurants.findFirst({
+    where: eq(restaurants.id, restaurantId)
+  });
+  if (!foundRestaurant) {
+    throw new Error('Restaurant not found.');
+  }
+
+  const foundCity = await db.query.cities.findFirst({
+    where: eq(cities.id, parsed.cityId)
+  });
+  if (!foundCity) {
+    throw new Error('City not found.');
+  }
+
+  const uniqueTypeIds = Array.from(new Set(parsed.typeIds));
+  const existingTypes = await db
+    .select({ id: restaurantTypes.id })
+    .from(restaurantTypes)
+    .where(inArray(restaurantTypes.id, uniqueTypeIds));
+  const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
+  const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
+  if (invalidTypeIds.length > 0) {
+    throw new Error(`Invalid restaurant type ids: ${invalidTypeIds.join(', ')}.`);
+  }
+
+  await db.transaction(async (tx) => {
+    const nextTriedAt =
+      parsed.status === 'untried'
+        ? null
+        : foundRestaurant.status === 'untried'
+          ? new Date()
+          : foundRestaurant.triedAt ?? new Date();
+
+    await tx
+      .update(restaurants)
+      .set({
+        cityId: parsed.cityId,
+        name: parsed.name,
+        notes: parsed.notes,
+        referredBy: parsed.referredBy ?? '',
+        url: parsed.url,
+        status: parsed.status,
+        triedAt: nextTriedAt,
+        dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
+      })
+      .where(eq(restaurants.id, restaurantId));
+
+    await tx.delete(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
+    await tx.delete(restaurantMeals).where(eq(restaurantMeals.restaurantId, restaurantId));
+    await tx.delete(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, restaurantId));
+
+    if (parsed.areas.length > 0) {
+      await tx.insert(restaurantAreas).values(
+        parsed.areas.map((area) => ({
+          restaurantId,
+          area
+        }))
+      );
+    }
+
+    await tx.insert(restaurantMeals).values(
+      parsed.mealTypes.map((mealType) => ({
+        restaurantId,
+        mealType
+      }))
+    );
+
+    await tx.insert(restaurantToTypes).values(
+      uniqueTypeIds.map((restaurantTypeId) => ({
+        restaurantId,
+        restaurantTypeId
+      }))
+    );
+  });
+
+  return restaurantId;
+};
+
+export const updateRestaurantFromRoot = async (formData: FormData): Promise<void> => {
+  const referer = headers().get('referer') ?? '/';
+  const getRedirectTarget = (restaurantId: string | null): string => {
+    try {
+      const url = new URL(referer);
+      if (restaurantId) {
+        url.searchParams.set('openEditRestaurant', restaurantId);
+      } else {
+        url.searchParams.delete('openEditRestaurant');
+      }
+
+      const query = url.searchParams.toString();
+      return `${url.pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return restaurantId ? `/?openEditRestaurant=${restaurantId}` : '/';
+    }
+  };
+
+  try {
+    await requireAdminSession();
+    await updateRestaurantRecord(formData);
+    cookies().set(ROOT_EDIT_ERROR_COOKIE, '', {
+      httpOnly: false,
+      maxAge: 0,
+      path: '/',
+      sameSite: 'lax'
+    });
+    cookies().set(ROOT_EDIT_SUCCESS_COOKIE, encodeURIComponent('Restaurant updated successfully.'), {
+      httpOnly: false,
+      maxAge: 60,
+      path: '/',
+      sameSite: 'lax'
+    });
+    redirect(getRedirectTarget(null));
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const restaurantId = String(formData.get('restaurantId') ?? '').trim();
+    const safeRestaurantId = ADMIN_ID_REGEX.test(restaurantId) ? restaurantId : null;
+    cookies().set(ROOT_EDIT_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+      httpOnly: false,
+      maxAge: 60,
+      path: '/',
+      sameSite: 'lax'
+    });
+    redirect(getRedirectTarget(safeRestaurantId));
+  }
+};
+
 export const deleteRestaurant = async (formData: FormData): Promise<void> => {
+  const referer = headers().get('referer') ?? '/';
+  const getRedirectTarget = (): string => {
+    try {
+      const url = new URL(referer);
+      const query = url.searchParams.toString();
+      return `${url.pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return '/';
+    }
+  };
+
   try {
     await requireAdminSession();
     const db = getDb();
@@ -665,20 +804,69 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
     }
 
     const deleted = await db
-      .delete(restaurants)
-      .where(eq(restaurants.id, restaurantId))
+      .update(restaurants)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(restaurants.id, restaurantId), isNull(restaurants.deletedAt)))
       .returning({ id: restaurants.id });
     if (deleted.length === 0) {
       throw new Error('Restaurant not found.');
     }
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    cookies().set(ROOT_DELETE_ERROR_COOKIE, encodeURIComponent(getErrorText(error)), {
+      httpOnly: false,
+      maxAge: 60,
+      path: '/',
+      sameSite: 'lax'
+    });
+    redirect(getRedirectTarget());
+  }
+
+  cookies().set(ROOT_DELETE_ERROR_COOKIE, '', {
+    httpOnly: false,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'lax'
+  });
+  redirect(getRedirectTarget());
+};
+
+export const restoreRestaurant = async (formData: FormData): Promise<void> => {
+  try {
+    await requireAdminSession();
+    const db = getDb();
+    const restaurantId = String(formData.get('restaurantId') ?? '').trim();
+    if (!ADMIN_ID_REGEX.test(restaurantId)) {
+      throw new Error('Invalid restaurant id.');
+    }
+
+    const restored = await db
+      .update(restaurants)
+      .set({ deletedAt: null })
+      .where(and(eq(restaurants.id, restaurantId), isNotNull(restaurants.deletedAt)))
+      .returning({ id: restaurants.id });
+
+    if (restored.length === 0) {
+      throw new Error('Deleted restaurant not found.');
+    }
+  } catch (error) {
     bounce(getErrorText(error));
   }
 
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Restaurant restored successfully.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
   redirect('/admin');
 };
 
-export const getCmsData = async () => {
+export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
+  const includeDeleted = options?.includeDeleted ?? false;
   const db = getDb();
   const [countryRows, cityRows, typeRows, restaurantRows, areaRows, mealRows, restaurantTypeRows] =
     await Promise.all([
@@ -705,6 +893,7 @@ export const getCmsData = async () => {
           url: restaurants.url,
           status: restaurants.status,
           triedAt: restaurants.triedAt,
+          deletedAt: restaurants.deletedAt,
           dislikedReason: restaurants.dislikedReason,
           cityName: cities.name,
           countryName: countries.name
@@ -753,12 +942,17 @@ export const getCmsData = async () => {
     mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
     types: typesByRestaurant.get(restaurant.id) ?? []
   }));
+  const activeRestaurants = fullRestaurants.filter((restaurant) => restaurant.deletedAt === null);
+  const deletedRestaurants = includeDeleted
+    ? fullRestaurants.filter((restaurant) => restaurant.deletedAt !== null)
+    : [];
 
   return {
     countries: countryRows,
     cities: cityRows,
     defaultCityName: cityRows.find((city) => city.isDefault)?.name ?? null,
     types: typeRows,
-    restaurants: fullRestaurants
+    restaurants: activeRestaurants,
+    deletedRestaurants
   };
 };

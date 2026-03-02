@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import {
   createCity,
   createCountry,
-  createRestaurant,
   createRestaurantType,
   getCmsData,
   logoutAdmin,
@@ -13,8 +12,7 @@ import {
 } from '@/app/actions';
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { ErrorConfirm } from '@/app/components/error-confirm';
-import { PublicEatsPage } from '@/app/components/public-eats-page';
-import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
+import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 
@@ -29,31 +27,12 @@ export default async function HomePage() {
     redirect('/admin/login');
   }
 
-  const data = await getCmsData();
+  const data = await getCmsData({ includeDeleted: true });
   const cookieStore = cookies();
   const encodedErrorMessage = cookieStore.get('admin_error_message')?.value ?? null;
   const encodedSuccessMessage = cookieStore.get('admin_success_message')?.value ?? null;
   const errorMessage = encodedErrorMessage ? decodeURIComponent(encodedErrorMessage) : null;
   const successMessage = encodedSuccessMessage ? decodeURIComponent(encodedSuccessMessage) : null;
-  const areaSuggestionsByCity = data.restaurants.reduce<Record<string, string[]>>((acc, restaurant) => {
-    const existingAreas = acc[restaurant.cityId] ?? [];
-    const normalizedSet = new Set(existingAreas.map((entry) => entry.toLowerCase()));
-
-    for (const area of restaurant.areas) {
-      const normalized = area.trim().toLowerCase();
-      if (normalized.length === 0 || normalizedSet.has(normalized)) {
-        continue;
-      }
-
-      existingAreas.push(area.trim());
-      normalizedSet.add(normalized);
-    }
-
-    existingAreas.sort((a, b) => a.localeCompare(b));
-    acc[restaurant.cityId] = existingAreas;
-    return acc;
-  }, {});
-
   return (
     <div className={styles.root}>
       <main>
@@ -125,31 +104,25 @@ export default async function HomePage() {
             </form>
           </section>
 
-          <section className={styles.panel}>
-            <h2>Add Restaurant</h2>
-            <form action={createRestaurant} id="create-restaurant-form">
-              <RestaurantFormFields
-                cities={data.cities}
-                types={data.types}
-                areaSuggestionsByCity={areaSuggestionsByCity}
-                disableAreasUntilCitySelected
-                keyPrefix="create-restaurant"
-                submitLabel="Create restaurant"
-                disableSubmit={data.cities.length === 0 || data.types.length === 0}
-              />
-            </form>
-          </section>
         </div>
 
         <section className={styles.panel}>
-          <h2>Current Restaurants</h2>
-          <PublicEatsPage
-            restaurants={data.restaurants}
-            defaultCityName={data.defaultCityName}
-            embedded
-            title={null}
-            adminTools={{ cities: data.cities, types: data.types, areaSuggestionsByCity }}
-          />
+          <h2>Deleted Restaurants</h2>
+          {data.deletedRestaurants.length === 0 ? (
+            <p>No deleted restaurants.</p>
+          ) : (
+            <div className={styles.manageList}>
+              {data.deletedRestaurants.map((restaurant) => (
+                <div key={restaurant.id} className={styles.manageItem}>
+                  <strong>{restaurant.name}</strong>
+                  <div>
+                    {restaurant.cityName}, {restaurant.countryName}
+                  </div>
+                  <RestoreRestaurantForm restaurantId={restaurant.id} restaurantName={restaurant.name} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className={styles.panel}>

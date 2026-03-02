@@ -65,6 +65,7 @@ export const restaurants = pgTable('restaurants', {
   url: text('url').notNull(),
   status: restaurantStatusEnum('status').notNull(),
   triedAt: timestamp('tried_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   dislikedReason: text('disliked_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull()

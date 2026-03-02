@@ -277,6 +277,14 @@ h5 {
   form + form {
     margin-top: 8px;
   }
+
+  strong + div {
+    margin-top: 4px;
+  }
+
+  div + form {
+    margin-top: 12px;
+  }
 }
 
 .manageActions {

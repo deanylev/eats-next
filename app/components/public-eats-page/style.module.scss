@@ -238,9 +238,208 @@
   padding-right: 4px;
 }
 
+.eatsRoot button.addFab,
+.embeddedRoot button.addFab {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  background: #e8a61a;
+  border: 1px solid #f3c459;
+  border-radius: 50%;
+  bottom: 22px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  color: #180321;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 34px;
+  font-weight: 700;
+  height: 54px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  position: fixed;
+  right: 24px;
+  text-align: center;
+  -webkit-appearance: none;
+  width: 54px;
+  z-index: 55;
+}
+
+.eatsRoot button.addFab:hover,
+.embeddedRoot button.addFab:hover {
+  background: #f1bf4c;
+}
+
+.createDialogOverlay {
+  align-items: center;
+  backdrop-filter: blur(5px);
+  background: rgba(10, 2, 14, 0.58);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 70;
+}
+
+.createDialog {
+  backdrop-filter: blur(18px);
+  background: rgba(24, 3, 33, 0.88);
+  border: 1px solid rgba(252, 246, 254, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  max-height: min(86vh, 900px);
+  max-width: min(960px, calc(100vw - 24px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px;
+  width: 100%;
+
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+
+  form {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+    max-width: 100%;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  label {
+    color: rgba(252, 246, 254, 0.92);
+    display: grid;
+    gap: 5px;
+  }
+
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    background: rgba(252, 246, 254, 0.92);
+    border: 1px solid rgba(166, 139, 177, 0.76);
+    border-radius: 8px;
+    color: #180321;
+    font-family: inherit;
+    font-size: 15px;
+    padding: 8px 10px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  fieldset {
+    border: 1px solid rgba(252, 246, 254, 0.3);
+    border-radius: 8px;
+    margin: 0;
+    max-width: 100%;
+    padding: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  legend {
+    max-width: 100%;
+  }
+
+  :global(.inline-options) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  :global(.inline-options) label {
+    align-items: center;
+    display: inline-flex;
+    gap: 5px;
+    width: auto;
+  }
+
+  :global(.area-autosuggest) > span {
+    color: rgba(252, 246, 254, 0.8);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  :global(.area-suggestion) {
+    background: rgba(232, 166, 26, 0.14);
+    border: 1px solid rgba(232, 166, 26, 0.45);
+    border-radius: 8px;
+    color: #f6deaa;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 10px;
+  }
+
+  button[type='submit'] {
+    background: rgba(232, 166, 26, 0.9);
+    border: 1px solid rgba(243, 196, 89, 0.82);
+    border-radius: 8px;
+    color: #180321;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 8px 10px;
+    width: fit-content;
+    max-width: 100%;
+  }
+}
+
+.createDialogHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+
+  h2 {
+    color: #e8a61a;
+    font-size: 30px;
+    margin: 0;
+  }
+}
+
+.eatsRoot button.createDialogClose,
+.embeddedRoot button.createDialogClose {
+  all: unset;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: #f8dd9f;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 30px;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  padding: 0 4px;
+  -webkit-appearance: none;
+}
+
+@media only screen and (max-width: 700px) {
+  .addFab {
+    bottom: 16px;
+    height: 48px;
+    right: 16px;
+    width: 48px;
+  }
+}
+
 @media only screen and (max-width: 700px) {
   .eatsRoot {
     padding: 14px 16px;
+  }
+
+  .createDialogOverlay {
+    padding: 8px;
+  }
+
+  .createDialog {
+    max-width: calc(100vw - 16px);
+    padding: 12px;
   }
 }
 
@@ -456,8 +655,10 @@
 
 .cardActions {
   border-top: 1px dashed rgba(252, 246, 254, 0.28);
-  display: grid;
+  display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
   margin-top: 10px;
   padding-top: 10px;
 
@@ -466,32 +667,56 @@
   }
 }
 
-.editDetails {
-  summary {
-    color: #e8a61a;
-    cursor: pointer;
-    font-weight: 700;
-  }
+.eatsRoot button.editButton,
+.embeddedRoot button.editButton {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  background: rgba(232, 166, 26, 0.2);
+  border: 1px solid rgba(243, 196, 89, 0.6);
+  border-radius: 8px;
+  color: #f8dd9f;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+  padding: 6px 10px;
+  width: fit-content;
+  -webkit-appearance: none;
+}
 
-  form {
-    margin-top: 8px;
-  }
+.eatsRoot button.editButton:hover,
+.embeddedRoot button.editButton:hover {
+  background: rgba(232, 166, 26, 0.28);
 }
 
 .deleteForm {
-  display: block;
+  display: inline-flex;
 }
 
-.deleteButton {
-  background: #c23333;
-  border: 1px solid #e25f5f;
+.eatsRoot button.deleteButton,
+.embeddedRoot button.deleteButton {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  background: rgba(194, 51, 51, 0.9);
+  border: 1px solid rgba(226, 95, 95, 0.82);
   border-radius: 8px;
   color: #fff;
   cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 14px;
   font-weight: 700;
-  padding: 8px 10px;
+  justify-content: center;
+  padding: 6px 10px;
+  width: fit-content;
+  -webkit-appearance: none;
+}
 
-  &:hover {
-    background: #a91f1f;
-  }
+.eatsRoot button.deleteButton:hover,
+.embeddedRoot button.deleteButton:hover {
+  background: rgba(169, 31, 31, 0.95);
 }
