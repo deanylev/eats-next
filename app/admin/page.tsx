@@ -1,11 +1,15 @@
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+import { notFound, redirect } from 'next/navigation';
 import {
+  createSubdomainTenant,
   createCity,
   createCountry,
   createRestaurantType,
   getCmsData,
   logoutAdmin,
+  updateCurrentTenantSettings,
+  updateSubdomainTenant,
   updateCity,
   updateCountry,
   updateRestaurantType
@@ -15,19 +19,41 @@ import { ErrorConfirm } from '@/app/components/error-confirm';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
+import { getDb } from '@/lib/db';
+import { normalizeHost, resolveTenantFromHost } from '@/lib/tenant';
 
 import styles from './style.module.scss';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  const host = normalizeHost(headers().get('host') || '');
+  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  try {
+    tenant = await resolveTenantFromHost(getDb(), host);
+  } catch {
+    notFound();
+  }
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
-  const hasSession = token ? Boolean(await verifyAdminJwt(token)) : false;
+  const session = token ? await verifyAdminJwt(token) : null;
+  const hasSession = Boolean(
+    session &&
+      session.tenantId === tenant.id &&
+      session.isRoot === tenant.isRoot &&
+      session.tenantKey === (tenant.isRoot ? 'root' : tenant.subdomain ?? '')
+  );
   if (!hasSession) {
     redirect('/admin/login');
   }
 
-  const data = await getCmsData({ includeDeleted: true });
+  const db = getDb();
+  const data = await getCmsData(tenant.id, { includeDeleted: true });
+  const subdomainTenants = tenant.isRoot
+    ? await db.query.tenants.findMany({
+        where: (table, { and, eq }) => and(eq(table.isRoot, false)),
+        orderBy: (table, { asc }) => [asc(table.subdomain)]
+      })
+    : [];
   const cookieStore = cookies();
   const encodedErrorMessage = cookieStore.get('admin_error_message')?.value ?? null;
   const encodedSuccessMessage = cookieStore.get('admin_success_message')?.value ?? null;
@@ -38,7 +64,7 @@ export default async function HomePage() {
       <main>
         <header className={styles.hero}>
           <div className={styles.heroTop}>
-            <h1>Eats Admin</h1>
+            <h1>{tenant.displayName} Admin</h1>
             <form action={logoutAdmin}>
               <button type="submit">Log Out</button>
             </form>
@@ -47,7 +73,53 @@ export default async function HomePage() {
         <ErrorConfirm message={errorMessage} />
         <SuccessConfirm message={successMessage} />
 
+        {!tenant.isRoot ? (
+          <section className={styles.panel}>
+            <h2>Tenant Settings</h2>
+            <form action={updateCurrentTenantSettings}>
+              <label>
+                Display name
+                <input name="displayName" required defaultValue={tenant.displayName} />
+              </label>
+              <label>
+                Username
+                <input name="adminUsername" required defaultValue={session?.username ?? ''} />
+              </label>
+              <label>
+                New password (leave blank to keep)
+                <input name="adminPassword" type="password" />
+              </label>
+              <button type="submit">Save tenant settings</button>
+            </form>
+          </section>
+        ) : null}
+
         <div className={styles.builderGrid}>
+          {tenant.isRoot ? (
+            <section className={styles.panel}>
+              <h2>Add Subdomain Tenant</h2>
+              <form action={createSubdomainTenant}>
+                <label>
+                  Subdomain
+                  <input name="subdomain" required />
+                </label>
+                <label>
+                  Display name
+                  <input name="displayName" required />
+                </label>
+                <label>
+                  Username
+                  <input name="adminUsername" required />
+                </label>
+                <label>
+                  Password
+                  <input name="adminPassword" type="password" required />
+                </label>
+                <button type="submit">Create subdomain</button>
+              </form>
+            </section>
+          ) : null}
+
           <section className={styles.panel}>
             <h2>Add Country</h2>
             <form action={createCountry}>
@@ -105,6 +177,47 @@ export default async function HomePage() {
           </section>
 
         </div>
+
+        {tenant.isRoot ? (
+          <section className={styles.panel}>
+            <h2>Manage Subdomains</h2>
+            {subdomainTenants.length === 0 ? (
+              <p>No subdomains yet.</p>
+            ) : (
+              <div className={styles.manageList}>
+                {subdomainTenants.map((subdomainTenant) => (
+                  <details key={subdomainTenant.id} className={styles.manageItem}>
+                    <summary>
+                      {subdomainTenant.subdomain} - {subdomainTenant.displayName}
+                    </summary>
+                    <form action={updateSubdomainTenant}>
+                      <input type="hidden" name="tenantId" value={subdomainTenant.id} />
+                      <label>
+                        Subdomain
+                        <input name="subdomain" required defaultValue={subdomainTenant.subdomain ?? ''} />
+                      </label>
+                      <label>
+                        Display name
+                        <input name="displayName" required defaultValue={subdomainTenant.displayName} />
+                      </label>
+                      <label>
+                        Username
+                        <input name="adminUsername" required defaultValue={subdomainTenant.adminUsername ?? ''} />
+                      </label>
+                      <label>
+                        New password (leave blank to keep)
+                        <input name="adminPassword" type="password" />
+                      </label>
+                      <div className={styles.manageActions}>
+                        <button type="submit">Save subdomain</button>
+                      </div>
+                    </form>
+                  </details>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <section className={styles.panel}>
           <h2>Deleted Restaurants</h2>

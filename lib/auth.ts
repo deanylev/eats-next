@@ -4,8 +4,11 @@ export const ADMIN_SESSION_COOKIE = 'admin_session';
 export const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 type AdminJwtPayload = {
-  sub: 'admin';
+  sub: 'admin_root' | 'admin_tenant';
   username: string;
+  tenantId: string;
+  tenantKey: string;
+  isRoot: boolean;
   iat: number;
   exp: number;
 };
@@ -21,10 +24,18 @@ const getJwtSecret = (): string => {
 
 const getSigningKey = (): Uint8Array => new TextEncoder().encode(getJwtSecret());
 
-export const createAdminJwt = async (username: string): Promise<string> =>
-  new SignJWT({ username })
+export const createAdminJwt = async (
+  username: string,
+  options: { tenantId: string; tenantKey: string; isRoot: boolean }
+): Promise<string> =>
+  new SignJWT({
+    username,
+    tenantId: options.tenantId,
+    tenantKey: options.tenantKey,
+    isRoot: options.isRoot
+  })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setSubject('admin')
+    .setSubject(options.isRoot ? 'admin_root' : 'admin_tenant')
     .setIssuedAt()
     .setExpirationTime(`${ADMIN_SESSION_TTL_SECONDS}s`)
     .sign(getSigningKey());
@@ -43,7 +54,15 @@ export const verifyAdminJwt = async (token: string): Promise<AdminJwtPayload | n
       return null;
     }
 
-    if (payload.sub !== 'admin' || typeof payload.username !== 'string') {
+    if ((payload.sub !== 'admin_root' && payload.sub !== 'admin_tenant') || typeof payload.username !== 'string') {
+      return null;
+    }
+
+    if (typeof payload.tenantId !== 'string' || typeof payload.tenantKey !== 'string') {
+      return null;
+    }
+
+    if (typeof payload.isRoot !== 'boolean') {
       return null;
     }
 
@@ -52,8 +71,11 @@ export const verifyAdminJwt = async (token: string): Promise<AdminJwtPayload | n
     }
 
     return {
-      sub: 'admin',
+      sub: payload.sub,
       username: payload.username,
+      tenantId: payload.tenantId,
+      tenantKey: payload.tenantKey,
+      isRoot: payload.isRoot,
       iat: payload.iat,
       exp: payload.exp
     };

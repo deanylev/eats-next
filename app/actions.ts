@@ -1,6 +1,6 @@
 'use server';
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
@@ -20,8 +20,10 @@ import {
   restaurantMeals,
   restaurants,
   restaurantToTypes,
-  restaurantTypes
+  restaurantTypes,
+  tenants
 } from '@/lib/schema';
+import { normalizeHost, parseHostForTenant, resolveTenantFromHost } from '@/lib/tenant';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -43,6 +45,18 @@ const getUserErrorText = (error: unknown): string => {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = String((error as { code?: string }).code ?? '');
     const constraint = String((error as { constraint?: string }).constraint ?? '');
+    if (code === '23505' && constraint === 'tenants_subdomain_unique_idx') {
+      return 'That subdomain already exists.';
+    }
+    if (code === '23505' && constraint === 'countries_tenant_id_name_unique') {
+      return 'That country already exists for this tenant.';
+    }
+    if (code === '23505' && constraint === 'cities_tenant_id_country_id_name_unique') {
+      return 'That city already exists in this country.';
+    }
+    if (code === '23505' && constraint === 'restaurant_types_tenant_id_name_unique') {
+      return 'That restaurant type already exists.';
+    }
     if (code === '23505' && constraint === 'restaurants_unique_active_city_name_idx') {
       return 'A restaurant with this name already exists in this city.';
     }
@@ -100,25 +114,11 @@ const bounce = (errorMessage: string): never => {
   redirect('/admin');
 };
 
-const getTrustedForwardedValue = (value: string | null): string => {
-  if (!value) {
-    return '';
-  }
-
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.length > 0) ?? '';
-};
-
 const assertSameOrigin = (): void => {
   const headerStore = headers();
   const origin = headerStore.get('origin');
   const referer = headerStore.get('referer');
-  const host = getTrustedForwardedValue(headerStore.get('x-forwarded-host')) || headerStore.get('host')?.trim() || '';
-  const protocol =
-    getTrustedForwardedValue(headerStore.get('x-forwarded-proto')) ||
-    (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+  const host = headerStore.get('host')?.trim() || '';
 
   if (!host) {
     throw userFacingError('Invalid request origin.');
@@ -136,22 +136,41 @@ const assertSameOrigin = (): void => {
     throw userFacingError('Invalid request origin.');
   }
 
-  const expectedOrigin = `${protocol}://${host}`.toLowerCase();
-  const actualOrigin = `${parsedOrigin.protocol}//${parsedOrigin.host}`.toLowerCase();
-  if (actualOrigin !== expectedOrigin) {
+  const expectedHost = host.toLowerCase();
+  const actualHost = parsedOrigin.host.toLowerCase();
+  if (actualHost !== expectedHost) {
+    throw userFacingError('Invalid request origin.');
+  }
+
+  const isLocalHost = parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1';
+  if (process.env.NODE_ENV === 'production' && !isLocalHost && parsedOrigin.protocol !== 'https:') {
     throw userFacingError('Invalid request origin.');
   }
 };
 
-const requireAdminSession = async (): Promise<void> => {
+const requireAdminSession = async (): Promise<AdminSessionContext> => {
   assertSameOrigin();
+  const db = getDb();
+  const host = getRequestHost();
+  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  try {
+    tenant = await resolveTenantFromHost(db, host);
+  } catch {
+    redirect('/admin/login');
+  }
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
   if (!token) {
     redirect('/admin/login');
   }
 
   const session = await verifyAdminJwt(token);
-  if (!session) {
+  const validForHost = Boolean(
+    session &&
+      session.tenantId === tenant.id &&
+      session.tenantKey === (tenant.isRoot ? 'root' : tenant.subdomain ?? '') &&
+      session.isRoot === tenant.isRoot
+  );
+  if (!validForHost || !session) {
     cookies().set(ADMIN_SESSION_COOKIE, '', {
       httpOnly: true,
       maxAge: 0,
@@ -160,6 +179,8 @@ const requireAdminSession = async (): Promise<void> => {
     });
     redirect('/admin/login');
   }
+
+  return { tenant, session };
 };
 
 const normalizedSha256 = (value: string): Buffer =>
@@ -171,6 +192,38 @@ const safeCompare = (left: string, right: string): boolean => {
   return timingSafeEqual(leftHash, rightHash);
 };
 
+const hashTenantPassword = (password: string): string => {
+  const salt = randomBytes(16);
+  const derived = scryptSync(password.normalize('NFKC'), salt, 64);
+  return `${salt.toString('base64')}:${derived.toString('base64')}`;
+};
+
+const verifyTenantPassword = (password: string, storedHash: string): boolean => {
+  const [saltBase64, hashBase64] = storedHash.split(':');
+  if (!saltBase64 || !hashBase64) {
+    return false;
+  }
+
+  try {
+    const salt = Buffer.from(saltBase64, 'base64');
+    const expected = Buffer.from(hashBase64, 'base64');
+    const actual = scryptSync(password.normalize('NFKC'), salt, expected.length);
+    return timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+};
+
+const getRequestHost = (): string => {
+  const headerStore = headers();
+  return normalizeHost(headerStore.get('host')?.trim() || '');
+};
+
+type AdminSessionContext = {
+  tenant: { id: string; displayName: string; subdomain: string | null; isRoot: boolean };
+  session: Awaited<ReturnType<typeof verifyAdminJwt>>;
+};
+
 const getClientIp = (): string => {
   const headerStore = headers();
   const cfConnectingIp = headerStore.get('cf-connecting-ip')?.trim() ?? '';
@@ -178,18 +231,30 @@ const getClientIp = (): string => {
     return cfConnectingIp;
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    return 'unknown';
+  }
+
   const realIp = headerStore.get('x-real-ip')?.trim() ?? '';
   if (realIp && isIP(realIp)) {
     return realIp;
   }
 
-  const firstForwarded = getTrustedForwardedValue(headerStore.get('x-forwarded-for'));
-  if (firstForwarded && isIP(firstForwarded)) {
-    return firstForwarded;
+  const forwardedCandidates = (headerStore.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  for (const candidate of forwardedCandidates) {
+    if (isIP(candidate)) {
+      return candidate;
+    }
   }
 
   return 'unknown';
 };
+
+const isValidTenantSubdomain = (value: string): boolean =>
+  /^eats-[a-z0-9](?:[a-z0-9-]{1,55}[a-z0-9])?$/.test(value);
 
 const isIpBlocked = (ip: string, now: number): boolean => {
   const record = loginAttemptsByIp.get(ip);
@@ -233,6 +298,15 @@ const clearLoginFailures = (ip: string) => {
 
 export const loginAdmin = async (formData: FormData): Promise<void> => {
   assertSameOrigin();
+  const db = getDb();
+  const host = getRequestHost();
+  const parsedHost = parseHostForTenant(host);
+  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  try {
+    tenant = await resolveTenantFromHost(db, host);
+  } catch {
+    redirect('/admin/login?error=invalid');
+  }
   const expectedUsername = process.env.ADMIN_USERNAME;
   const expectedPassword = process.env.ADMIN_PASSWORD;
   const now = Date.now();
@@ -240,21 +314,41 @@ export const loginAdmin = async (formData: FormData): Promise<void> => {
   const username = String(formData.get('username') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
-  if (!expectedUsername || !expectedPassword) {
-    redirect('/admin/login?error=misconfigured');
-  }
-
   if (isIpBlocked(ip, now)) {
     redirect('/admin/login?error=rate');
   }
 
-  if (!safeCompare(username, expectedUsername) || !safeCompare(password, expectedPassword)) {
-    markLoginFailure(ip, now);
-    redirect('/admin/login?error=invalid');
+  if (parsedHost.isRootHost) {
+    if (!expectedUsername || !expectedPassword) {
+      redirect('/admin/login?error=misconfigured');
+    }
+
+    if (!safeCompare(username, expectedUsername) || !safeCompare(password, expectedPassword)) {
+      markLoginFailure(ip, now);
+      redirect('/admin/login?error=invalid');
+    }
+  } else {
+    const tenantUser = await db.query.tenants.findFirst({
+      where: and(eq(tenants.id, tenant.id), eq(tenants.isRoot, false))
+    });
+    if (
+      !tenantUser ||
+      !tenantUser.adminUsername ||
+      !tenantUser.adminPasswordHash ||
+      !safeCompare(username, tenantUser.adminUsername) ||
+      !verifyTenantPassword(password, tenantUser.adminPasswordHash)
+    ) {
+      markLoginFailure(ip, now);
+      redirect('/admin/login?error=invalid');
+    }
   }
 
   clearLoginFailures(ip);
-  const token = await createAdminJwt(username);
+  const token = await createAdminJwt(username, {
+    tenantId: tenant.id,
+    tenantKey: tenant.isRoot ? 'root' : tenant.subdomain ?? '',
+    isRoot: tenant.isRoot
+  });
   cookies().set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,
     maxAge: ADMIN_SESSION_TTL_SECONDS,
@@ -278,15 +372,177 @@ export const logoutAdmin = async (): Promise<void> => {
   redirect('/admin/login');
 };
 
+export const createSubdomainTenant = async (formData: FormData): Promise<void> => {
+  try {
+    const { tenant, session } = await requireAdminSession();
+    if (!tenant.isRoot || !session?.isRoot) {
+      throw userFacingError('Only root admin can create subdomains.');
+    }
+
+    const db = getDb();
+    const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
+    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
+    const adminPassword = String(formData.get('adminPassword') ?? '');
+    const displayName = String(formData.get('displayName') ?? '').trim();
+
+    if (!isValidTenantSubdomain(subdomain)) {
+      throw userFacingError(
+        'Subdomain must start with "eats-" and use lowercase letters, numbers, or hyphens (4-63 chars).'
+      );
+    }
+    if (adminUsername.length < 3) {
+      throw userFacingError('Username must be at least 3 characters.');
+    }
+    if (adminPassword.length < 8) {
+      throw userFacingError('Password must be at least 8 characters.');
+    }
+    if (displayName.length < 1) {
+      throw userFacingError('Display name is required.');
+    }
+
+    await db.insert(tenants).values({
+      subdomain,
+      displayName,
+      adminUsername,
+      adminPasswordHash: hashTenantPassword(adminPassword),
+      isRoot: false
+    });
+  } catch (error) {
+    bounce(getUserErrorText(error));
+  }
+
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Subdomain tenant created.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
+  redirect('/admin');
+};
+
+export const updateSubdomainTenant = async (formData: FormData): Promise<void> => {
+  try {
+    const { tenant, session } = await requireAdminSession();
+    if (!tenant.isRoot || !session?.isRoot) {
+      throw userFacingError('Only root admin can update subdomains.');
+    }
+
+    const db = getDb();
+    const tenantId = String(formData.get('tenantId') ?? '').trim();
+    const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
+    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
+    const adminPassword = String(formData.get('adminPassword') ?? '');
+    const displayName = String(formData.get('displayName') ?? '').trim();
+
+    if (!ADMIN_ID_REGEX.test(tenantId)) {
+      throw userFacingError('Invalid tenant id.');
+    }
+    if (!isValidTenantSubdomain(subdomain)) {
+      throw userFacingError(
+        'Subdomain must start with "eats-" and use lowercase letters, numbers, or hyphens (4-63 chars).'
+      );
+    }
+    if (adminUsername.length < 3) {
+      throw userFacingError('Username must be at least 3 characters.');
+    }
+    if (displayName.length < 1) {
+      throw userFacingError('Display name is required.');
+    }
+
+    const found = await db.query.tenants.findFirst({
+      where: and(eq(tenants.id, tenantId), eq(tenants.isRoot, false))
+    });
+    if (!found) {
+      throw userFacingError('Subdomain tenant not found.');
+    }
+
+    await db
+      .update(tenants)
+      .set({
+        subdomain,
+        displayName,
+        adminUsername,
+        ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
+      })
+      .where(and(eq(tenants.id, tenantId), eq(tenants.isRoot, false)));
+  } catch (error) {
+    bounce(getUserErrorText(error));
+  }
+
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Subdomain tenant updated.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
+  redirect('/admin');
+};
+
+export const updateCurrentTenantSettings = async (formData: FormData): Promise<void> => {
+  try {
+    const { tenant, session } = await requireAdminSession();
+    if (tenant.isRoot) {
+      throw userFacingError('Root tenant settings cannot be changed here.');
+    }
+
+    const db = getDb();
+    const displayName = String(formData.get('displayName') ?? '').trim();
+    if (displayName.length < 1) {
+      throw userFacingError('Display name is required.');
+    }
+
+    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
+    const adminPassword = String(formData.get('adminPassword') ?? '');
+    if (adminUsername.length < 3) {
+      throw userFacingError('Username must be at least 3 characters.');
+    }
+
+    await db
+      .update(tenants)
+      .set({
+        displayName,
+        adminUsername,
+        ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
+      })
+      .where(and(eq(tenants.id, tenant.id), eq(tenants.isRoot, false)));
+
+    if (session && session.username !== adminUsername) {
+      const nextToken = await createAdminJwt(adminUsername, {
+        tenantId: tenant.id,
+        tenantKey: tenant.subdomain ?? '',
+        isRoot: false
+      });
+      cookies().set(ADMIN_SESSION_COOKIE, nextToken, {
+        httpOnly: true,
+        maxAge: ADMIN_SESSION_TTL_SECONDS,
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production'
+      });
+    }
+  } catch (error) {
+    bounce(getUserErrorText(error));
+  }
+
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Tenant settings saved.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
+  redirect('/admin');
+};
+
 export const createCountry = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const parsed = countryInputSchema.parse({
       name: formData.get('name')
     });
 
     await db.insert(countries).values({
+      tenantId: tenant.id,
       name: parsed.name
     });
   } catch (error) {
@@ -298,7 +554,7 @@ export const createCountry = async (formData: FormData): Promise<void> => {
 
 export const updateCountry = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(countryId)) {
@@ -314,7 +570,7 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
       .set({
         name: parsed.name
       })
-      .where(eq(countries.id, countryId))
+      .where(and(eq(countries.id, countryId), eq(countries.tenantId, tenant.id)))
       .returning({ id: countries.id });
 
     if (updated.length === 0) {
@@ -329,7 +585,7 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
 
 export const deleteCountry = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const countryId = String(formData.get('countryId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(countryId)) {
@@ -338,7 +594,7 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
 
     const deleted = await db
       .delete(countries)
-      .where(eq(countries.id, countryId))
+      .where(and(eq(countries.id, countryId), eq(countries.tenantId, tenant.id)))
       .returning({ id: countries.id });
 
     if (deleted.length === 0) {
@@ -353,7 +609,7 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
 
 export const createCity = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const setAsDefault = formData.get('isDefault') === 'on';
     const parsed = cityInputSchema.parse({
@@ -362,7 +618,7 @@ export const createCity = async (formData: FormData): Promise<void> => {
     });
 
     const foundCountry = await db.query.countries.findFirst({
-      where: eq(countries.id, parsed.countryId)
+      where: and(eq(countries.id, parsed.countryId), eq(countries.tenantId, tenant.id))
     });
 
     if (!foundCountry) {
@@ -371,10 +627,11 @@ export const createCity = async (formData: FormData): Promise<void> => {
 
     await db.transaction(async (tx) => {
       if (setAsDefault) {
-        await tx.update(cities).set({ isDefault: false });
+        await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
       }
 
       await tx.insert(cities).values({
+        tenantId: tenant.id,
         name: parsed.name,
         countryId: parsed.countryId,
         isDefault: setAsDefault
@@ -389,7 +646,7 @@ export const createCity = async (formData: FormData): Promise<void> => {
 
 export const updateCity = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const setAsDefault = formData.get('isDefault') === 'on';
     const cityId = String(formData.get('cityId') ?? '').trim();
@@ -403,7 +660,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
     });
 
     const foundCountry = await db.query.countries.findFirst({
-      where: eq(countries.id, parsed.countryId)
+      where: and(eq(countries.id, parsed.countryId), eq(countries.tenantId, tenant.id))
     });
     if (!foundCountry) {
       throw userFacingError('Country not found.');
@@ -411,17 +668,18 @@ export const updateCity = async (formData: FormData): Promise<void> => {
 
     const updated = await db.transaction(async (tx) => {
       if (setAsDefault) {
-        await tx.update(cities).set({ isDefault: false });
+        await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
       }
 
       return tx
         .update(cities)
         .set({
           name: parsed.name,
+          tenantId: tenant.id,
           countryId: parsed.countryId,
           ...(setAsDefault ? { isDefault: true } : {})
         })
-        .where(eq(cities.id, cityId))
+        .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenant.id)))
         .returning({ id: cities.id });
     });
 
@@ -437,7 +695,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
 
 export const deleteCity = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const cityId = String(formData.get('cityId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(cityId)) {
@@ -445,7 +703,7 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
     }
 
     const inUseByRestaurant = await db.query.restaurants.findFirst({
-      where: eq(restaurants.cityId, cityId)
+      where: and(eq(restaurants.cityId, cityId), eq(restaurants.tenantId, tenant.id))
     });
     if (inUseByRestaurant) {
       throw userFacingError('Cannot delete this city because it has restaurants. Reassign or delete those restaurants first.');
@@ -453,7 +711,7 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
 
     const deleted = await db
       .delete(cities)
-      .where(eq(cities.id, cityId))
+      .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenant.id)))
       .returning({ id: cities.id });
 
     if (deleted.length === 0) {
@@ -468,7 +726,7 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
 
 export const createRestaurantType = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const parsed = restaurantTypeInputSchema.parse({
       name: formData.get('name'),
@@ -476,6 +734,7 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
     });
 
     await db.insert(restaurantTypes).values({
+      tenantId: tenant.id,
       name: parsed.name,
       emoji: parsed.emoji
     });
@@ -488,7 +747,7 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const updateRestaurantType = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(typeId)) {
@@ -506,7 +765,7 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
         name: parsed.name,
         emoji: parsed.emoji
       })
-      .where(eq(restaurantTypes.id, typeId))
+      .where(and(eq(restaurantTypes.id, typeId), eq(restaurantTypes.tenantId, tenant.id)))
       .returning({ id: restaurantTypes.id });
 
     if (updated.length === 0) {
@@ -521,7 +780,7 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const deleteRestaurantType = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const typeId = String(formData.get('typeId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(typeId)) {
@@ -529,7 +788,14 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
     }
 
     const inUseByRestaurant = await db.query.restaurantToTypes.findFirst({
-      where: eq(restaurantToTypes.restaurantTypeId, typeId)
+      where: and(
+        eq(restaurantToTypes.restaurantTypeId, typeId),
+        sql`exists (
+          select 1 from ${restaurants}
+          where ${restaurants.id} = ${restaurantToTypes.restaurantId}
+            and ${restaurants.tenantId} = ${tenant.id}
+        )`
+      )
     });
     if (inUseByRestaurant) {
       throw userFacingError(
@@ -539,7 +805,7 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
 
     const deleted = await db
       .delete(restaurantTypes)
-      .where(eq(restaurantTypes.id, typeId))
+      .where(and(eq(restaurantTypes.id, typeId), eq(restaurantTypes.tenantId, tenant.id)))
       .returning({ id: restaurantTypes.id });
 
     if (deleted.length === 0) {
@@ -554,8 +820,8 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
 
 export const createRestaurant = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
-    await createRestaurantRecord(formData);
+    const { tenant } = await requireAdminSession();
+    await createRestaurantRecord(formData, tenant.id);
 
     cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Restaurant created.'), {
       httpOnly: false,
@@ -570,7 +836,7 @@ export const createRestaurant = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
-const createRestaurantRecord = async (formData: FormData): Promise<void> => {
+const createRestaurantRecord = async (formData: FormData, tenantId: string): Promise<void> => {
   const db = getDb();
   const parsed = restaurantInputSchema.parse({
     cityId: formData.get('cityId'),
@@ -586,7 +852,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
   });
 
   const foundCity = await db.query.cities.findFirst({
-    where: eq(cities.id, parsed.cityId)
+    where: and(eq(cities.id, parsed.cityId), eq(cities.tenantId, tenantId))
   });
 
   if (!foundCity) {
@@ -596,7 +862,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
   const existingTypes = await db
     .select({ id: restaurantTypes.id })
     .from(restaurantTypes)
-    .where(inArray(restaurantTypes.id, parsed.typeIds));
+    .where(and(inArray(restaurantTypes.id, parsed.typeIds), eq(restaurantTypes.tenantId, tenantId)));
   const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
   const invalidTypeIds = parsed.typeIds.filter((entry) => !foundTypeIds.has(entry));
 
@@ -607,6 +873,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
   const duplicateRestaurant = await db.query.restaurants.findFirst({
     where: and(
       eq(restaurants.cityId, parsed.cityId),
+      eq(restaurants.tenantId, tenantId),
       isNull(restaurants.deletedAt),
       sql`lower(${restaurants.name}) = lower(${parsed.name})`
     )
@@ -620,6 +887,7 @@ const createRestaurantRecord = async (formData: FormData): Promise<void> => {
       .insert(restaurants)
       .values({
         cityId: parsed.cityId,
+        tenantId,
         name: parsed.name,
         notes: parsed.notes,
         referredBy: parsed.referredBy ?? '',
@@ -679,8 +947,8 @@ export const createRestaurantFromRoot = async (formData: FormData): Promise<void
   };
 
   try {
-    await requireAdminSession();
-    await createRestaurantRecord(formData);
+    const { tenant } = await requireAdminSession();
+    await createRestaurantRecord(formData, tenant.id);
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
@@ -712,8 +980,8 @@ export const createRestaurantFromRoot = async (formData: FormData): Promise<void
 
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
-    await updateRestaurantRecord(formData);
+    const { tenant } = await requireAdminSession();
+    await updateRestaurantRecord(formData, tenant.id);
   } catch (error) {
     bounce(getUserErrorText(error));
   }
@@ -721,7 +989,7 @@ export const updateRestaurant = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
-const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
+const updateRestaurantRecord = async (formData: FormData, tenantId: string): Promise<string> => {
   const db = getDb();
   const restaurantId = String(formData.get('restaurantId') ?? '').trim();
   if (!ADMIN_ID_REGEX.test(restaurantId)) {
@@ -742,14 +1010,14 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
   });
 
   const foundRestaurant = await db.query.restaurants.findFirst({
-    where: eq(restaurants.id, restaurantId)
+    where: and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId))
   });
   if (!foundRestaurant) {
     throw userFacingError('Restaurant not found.');
   }
 
   const foundCity = await db.query.cities.findFirst({
-    where: eq(cities.id, parsed.cityId)
+    where: and(eq(cities.id, parsed.cityId), eq(cities.tenantId, tenantId))
   });
   if (!foundCity) {
     throw userFacingError('City not found.');
@@ -759,7 +1027,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
   const existingTypes = await db
     .select({ id: restaurantTypes.id })
     .from(restaurantTypes)
-    .where(inArray(restaurantTypes.id, uniqueTypeIds));
+    .where(and(inArray(restaurantTypes.id, uniqueTypeIds), eq(restaurantTypes.tenantId, tenantId)));
   const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
   const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
   if (invalidTypeIds.length > 0) {
@@ -770,6 +1038,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
     where: and(
       ne(restaurants.id, restaurantId),
       eq(restaurants.cityId, parsed.cityId),
+      eq(restaurants.tenantId, tenantId),
       isNull(restaurants.deletedAt),
       sql`lower(${restaurants.name}) = lower(${parsed.name})`
     )
@@ -790,6 +1059,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
       .update(restaurants)
       .set({
         cityId: parsed.cityId,
+        tenantId,
         name: parsed.name,
         notes: parsed.notes,
         referredBy: parsed.referredBy ?? '',
@@ -798,7 +1068,7 @@ const updateRestaurantRecord = async (formData: FormData): Promise<string> => {
         triedAt: nextTriedAt,
         dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
       })
-      .where(eq(restaurants.id, restaurantId));
+      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId)));
 
     await tx.delete(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
     await tx.delete(restaurantMeals).where(eq(restaurantMeals.restaurantId, restaurantId));
@@ -850,8 +1120,8 @@ export const updateRestaurantFromRoot = async (formData: FormData): Promise<void
   };
 
   try {
-    await requireAdminSession();
-    await updateRestaurantRecord(formData);
+    const { tenant } = await requireAdminSession();
+    await updateRestaurantRecord(formData, tenant.id);
     cookies().set(ROOT_EDIT_ERROR_COOKIE, '', {
       httpOnly: false,
       maxAge: 0,
@@ -895,7 +1165,7 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
   };
 
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(restaurantId)) {
@@ -905,7 +1175,7 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
     const deleted = await db
       .update(restaurants)
       .set({ deletedAt: new Date() })
-      .where(and(eq(restaurants.id, restaurantId), isNull(restaurants.deletedAt)))
+      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
       .returning({ id: restaurants.id });
     if (deleted.length === 0) {
       throw userFacingError('Restaurant not found.');
@@ -935,7 +1205,7 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
 
 export const restoreRestaurant = async (formData: FormData): Promise<void> => {
   try {
-    await requireAdminSession();
+    const { tenant } = await requireAdminSession();
     const db = getDb();
     const restaurantId = String(formData.get('restaurantId') ?? '').trim();
     if (!ADMIN_ID_REGEX.test(restaurantId)) {
@@ -945,7 +1215,7 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
     const restored = await db
       .update(restaurants)
       .set({ deletedAt: null })
-      .where(and(eq(restaurants.id, restaurantId), isNotNull(restaurants.deletedAt)))
+      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNotNull(restaurants.deletedAt)))
       .returning({ id: restaurants.id });
 
     if (restored.length === 0) {
@@ -964,12 +1234,16 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
   redirect('/admin');
 };
 
-export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
+export const getCmsData = async (tenantId: string, options?: { includeDeleted?: boolean }) => {
   const includeDeleted = options?.includeDeleted ?? false;
   const db = getDb();
   const [countryRows, cityRows, typeRows, restaurantRows, areaRows, mealRows, restaurantTypeRows] =
     await Promise.all([
-      db.select().from(countries).orderBy(asc(countries.name)),
+      db
+        .select()
+        .from(countries)
+        .where(eq(countries.tenantId, tenantId))
+        .orderBy(asc(countries.name)),
       db
         .select({
           id: cities.id,
@@ -980,8 +1254,13 @@ export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
         })
         .from(cities)
         .innerJoin(countries, eq(cities.countryId, countries.id))
+        .where(eq(cities.tenantId, tenantId))
         .orderBy(asc(countries.name), asc(cities.name)),
-      db.select().from(restaurantTypes).orderBy(asc(restaurantTypes.name)),
+      db
+        .select()
+        .from(restaurantTypes)
+        .where(eq(restaurantTypes.tenantId, tenantId))
+        .orderBy(asc(restaurantTypes.name)),
       db
         .select({
           id: restaurants.id,
@@ -1001,9 +1280,28 @@ export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
         .from(restaurants)
         .innerJoin(cities, eq(restaurants.cityId, cities.id))
         .innerJoin(countries, eq(cities.countryId, countries.id))
+        .where(eq(restaurants.tenantId, tenantId))
         .orderBy(asc(countries.name), asc(cities.name), asc(restaurants.name)),
-      db.select().from(restaurantAreas),
-      db.select().from(restaurantMeals),
+      db
+        .select()
+        .from(restaurantAreas)
+        .where(
+          sql`exists (
+            select 1 from ${restaurants}
+            where ${restaurants.id} = ${restaurantAreas.restaurantId}
+              and ${restaurants.tenantId} = ${tenantId}
+          )`
+        ),
+      db
+        .select()
+        .from(restaurantMeals)
+        .where(
+          sql`exists (
+            select 1 from ${restaurants}
+            where ${restaurants.id} = ${restaurantMeals.restaurantId}
+              and ${restaurants.tenantId} = ${tenantId}
+          )`
+        ),
       db
         .select({
           restaurantId: restaurantToTypes.restaurantId,
@@ -1013,6 +1311,7 @@ export const getCmsData = async (options?: { includeDeleted?: boolean }) => {
         })
         .from(restaurantToTypes)
         .innerJoin(restaurantTypes, eq(restaurantToTypes.restaurantTypeId, restaurantTypes.id))
+        .where(eq(restaurantTypes.tenantId, tenantId))
     ]);
 
   const areasByRestaurant = new Map<string, string[]>();

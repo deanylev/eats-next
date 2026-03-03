@@ -11,7 +11,8 @@ import {
   restaurantMeals,
   restaurants,
   restaurantToTypes,
-  restaurantTypes
+  restaurantTypes,
+  tenants
 } from '@/lib/schema';
 import type { MealType } from '@/lib/schema';
 
@@ -633,10 +634,32 @@ async function main() {
   const triedPlaces = evaluateExpression<LegacyPlaces>(triedPlacesLiteral, { globalPlaces });
   const wantedPlaces = evaluateExpression<LegacyPlaces>(wantedPlacesLiteral, { globalPlaces });
 
-  const existingCountries = await db.select().from(countries);
-  const existingCities = await db.select().from(cities);
-  const existingTypes = await db.select().from(restaurantTypes);
-  const existingRestaurants = await db.select().from(restaurants);
+  const existingRootTenant = await db.query.tenants.findFirst({
+    where: eq(tenants.isRoot, true)
+  });
+  const rootTenant =
+    existingRootTenant ??
+    (
+      await db
+        .insert(tenants)
+        .values({
+          isRoot: true,
+          displayName: 'Dean',
+          subdomain: null,
+          adminUsername: null,
+          adminPasswordHash: null
+        })
+        .returning({ id: tenants.id })
+    )[0];
+  if (!rootTenant?.id) {
+    throw new Error('Could not resolve root tenant for import.');
+  }
+  const tenantId = rootTenant.id;
+
+  const existingCountries = await db.select().from(countries).where(eq(countries.tenantId, tenantId));
+  const existingCities = await db.select().from(cities).where(eq(cities.tenantId, tenantId));
+  const existingTypes = await db.select().from(restaurantTypes).where(eq(restaurantTypes.tenantId, tenantId));
+  const existingRestaurants = await db.select().from(restaurants).where(eq(restaurants.tenantId, tenantId));
 
   const countriesByName = new Map(existingCountries.map((entry) => [entry.name.toLowerCase(), entry.id]));
   const citiesByCountryAndName = new Map(existingCities.map((entry) => [cityKey(entry.countryId, entry.name), entry.id]));
@@ -674,7 +697,7 @@ async function main() {
 
     const inserted = await db
       .insert(countries)
-      .values({ name: countryName })
+      .values({ tenantId, name: countryName })
       .returning({ id: countries.id });
     const id = inserted[0]?.id;
     if (!id) {
@@ -695,7 +718,7 @@ async function main() {
 
     const inserted = await db
       .insert(cities)
-      .values({ countryId, name: cityName })
+      .values({ tenantId, countryId, name: cityName })
       .returning({ id: cities.id });
     const id = inserted[0]?.id;
     if (!id) {
@@ -721,7 +744,7 @@ async function main() {
 
     const inserted = await db
       .insert(restaurantTypes)
-      .values({ name: typeName, emoji })
+      .values({ tenantId, name: typeName, emoji })
       .returning({ id: restaurantTypes.id });
     const id = inserted[0]?.id;
     if (!id) {
@@ -807,6 +830,7 @@ async function main() {
             const inserted = await tx
               .insert(restaurants)
               .values({
+                tenantId,
                 cityId,
                 name: trimmedName,
                 notes: trimmedNotes,
@@ -874,7 +898,7 @@ async function main() {
     .from(restaurants)
     .innerJoin(cities, eq(cities.id, restaurants.cityId))
     .innerJoin(countries, eq(countries.id, cities.countryId))
-    .where(isNull(restaurants.deletedAt));
+    .where(and(eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
 
   for (const existing of existingRestaurantsForBackfill) {
     const matchedCreatedAt = pickEarliestDate(
@@ -911,7 +935,7 @@ async function main() {
     await db
       .update(restaurants)
       .set({ createdAt: matchedCreatedAt })
-      .where(and(eq(restaurants.id, existing.id), isNull(restaurants.deletedAt)));
+      .where(and(eq(restaurants.id, existing.id), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
     postPassUpdatedCreatedAtCount += 1;
   }
 

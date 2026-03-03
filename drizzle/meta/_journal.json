@@ -43,6 +43,20 @@
       "when": 1772452800000,
       "tag": "0005_restaurant_unique_active_name",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772499600000,
+      "tag": "0006_tenant_subdomains",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772546400000,
+      "tag": "0007_tenant_integrity_constraints",
+      "breakpoints": true
     }
   ]
 }
