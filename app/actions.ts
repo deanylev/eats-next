@@ -23,7 +23,7 @@ import {
   restaurantTypes,
   tenants
 } from '@/lib/schema';
-import { normalizeHost, parseHostForTenant, resolveTenantFromHost } from '@/lib/tenant';
+import { parseHostForTenant, resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -118,7 +118,7 @@ const assertSameOrigin = (): void => {
   const headerStore = headers();
   const origin = headerStore.get('origin');
   const referer = headerStore.get('referer');
-  const host = headerStore.get('host')?.trim() || '';
+  const host = resolveRequestHost(headerStore.get('host'), headerStore.get('x-forwarded-host'));
 
   if (!host) {
     throw userFacingError('Invalid request origin.');
@@ -216,7 +216,7 @@ const verifyTenantPassword = (password: string, storedHash: string): boolean => 
 
 const getRequestHost = (): string => {
   const headerStore = headers();
-  return normalizeHost(headerStore.get('host')?.trim() || '');
+  return resolveRequestHost(headerStore.get('host'), headerStore.get('x-forwarded-host'));
 };
 
 type AdminSessionContext = {

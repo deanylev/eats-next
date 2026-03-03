@@ -1,13 +1,13 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
-import { parseHostForTenant } from '@/lib/tenant';
+import { parseHostForTenant, resolveRequestHost } from '@/lib/tenant';
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value ?? '';
   const session = token ? await verifyAdminJwt(token) : null;
-  const host = request.headers.get('host') || request.nextUrl.host || '';
+  const host = resolveRequestHost(request.headers.get('host') || request.nextUrl.host, request.headers.get('x-forwarded-host'));
   const hostTenant = parseHostForTenant(host);
   const sessionMatchesHost = session
     ? hostTenant.isRootHost

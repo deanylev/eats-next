@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { loginAdmin } from '@/app/actions';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { getDb } from '@/lib/db';
-import { normalizeHost, resolveTenantFromHost } from '@/lib/tenant';
+import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 
 import styles from './style.module.scss';
 
@@ -17,7 +17,7 @@ type LoginPageProps = {
 };
 
 export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
-  const host = normalizeHost(headers().get('host') || '');
+  const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
   let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);

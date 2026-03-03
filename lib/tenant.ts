@@ -14,6 +14,64 @@ export const getRootDomain = (): string => {
 
 export const normalizeHost = (host: string): string => host.trim().toLowerCase().replace(/:\d+$/, '');
 
+const getFirstForwardedHost = (forwardedHost: string | null): string => {
+  if (!forwardedHost) {
+    return '';
+  }
+
+  return forwardedHost
+    .split(',')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0) ?? '';
+};
+
+const isPrivateIpv4Host = (host: string): boolean => {
+  const parts = host.split('.');
+  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) {
+    return false;
+  }
+
+  const [a, b] = parts.map((part) => Number(part));
+  if (a === 10 || a === 127) {
+    return true;
+  }
+  if (a === 192 && b === 168) {
+    return true;
+  }
+  if (a === 172 && b >= 16 && b <= 31) {
+    return true;
+  }
+
+  return false;
+};
+
+const isInternalProxyHost = (host: string): boolean => {
+  if (!host) {
+    return false;
+  }
+
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1') {
+    return true;
+  }
+
+  if (isPrivateIpv4Host(host)) {
+    return true;
+  }
+
+  return !host.includes('.');
+};
+
+export const resolveRequestHost = (hostHeader: string | null, forwardedHostHeader: string | null): string => {
+  const normalizedHost = normalizeHost(hostHeader ?? '');
+  const normalizedForwardedHost = normalizeHost(getFirstForwardedHost(forwardedHostHeader));
+
+  if (isInternalProxyHost(normalizedHost) && normalizedForwardedHost) {
+    return normalizedForwardedHost;
+  }
+
+  return normalizedHost || normalizedForwardedHost;
+};
+
 export const parseHostForTenant = (host: string): { isRootHost: boolean; subdomain: string | null } => {
   const normalizedHost = normalizeHost(host);
   if (normalizedHost === 'localhost' || normalizedHost === '127.0.0.1') {

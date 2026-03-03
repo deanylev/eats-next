@@ -6,7 +6,7 @@ import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { getDb } from '@/lib/db';
-import { normalizeHost, resolveTenantFromHost } from '@/lib/tenant';
+import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 const ROOT_CREATE_ERROR_COOKIE = 'root_create_error_message';
@@ -23,7 +23,7 @@ type RootPageProps = {
 };
 
 export default async function RootPage({ searchParams }: RootPageProps) {
-  const host = normalizeHost(headers().get('host') || '');
+  const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
   let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);

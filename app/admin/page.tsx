@@ -20,14 +20,14 @@ import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form'
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { getDb } from '@/lib/db';
-import { normalizeHost, resolveTenantFromHost } from '@/lib/tenant';
+import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 
 import styles from './style.module.scss';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const host = normalizeHost(headers().get('host') || '');
+  const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
   let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);
