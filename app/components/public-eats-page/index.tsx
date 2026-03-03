@@ -744,6 +744,16 @@ export function PublicEatsPage({
                           ))}
                         </div>
                       ) : null}
+                      {status === 'untriedLiked' && place.status === 'untried' ? (
+                        <div className={styles.untriedBadgeRow}>
+                          <span className={styles.untriedBadge}>Want to Try</span>
+                        </div>
+                      ) : null}
+                      {status === 'untriedLiked' && place.status === 'liked' ? (
+                        <div className={styles.untriedBadgeRow}>
+                          <span className={styles.likedBadge}>Liked</span>
+                        </div>
+                      ) : null}
                       <span>
                         {category !== 'type' ? (
                           <span className={styles.emojis}>{place.types.map((type) => type.emoji).join('')}</span>
@@ -751,9 +761,6 @@ export function PublicEatsPage({
                         <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
                           {place.name}
                         </a>
-                        {status === 'untriedLiked' && place.status === 'untried' ? (
-                          <span className={styles.notTried}> (NOT TRIED)</span>
-                        ) : null}
                       </span>
 
                       {place.referredBy.trim().length > 0 ? (
@@ -777,13 +784,17 @@ export function PublicEatsPage({
                       <span className={styles.areaOrType}>
                         {category === 'type'
                           ? place.areas.join(', ')
-                          : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
+                          : category === 'recentlyAdded'
+                            ? `${place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}${
+                              place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
+                            }`
+                            : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
                         {selectedMealType === 'Any'
                           ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
                           : ''}
                       </span>
 
-                      <div>{place.notes}</div>
+                      <div className={styles.notes}>{place.notes}</div>
                       {status === 'disliked' && place.dislikedReason ? (
                         <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
                       ) : null}

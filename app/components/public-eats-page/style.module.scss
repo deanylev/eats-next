@@ -446,8 +446,44 @@
   }
 }
 
-.notTried {
-  color: red;
+.untriedBadgeRow {
+  margin: 4px 0;
+}
+
+.untriedBadge {
+  background: rgba(232, 166, 26, 0.2);
+  border: 1px solid rgba(243, 196, 89, 0.7);
+  border-radius: 999px;
+  color: #f8dd9f;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  margin-left: 0;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.likedBadge {
+  background: rgba(42, 161, 90, 0.2);
+  border: 1px solid rgba(81, 208, 132, 0.7);
+  border-radius: 999px;
+  color: #bff5d0;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  margin-left: 0;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.notes {
+  margin: 0;
 }
 
 .dislikedReason {
@@ -559,6 +595,7 @@
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
+      gap: 8px;
       justify-content: center;
       max-width: 450px;
       overflow: hidden;
