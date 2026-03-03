@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
+import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 
 import styles from './style.module.scss';
 
@@ -457,23 +458,9 @@ export function PublicEatsPage({
     return [...ids];
   }, [grouped]);
   const createAreaSuggestionsByCity = useMemo(() => {
-    const suggestions = new Map<string, Set<string>>();
-
-    for (const restaurant of restaurants) {
-      const areas = suggestions.get(restaurant.cityId) ?? new Set<string>();
-      for (const area of restaurant.areas) {
-        const normalized = area.trim();
-        if (normalized.length > 0) {
-          areas.add(normalized);
-        }
-      }
-      suggestions.set(restaurant.cityId, areas);
-    }
-
-    return Object.fromEntries(
-      [...suggestions.entries()].map(([cityId, areas]) => [cityId, [...areas].sort((a, b) => a.localeCompare(b))])
-    ) as Record<string, string[]>;
+    return buildAreaSuggestionsByCity(restaurants);
   }, [restaurants]);
+  const areaSuggestionsByCity = adminTools?.areaSuggestionsByCity ?? createAreaSuggestionsByCity;
 
   useEffect(() => {
     if (!luckyRestaurantId || typeof window === 'undefined') {
@@ -866,7 +853,7 @@ export function PublicEatsPage({
                   <RestaurantFormFields
                     cities={createTools.cities}
                     types={createTools.types}
-                    areaSuggestionsByCity={createAreaSuggestionsByCity}
+                    areaSuggestionsByCity={areaSuggestionsByCity}
                     disableAreasUntilCitySelected
                     keyPrefix="root-create-restaurant"
                     submitLabel="Create restaurant"
@@ -978,7 +965,7 @@ export function PublicEatsPage({
               <RestaurantFormFields
                 cities={adminTools.cities}
                 types={adminTools.types}
-                areaSuggestionsByCity={adminTools.areaSuggestionsByCity}
+                areaSuggestionsByCity={areaSuggestionsByCity}
                 keyPrefix={`edit-restaurant-${editingRestaurant.id}`}
                 submitLabel="Save changes"
                 defaults={{

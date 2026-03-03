@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { getCmsData } from '@/app/actions';
 import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
+import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 
 export const dynamic = 'force-dynamic';
 const ROOT_CREATE_ERROR_COOKIE = 'root_create_error_message';
@@ -19,6 +20,7 @@ type RootPageProps = {
 
 export default async function RootPage({ searchParams }: RootPageProps) {
   const data = await getCmsData();
+  const areaSuggestionsByCity = buildAreaSuggestionsByCity(data.restaurants);
   const cookieStore = cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value ?? '';
   const encodedRootCreateError = cookieStore.get(ROOT_CREATE_ERROR_COOKIE)?.value ?? null;
@@ -38,7 +40,7 @@ export default async function RootPage({ searchParams }: RootPageProps) {
       restaurants={data.restaurants}
       defaultCityName={data.defaultCityName}
       showAdminButton={hasAdminSession}
-      adminTools={hasAdminSession ? { cities: data.cities, types: data.types } : undefined}
+      adminTools={hasAdminSession ? { cities: data.cities, types: data.types, areaSuggestionsByCity } : undefined}
       createTools={hasAdminSession ? { cities: data.cities, types: data.types } : undefined}
       rootCreateErrorMessage={rootCreateErrorMessage}
       rootCreateSuccessMessage={rootCreateSuccessMessage}
