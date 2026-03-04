@@ -1,9 +1,26 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import { getDb } from '@/lib/db';
+import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: "Dean's Favourite Eats",
-  description: "Dean Levinson's favourite places to eat around the world."
+const defaultDescription = "Dean Levinson's favourite places to eat around the world.";
+const fallbackTitle = "Dean's Favourite Eats";
+
+export const generateMetadata = async (): Promise<Metadata> => {
+  try {
+    const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
+    const tenant = await resolveTenantFromHost(getDb(), host);
+    return {
+      title: `${tenant.displayName}'s Favourite Eats`,
+      description: defaultDescription
+    };
+  } catch {
+    return {
+      title: fallbackTitle,
+      description: defaultDescription
+    };
+  }
 };
 
 type RootLayoutProps = Readonly<{
