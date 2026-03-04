@@ -755,9 +755,6 @@ export function PublicEatsPage({
                         </div>
                       ) : null}
                       <span>
-                        {category !== 'type' ? (
-                          <span className={styles.emojis}>{place.types.map((type) => type.emoji).join('')}</span>
-                        ) : null}
                         <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
                           {place.name}
                         </a>
