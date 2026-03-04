@@ -14,9 +14,9 @@ export function SuccessConfirm({ message }: SuccessConfirmProps) {
 
     window.confirm(message);
 
-    const createRestaurantForm = document.getElementById('create-restaurant-form');
-    if (createRestaurantForm instanceof HTMLFormElement) {
-      createRestaurantForm.reset();
+    const forms = document.querySelectorAll<HTMLFormElement>('form[data-reset-on-success="true"]');
+    for (const form of forms) {
+      form.reset();
     }
 
     document.cookie = 'admin_success_message=; Max-Age=0; path=/admin; SameSite=Lax';

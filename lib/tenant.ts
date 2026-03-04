@@ -124,12 +124,19 @@ export const parseHostForTenant = (host: string): { isRootHost: boolean; subdoma
   return { isRootHost: false, subdomain: candidateLabel };
 };
 
-export const ensureRootTenant = async (db: any): Promise<{ id: string; displayName: string }> => {
+export const ensureRootTenant = async (
+  db: any
+): Promise<{ id: string; displayName: string; primaryColor: string; secondaryColor: string }> => {
   const existingRoot = await db.query.tenants.findFirst({
     where: eq(tenants.isRoot, true)
   });
   if (existingRoot) {
-    return { id: existingRoot.id, displayName: existingRoot.displayName };
+    return {
+      id: existingRoot.id,
+      displayName: existingRoot.displayName,
+      primaryColor: existingRoot.primaryColor,
+      secondaryColor: existingRoot.secondaryColor
+    };
   }
 
   const inserted = await db
@@ -137,11 +144,18 @@ export const ensureRootTenant = async (db: any): Promise<{ id: string; displayNa
     .values({
       isRoot: true,
       displayName: defaultRootDisplayName,
+      primaryColor: '#1b0426',
+      secondaryColor: '#e8a61a',
       subdomain: null,
       adminUsername: null,
       adminPasswordHash: null
     })
-    .returning({ id: tenants.id, displayName: tenants.displayName });
+    .returning({
+      id: tenants.id,
+      displayName: tenants.displayName,
+      primaryColor: tenants.primaryColor,
+      secondaryColor: tenants.secondaryColor
+    });
 
   const rootTenant = inserted[0];
   if (!rootTenant) {
@@ -154,7 +168,14 @@ export const ensureRootTenant = async (db: any): Promise<{ id: string; displayNa
 export const resolveTenantFromHost = async (
   db: any,
   host: string
-): Promise<{ id: string; displayName: string; subdomain: string | null; isRoot: boolean }> => {
+): Promise<{
+  id: string;
+  displayName: string;
+  subdomain: string | null;
+  isRoot: boolean;
+  primaryColor: string;
+  secondaryColor: string;
+}> => {
   const parsed = parseHostForTenant(host);
   if (parsed.isRootHost) {
     const rootTenant = await ensureRootTenant(db);
@@ -162,7 +183,9 @@ export const resolveTenantFromHost = async (
       id: rootTenant.id,
       displayName: rootTenant.displayName,
       subdomain: null,
-      isRoot: true
+      isRoot: true,
+      primaryColor: rootTenant.primaryColor,
+      secondaryColor: rootTenant.secondaryColor
     };
   }
 
@@ -182,6 +205,8 @@ export const resolveTenantFromHost = async (
     id: tenant.id,
     displayName: tenant.displayName,
     subdomain: tenant.subdomain,
-    isRoot: tenant.isRoot
+    isRoot: tenant.isRoot,
+    primaryColor: tenant.primaryColor,
+    secondaryColor: tenant.secondaryColor
   };
 };

@@ -109,6 +109,7 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 const MAX_FAILED_LOGIN_ATTEMPTS = 8;
 const loginAttemptsByIp = new Map<string, { count: number; firstFailedAt: number; blockedUntil: number }>();
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 const bounce = (errorMessage: string): never => {
   cookies().set(ADMIN_ERROR_COOKIE, encodeURIComponent(errorMessage), {
@@ -226,8 +227,24 @@ const getRequestHost = (): string => {
 };
 
 type AdminSessionContext = {
-  tenant: { id: string; displayName: string; subdomain: string | null; isRoot: boolean };
+  tenant: {
+    id: string;
+    displayName: string;
+    subdomain: string | null;
+    isRoot: boolean;
+    primaryColor: string;
+    secondaryColor: string;
+  };
   session: Awaited<ReturnType<typeof verifyAdminJwt>>;
+};
+
+const parseHexColor = (value: FormDataEntryValue | null, fieldName: string): string => {
+  const color = String(value ?? '').trim();
+  if (!HEX_COLOR_REGEX.test(color)) {
+    throw userFacingError(`${fieldName} must be a valid hex color like #1b0426.`);
+  }
+
+  return color.toLowerCase();
 };
 
 const getClientIp = (): string => {
@@ -390,6 +407,8 @@ export const createSubdomainTenant = async (formData: FormData): Promise<void> =
     const adminUsername = String(formData.get('adminUsername') ?? '').trim();
     const adminPassword = String(formData.get('adminPassword') ?? '');
     const displayName = String(formData.get('displayName') ?? '').trim();
+    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
+    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
 
     if (!isValidTenantSubdomain(subdomain)) {
       throw userFacingError(
@@ -409,6 +428,8 @@ export const createSubdomainTenant = async (formData: FormData): Promise<void> =
     await db.insert(tenants).values({
       subdomain,
       displayName,
+      primaryColor,
+      secondaryColor,
       adminUsername,
       adminPasswordHash: hashTenantPassword(adminPassword),
       isRoot: false
@@ -439,6 +460,8 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
     const adminUsername = String(formData.get('adminUsername') ?? '').trim();
     const adminPassword = String(formData.get('adminPassword') ?? '');
     const displayName = String(formData.get('displayName') ?? '').trim();
+    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
+    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
 
     if (!ADMIN_ID_REGEX.test(tenantId)) {
       throw userFacingError('Invalid tenant id.');
@@ -467,6 +490,8 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
       .set({
         subdomain,
         displayName,
+        primaryColor,
+        secondaryColor,
         adminUsername,
         ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
       })
@@ -493,6 +518,8 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
 
     const db = getDb();
     const displayName = String(formData.get('displayName') ?? '').trim();
+    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
+    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
     if (displayName.length < 1) {
       throw userFacingError('Display name is required.');
     }
@@ -507,6 +534,8 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
       .update(tenants)
       .set({
         displayName,
+        primaryColor,
+        secondaryColor,
         adminUsername,
         ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
       })
@@ -555,6 +584,12 @@ export const createCountry = async (formData: FormData): Promise<void> => {
     bounce(getUserErrorText(error));
   }
 
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Country created.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
   redirect('/admin');
 };
 
@@ -647,6 +682,12 @@ export const createCity = async (formData: FormData): Promise<void> => {
     bounce(getUserErrorText(error));
   }
 
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('City created.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
   redirect('/admin');
 };
 
@@ -748,6 +789,12 @@ export const createRestaurantType = async (formData: FormData): Promise<void> =>
     bounce(getUserErrorText(error));
   }
 
+  cookies().set(ADMIN_SUCCESS_COOKIE, encodeURIComponent('Restaurant type created.'), {
+    httpOnly: false,
+    maxAge: 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
   redirect('/admin');
 };
 

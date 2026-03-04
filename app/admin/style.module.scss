@@ -1,9 +1,17 @@
 .root {
+  --tenant-primary: #1b0426;
+  --tenant-secondary: #e8a61a;
+  --tenant-on-primary: #ffffff;
+  --tenant-on-secondary: #000000;
   background:
     radial-gradient(1200px 650px at 8% -12%, rgba(255, 255, 255, 0.09), transparent 60%),
-    radial-gradient(900px 500px at 96% 8%, rgba(232, 166, 26, 0.12), transparent 56%),
-    linear-gradient(180deg, #1b0426 0%, #13011b 100%);
-  color: #fcf6fe;
+    radial-gradient(900px 500px at 96% 8%, color-mix(in srgb, var(--tenant-secondary) 12%, transparent), transparent 56%),
+    linear-gradient(
+      180deg,
+      var(--tenant-primary) 0%,
+      color-mix(in srgb, var(--tenant-primary) 38%, #000 62%) 100%
+    );
+  color: var(--tenant-on-primary);
   font-family:
     'Poppins',
     system-ui,
@@ -41,7 +49,7 @@ h5 {
 }
 
   h2 {
-    color: #e8a61a;
+    color: var(--tenant-secondary);
     font-size: 26px;
     margin-bottom: 14px;
   }
@@ -60,7 +68,7 @@ h5 {
     gap: 10px;
   }
 
-  input,
+  input:not([type='color']),
   textarea,
   select,
   button {
@@ -71,6 +79,32 @@ h5 {
     color: #180321;
     font: inherit;
     padding: 8px 10px;
+  }
+
+  input[type='color'] {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: 1px solid rgba(166, 139, 177, 0.75);
+    border-radius: 8px;
+    cursor: pointer;
+    height: 44px;
+    padding: 0;
+    width: 96px;
+  }
+
+  input[type='color']::-webkit-color-swatch-wrapper {
+    padding: 2px;
+  }
+
+  input[type='color']::-webkit-color-swatch {
+    border: 0;
+    border-radius: 6px;
+  }
+
+  input[type='color']::-moz-color-swatch {
+    border: 0;
+    border-radius: 6px;
   }
 
   textarea:disabled {
@@ -119,9 +153,9 @@ h5 {
 
   form > button:not([data-delete-button='true']),
   :global(.inline-options) + label + button:not([data-delete-button='true']) {
-    background: rgba(232, 166, 26, 0.85);
-    border: 1px solid rgba(243, 196, 89, 0.78);
-    color: #180321;
+    background: color-mix(in srgb, var(--tenant-secondary) 85%, white 15%);
+    border: 1px solid color-mix(in srgb, var(--tenant-secondary) 78%, white 22%);
+    color: var(--tenant-on-secondary);
     font-weight: 700;
   }
 
@@ -149,8 +183,8 @@ h5 {
   }
 
   :global(.area-suggestion) {
-    background: rgba(232, 166, 26, 0.14);
-    border: 1px solid rgba(232, 166, 26, 0.45);
+    background: color-mix(in srgb, var(--tenant-secondary) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tenant-secondary) 45%, transparent);
     color: #f6deaa;
     font-size: 14px;
     font-weight: 600;
@@ -158,15 +192,15 @@ h5 {
   }
 
   :global(.area-suggestion:hover) {
-    background: rgba(232, 166, 26, 0.24);
+    background: color-mix(in srgb, var(--tenant-secondary) 24%, transparent);
   }
 
   a {
-    color: #e8a61a;
+    color: var(--tenant-secondary);
   }
 
   summary {
-    color: #e8a61a;
+    color: var(--tenant-secondary);
     cursor: pointer;
     font-weight: 700;
     margin-bottom: 8px;
@@ -191,7 +225,11 @@ h5 {
 }
 
 .root::after {
-  background: radial-gradient(circle, rgba(232, 166, 26, 0.18) 0%, rgba(232, 166, 26, 0) 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--tenant-secondary) 18%, transparent) 0%,
+    color-mix(in srgb, var(--tenant-secondary) 0%, transparent) 70%
+  );
   filter: blur(10px);
   height: 280px;
   right: -110px;
@@ -223,7 +261,7 @@ h5 {
 
 .error {
   background: rgba(255, 87, 87, 0.15);
-  border: 1px solid #e8a61a;
+  border: 1px solid var(--tenant-secondary);
   border-radius: 8px;
   color: #fff0f0;
   margin-bottom: 14px;

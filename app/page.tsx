@@ -57,6 +57,8 @@ export default async function RootPage({ searchParams }: RootPageProps) {
     <PublicEatsPage
       restaurants={data.restaurants}
       title={title}
+      primaryColor={tenant.primaryColor}
+      secondaryColor={tenant.secondaryColor}
       defaultCityName={data.defaultCityName}
       showAdminButton={hasAdminSession}
       adminTools={hasAdminSession ? { cities: data.cities, types: data.types, areaSuggestionsByCity } : undefined}

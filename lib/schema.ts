@@ -29,6 +29,8 @@ export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
   subdomain: text('subdomain').unique(),
   displayName: text('display_name').notNull(),
+  primaryColor: text('primary_color').default('#1b0426').notNull(),
+  secondaryColor: text('secondary_color').default('#e8a61a').notNull(),
   adminUsername: text('admin_username'),
   adminPasswordHash: text('admin_password_hash'),
   isRoot: boolean('is_root').default(false).notNull(),

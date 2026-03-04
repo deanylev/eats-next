@@ -1,10 +1,18 @@
 .root {
+  --tenant-primary: #1b0426;
+  --tenant-secondary: #e8a61a;
+  --tenant-on-primary: #ffffff;
+  --tenant-on-secondary: #000000;
   align-items: center;
   background:
     radial-gradient(1200px 650px at 10% -10%, rgba(255, 255, 255, 0.1), transparent 58%),
-    radial-gradient(900px 500px at 95% 6%, rgba(232, 166, 26, 0.12), transparent 56%),
-    linear-gradient(180deg, #1b0426 0%, #13011b 100%);
-  color: #fcf6fe;
+    radial-gradient(900px 500px at 95% 6%, color-mix(in srgb, var(--tenant-secondary) 12%, transparent), transparent 56%),
+    linear-gradient(
+      180deg,
+      var(--tenant-primary) 0%,
+      color-mix(in srgb, var(--tenant-primary) 38%, #000 62%) 100%
+    );
+  color: var(--tenant-on-primary);
   display: flex;
   font-family:
     'Poppins',
@@ -33,7 +41,7 @@
   width: 100%;
 
   h1 {
-    color: #e8a61a;
+    color: var(--tenant-secondary);
     margin: 0 0 12px;
   }
 
@@ -60,9 +68,9 @@
   }
 
   button {
-    background: rgba(232, 166, 26, 0.86);
-    border: 1px solid rgba(243, 196, 89, 0.8);
-    color: #180321;
+    background: color-mix(in srgb, var(--tenant-secondary) 86%, white 14%);
+    border: 1px solid color-mix(in srgb, var(--tenant-secondary) 78%, white 22%);
+    color: var(--tenant-on-secondary);
     cursor: pointer;
     font-weight: 700;
     transition: box-shadow 160ms ease, transform 160ms ease;
@@ -70,7 +78,9 @@
   }
 
   button:hover {
-    box-shadow: 0 0 0 1px rgba(243, 196, 89, 0.7), 0 0 18px rgba(232, 166, 26, 0.45);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--tenant-secondary) 72%, white 28%),
+      0 0 18px color-mix(in srgb, var(--tenant-secondary) 45%, transparent);
     transform: translateY(-1px);
   }
 }
@@ -93,7 +103,11 @@
 }
 
 .root::after {
-  background: radial-gradient(circle, rgba(232, 166, 26, 0.18) 0%, rgba(232, 166, 26, 0) 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--tenant-secondary) 18%, transparent) 0%,
+    color-mix(in srgb, var(--tenant-secondary) 0%, transparent) 70%
+  );
   filter: blur(10px);
   height: 260px;
   right: -100px;

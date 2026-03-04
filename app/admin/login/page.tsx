@@ -1,9 +1,11 @@
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import type { CSSProperties } from 'react';
 import { loginAdmin } from '@/app/actions';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { getDb } from '@/lib/db';
+import { getReadableTextColor } from '@/lib/theme';
 import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 
 import styles from './style.module.scss';
@@ -45,9 +47,15 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
         : error
           ? 'Invalid username or password.'
           : null;
+  const rootStyle = {
+    ['--tenant-primary' as const]: tenant.primaryColor,
+    ['--tenant-secondary' as const]: tenant.secondaryColor,
+    ['--tenant-on-primary' as const]: getReadableTextColor(tenant.primaryColor),
+    ['--tenant-on-secondary' as const]: getReadableTextColor(tenant.secondaryColor)
+  } as CSSProperties;
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} style={rootStyle}>
       <main className={styles.card}>
         <h1>{tenant.displayName} Admin Login</h1>
         {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}

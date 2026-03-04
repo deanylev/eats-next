@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import type { CSSProperties } from 'react';
 import {
   createSubdomainTenant,
   createCity,
@@ -20,6 +21,7 @@ import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form'
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { getDb } from '@/lib/db';
+import { getReadableTextColor } from '@/lib/theme';
 import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 
 import styles from './style.module.scss';
@@ -59,8 +61,14 @@ export default async function HomePage() {
   const encodedSuccessMessage = cookieStore.get('admin_success_message')?.value ?? null;
   const errorMessage = encodedErrorMessage ? decodeURIComponent(encodedErrorMessage) : null;
   const successMessage = encodedSuccessMessage ? decodeURIComponent(encodedSuccessMessage) : null;
+  const rootStyle = {
+    ['--tenant-primary' as const]: tenant.primaryColor,
+    ['--tenant-secondary' as const]: tenant.secondaryColor,
+    ['--tenant-on-primary' as const]: getReadableTextColor(tenant.primaryColor),
+    ['--tenant-on-secondary' as const]: getReadableTextColor(tenant.secondaryColor)
+  } as CSSProperties;
   return (
-    <div className={styles.root}>
+    <div className={styles.root} style={rootStyle}>
       <main>
         <header className={styles.hero}>
           <div className={styles.heroTop}>
@@ -86,6 +94,14 @@ export default async function HomePage() {
                 <input name="adminUsername" required defaultValue={session?.username ?? ''} />
               </label>
               <label>
+                Primary color
+                <input name="primaryColor" type="color" required defaultValue={tenant.primaryColor} />
+              </label>
+              <label>
+                Secondary color
+                <input name="secondaryColor" type="color" required defaultValue={tenant.secondaryColor} />
+              </label>
+              <label>
                 New password (leave blank to keep)
                 <input name="adminPassword" type="password" />
               </label>
@@ -98,7 +114,7 @@ export default async function HomePage() {
           {tenant.isRoot ? (
             <section className={styles.panel}>
               <h2>Add Subdomain Tenant</h2>
-              <form action={createSubdomainTenant}>
+              <form action={createSubdomainTenant} data-reset-on-success="true">
                 <label>
                   Subdomain
                   <input name="subdomain" required />
@@ -112,6 +128,14 @@ export default async function HomePage() {
                   <input name="adminUsername" required />
                 </label>
                 <label>
+                  Primary color
+                  <input name="primaryColor" type="color" required defaultValue="#1b0426" />
+                </label>
+                <label>
+                  Secondary color
+                  <input name="secondaryColor" type="color" required defaultValue="#e8a61a" />
+                </label>
+                <label>
                   Password
                   <input name="adminPassword" type="password" required />
                 </label>
@@ -122,7 +146,7 @@ export default async function HomePage() {
 
           <section className={styles.panel}>
             <h2>Add Country</h2>
-            <form action={createCountry}>
+            <form action={createCountry} data-reset-on-success="true">
               <label>
                 Country name
                 <input name="name" required />
@@ -133,7 +157,7 @@ export default async function HomePage() {
 
           <section className={styles.panel}>
             <h2>Add City</h2>
-            <form action={createCity}>
+            <form action={createCity} data-reset-on-success="true">
               <label>
                 City name
                 <input name="name" required />
@@ -163,7 +187,7 @@ export default async function HomePage() {
 
           <section className={styles.panel}>
             <h2>Add Restaurant Type</h2>
-            <form action={createRestaurantType}>
+            <form action={createRestaurantType} data-reset-on-success="true">
               <label>
                 Type name
                 <input name="name" required />
@@ -203,6 +227,19 @@ export default async function HomePage() {
                       <label>
                         Username
                         <input name="adminUsername" required defaultValue={subdomainTenant.adminUsername ?? ''} />
+                      </label>
+                      <label>
+                        Primary color
+                        <input name="primaryColor" type="color" required defaultValue={subdomainTenant.primaryColor} />
+                      </label>
+                      <label>
+                        Secondary color
+                        <input
+                          name="secondaryColor"
+                          type="color"
+                          required
+                          defaultValue={subdomainTenant.secondaryColor}
+                        />
                       </label>
                       <label>
                         New password (leave blank to keep)

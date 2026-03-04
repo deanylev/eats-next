@@ -64,6 +64,13 @@
       "when": 1772548200000,
       "tag": "0008_tenant_default_city_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772550600000,
+      "tag": "0009_tenant_theme_colors",
+      "breakpoints": true
     }
   ]
 }

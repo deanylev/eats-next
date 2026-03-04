@@ -1,10 +1,12 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
+import { getReadableTextColor } from '@/lib/theme';
 
 import styles from './style.module.scss';
 
@@ -36,6 +38,8 @@ type Props = {
   defaultCityName?: string | null;
   showAdminButton?: boolean;
   title?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
   embedded?: boolean;
   allowRestaurantEditing?: boolean;
   adminTools?: {
@@ -164,6 +168,8 @@ export function PublicEatsPage({
   defaultCityName = null,
   showAdminButton = false,
   title = `Dean's Favourite Eats`,
+  primaryColor = '#1b0426',
+  secondaryColor = '#e8a61a',
   embedded = false,
   allowRestaurantEditing = true,
   adminTools,
@@ -622,9 +628,17 @@ export function PublicEatsPage({
   }, [editingRestaurantId, restaurants]);
   const canEditRestaurants = Boolean(adminTools) && allowRestaurantEditing;
   const canDeleteRestaurants = Boolean(adminTools) && !embedded;
+  const resolvedPrimaryColor = primaryColor ?? '#1b0426';
+  const resolvedSecondaryColor = secondaryColor ?? '#e8a61a';
+  const rootStyle = {
+    ['--theme-primary' as const]: resolvedPrimaryColor,
+    ['--theme-secondary' as const]: resolvedSecondaryColor,
+    ['--theme-on-primary' as const]: getReadableTextColor(resolvedPrimaryColor),
+    ['--theme-on-secondary' as const]: getReadableTextColor(resolvedSecondaryColor)
+  } as CSSProperties;
 
   return (
-    <div className={embedded ? styles.embeddedRoot : styles.eatsRoot}>
+    <div className={embedded ? styles.embeddedRoot : styles.eatsRoot} style={rootStyle}>
       {title || (showAdminButton && !embedded) ? (
         <div className={styles.titleRow}>
           {title ? <div className={styles.title}>{title}</div> : null}
@@ -698,11 +712,10 @@ export function PublicEatsPage({
             </select>
           </div>
           <div className={styles.filterControls}>
-            {category !== 'recentlyAdded' ? (
+            {category !== 'recentlyAdded' && headings.length > 1 ? (
               <button
                 type="button"
                 onClick={() => setIsFilterDialogOpen(true)}
-                disabled={headings.length <= 1}
               >
                 Filter {category === 'area' ? 'Areas' : 'Types'}
               </button>
