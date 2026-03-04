@@ -192,6 +192,7 @@ export function PublicEatsPage({
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
 
@@ -495,6 +496,29 @@ export function PublicEatsPage({
   }, [luckyRestaurantId]);
 
   useEffect(() => {
+    if (embedded || typeof window === 'undefined') {
+      setShowBackToTop(false);
+      return;
+    }
+
+    const onScroll = (): void => {
+      const scrollTop = Math.max(
+        window.scrollY,
+        window.pageYOffset,
+        document.documentElement?.scrollTop ?? 0,
+        document.body?.scrollTop ?? 0
+      );
+      setShowBackToTop(scrollTop > 180);
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [embedded]);
+
+  useEffect(() => {
     if (!rootCreateErrorMessage) {
       return;
     }
@@ -700,9 +724,17 @@ export function PublicEatsPage({
                   luckyCardHasEnteredViewport.current = false;
                   setLuckyRestaurantId(luckyId);
 
-                  luckyCard.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
+                  const cardRect = luckyCard.getBoundingClientRect();
+                  const currentScrollTop = Math.max(
+                    window.scrollY,
+                    window.pageYOffset,
+                    document.documentElement?.scrollTop ?? 0,
+                    document.body?.scrollTop ?? 0
+                  );
+                  const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
+                  window.scrollTo({
+                    top: targetTop,
+                    behavior: 'smooth'
                   });
                 }}
                 disabled={visibleRestaurantIds.length === 0}
@@ -877,6 +909,25 @@ export function PublicEatsPage({
             </div>
           ) : null}
         </>
+      ) : null}
+      {!embedded && showBackToTop ? (
+        <button
+          type="button"
+          className={`${styles.addFab} ${styles.floatingLeft}`}
+          aria-label="Back to top"
+          title="Back to top"
+          onClick={() => {
+            window.scrollTo({
+              top: 0,
+              behavior: 'smooth'
+            });
+          }}
+        >
+          <svg className={styles.backToTopIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 20V5" />
+            <path d="M5 12L12 5L19 12" />
+          </svg>
+        </button>
       ) : null}
       {isFilterDialogOpen ? (
         <div className={styles.createDialogOverlay} onClick={() => setIsFilterDialogOpen(false)}>

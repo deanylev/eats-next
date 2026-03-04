@@ -242,6 +242,23 @@
   background: #f1bf4c;
 }
 
+.eatsRoot button.floatingLeft,
+.embeddedRoot button.floatingLeft {
+  left: 24px;
+  right: auto;
+  z-index: 56;
+}
+
+.backToTopIcon {
+  fill: none;
+  height: 24px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  width: 24px;
+}
+
 .createDialogOverlay {
   align-items: center;
   backdrop-filter: blur(5px);
@@ -414,6 +431,13 @@
   .createDialog {
     max-width: calc(100vw - 16px);
     padding: 12px;
+  }
+
+  .eatsRoot button.floatingLeft,
+  .embeddedRoot button.floatingLeft {
+    bottom: 16px;
+    left: 16px;
+    right: auto;
   }
 }
 
