@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   foreignKey,
@@ -7,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid
 } from 'drizzle-orm/pg-core';
 
@@ -71,7 +73,10 @@ export const cities = pgTable(
       columns: [table.tenantId, table.countryId],
       foreignColumns: [countries.tenantId, countries.id],
       name: 'cities_tenant_country_fk'
-    }).onDelete('cascade')
+    }).onDelete('cascade'),
+    singleDefaultPerTenant: uniqueIndex('cities_single_default_per_tenant_idx')
+      .on(table.tenantId)
+      .where(sql`${table.isDefault} = true`)
   })
 );
 

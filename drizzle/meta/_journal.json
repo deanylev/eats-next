@@ -57,6 +57,13 @@
       "when": 1772546400000,
       "tag": "0007_tenant_integrity_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772548200000,
+      "tag": "0008_tenant_default_city_scope",
+      "breakpoints": true
     }
   ]
 }

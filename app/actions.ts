@@ -23,7 +23,7 @@ import {
   restaurantTypes,
   tenants
 } from '@/lib/schema';
-import { parseHostForTenant, resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
+import { normalizeHost, parseHostForTenant, resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -53,6 +53,12 @@ const getUserErrorText = (error: unknown): string => {
     }
     if (code === '23505' && constraint === 'cities_tenant_id_country_id_name_unique') {
       return 'That city already exists in this country.';
+    }
+    if (
+      code === '23505' &&
+      (constraint === 'cities_single_default_idx' || constraint === 'cities_single_default_per_tenant_idx')
+    ) {
+      return 'Only one default city is allowed per tenant.';
     }
     if (code === '23505' && constraint === 'restaurant_types_tenant_id_name_unique') {
       return 'That restaurant type already exists.';
@@ -136,8 +142,8 @@ const assertSameOrigin = (): void => {
     throw userFacingError('Invalid request origin.');
   }
 
-  const expectedHost = host.toLowerCase();
-  const actualHost = parsedOrigin.host.toLowerCase();
+  const expectedHost = normalizeHost(host);
+  const actualHost = normalizeHost(parsedOrigin.host);
   if (actualHost !== expectedHost) {
     throw userFacingError('Invalid request origin.');
   }
