@@ -43,3 +43,16 @@ export const getReadableTextColor = (backgroundHex: string): '#000000' | '#fffff
   const contrastWithWhite = getContrastRatio(backgroundLuminance, 1);
   return contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff';
 };
+
+type ThemeVarPrefix = 'theme' | 'tenant';
+
+export const buildThemeCssVariables = (
+  primaryColor: string,
+  secondaryColor: string,
+  prefix: ThemeVarPrefix
+): Record<string, string> => ({
+  [`--${prefix}-primary`]: primaryColor,
+  [`--${prefix}-secondary`]: secondaryColor,
+  [`--${prefix}-on-primary`]: getReadableTextColor(primaryColor),
+  [`--${prefix}-on-secondary`]: getReadableTextColor(secondaryColor)
+});

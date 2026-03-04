@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
 
 type SuccessConfirmProps = {
   message: string | null;
@@ -19,7 +20,7 @@ export function SuccessConfirm({ message }: SuccessConfirmProps) {
       form.reset();
     }
 
-    document.cookie = 'admin_success_message=; Max-Age=0; path=/admin; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.adminSuccess, '/admin');
   }, [message]);
 
   return null;

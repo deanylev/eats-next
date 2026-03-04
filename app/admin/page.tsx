@@ -20,9 +20,11 @@ import { ErrorConfirm } from '@/app/components/error-confirm';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
+import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { getDb } from '@/lib/db';
-import { getReadableTextColor } from '@/lib/theme';
-import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
+import { decodeFlashMessage, flashCookieNames } from '@/lib/flash-cookies';
+import { buildThemeCssVariables } from '@/lib/theme';
+import { resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
 
 import styles from './style.module.scss';
 
@@ -30,7 +32,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
-  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  let tenant: ResolvedTenant;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);
   } catch {
@@ -38,12 +40,7 @@ export default async function HomePage() {
   }
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
   const session = token ? await verifyAdminJwt(token) : null;
-  const hasSession = Boolean(
-    session &&
-      session.tenantId === tenant.id &&
-      session.isRoot === tenant.isRoot &&
-      session.tenantKey === (tenant.isRoot ? 'root' : tenant.subdomain ?? '')
-  );
+  const hasSession = doesSessionMatchTenant(session, tenant);
   if (!hasSession) {
     redirect('/admin/login');
   }
@@ -57,16 +54,9 @@ export default async function HomePage() {
       })
     : [];
   const cookieStore = cookies();
-  const encodedErrorMessage = cookieStore.get('admin_error_message')?.value ?? null;
-  const encodedSuccessMessage = cookieStore.get('admin_success_message')?.value ?? null;
-  const errorMessage = encodedErrorMessage ? decodeURIComponent(encodedErrorMessage) : null;
-  const successMessage = encodedSuccessMessage ? decodeURIComponent(encodedSuccessMessage) : null;
-  const rootStyle = {
-    ['--tenant-primary' as const]: tenant.primaryColor,
-    ['--tenant-secondary' as const]: tenant.secondaryColor,
-    ['--tenant-on-primary' as const]: getReadableTextColor(tenant.primaryColor),
-    ['--tenant-on-secondary' as const]: getReadableTextColor(tenant.secondaryColor)
-  } as CSSProperties;
+  const errorMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.adminError)?.value);
+  const successMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.adminSuccess)?.value);
+  const rootStyle = buildThemeCssVariables(tenant.primaryColor, tenant.secondaryColor, 'tenant') as CSSProperties;
   return (
     <div className={styles.root} style={rootStyle}>
       <main>

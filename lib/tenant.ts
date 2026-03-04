@@ -1,7 +1,19 @@
 import { and, eq } from 'drizzle-orm';
+import type { getDb } from '@/lib/db';
 import { tenants } from '@/lib/schema';
 
 const defaultRootDisplayName = 'Dean';
+type TenantDb = ReturnType<typeof getDb>;
+type RootTenant = { id: string; displayName: string; primaryColor: string; secondaryColor: string };
+
+export type ResolvedTenant = {
+  id: string;
+  displayName: string;
+  subdomain: string | null;
+  isRoot: boolean;
+  primaryColor: string;
+  secondaryColor: string;
+};
 
 export const getRootDomain = (): string => {
   const configured = process.env.ROOT_DOMAIN?.trim().toLowerCase() ?? '';
@@ -124,9 +136,7 @@ export const parseHostForTenant = (host: string): { isRootHost: boolean; subdoma
   return { isRootHost: false, subdomain: candidateLabel };
 };
 
-export const ensureRootTenant = async (
-  db: any
-): Promise<{ id: string; displayName: string; primaryColor: string; secondaryColor: string }> => {
+export const ensureRootTenant = async (db: TenantDb): Promise<RootTenant> => {
   const existingRoot = await db.query.tenants.findFirst({
     where: eq(tenants.isRoot, true)
   });
@@ -165,17 +175,7 @@ export const ensureRootTenant = async (
   return rootTenant;
 };
 
-export const resolveTenantFromHost = async (
-  db: any,
-  host: string
-): Promise<{
-  id: string;
-  displayName: string;
-  subdomain: string | null;
-  isRoot: boolean;
-  primaryColor: string;
-  secondaryColor: string;
-}> => {
+export const resolveTenantFromHost = async (db: TenantDb, host: string): Promise<ResolvedTenant> => {
   const parsed = parseHostForTenant(host);
   if (parsed.isRootHost) {
     const rootTenant = await ensureRootTenant(db);

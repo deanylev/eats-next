@@ -5,8 +5,22 @@ import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
+import {
+  byAlpha,
+  categoryFilterSet,
+  confettiPieceIndexes,
+  getMonthHeadingKey,
+  getMonthHeadingLabel,
+  isUrl,
+  mealLabel,
+  readUrlState,
+  statusFilterSet,
+  type CategoryFilter,
+  type StatusFilter
+} from '@/app/components/public-eats-page/utils';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
-import { getReadableTextColor } from '@/lib/theme';
+import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
+import { buildThemeCssVariables } from '@/lib/theme';
 
 import styles from './style.module.scss';
 
@@ -58,109 +72,6 @@ type Props = {
   rootEditSuccessMessage?: string | null;
   rootDeleteErrorMessage?: string | null;
   openEditRestaurantId?: string;
-};
-
-type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
-type CategoryFilter = 'area' | 'type' | 'recentlyAdded';
-type UrlState = {
-  city: string;
-  hasCityQuery: boolean;
-  mealType: string;
-  category: CategoryFilter;
-  status: StatusFilter;
-  excluded: string[];
-};
-
-const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
-const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
-const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-
-const mealLabel = (meal: string): string => {
-  if (meal === 'snack') {
-    return 'Snack';
-  }
-
-  if (meal === 'breakfast') {
-    return 'Breakfast';
-  }
-
-  if (meal === 'lunch') {
-    return 'Lunch';
-  }
-
-  if (meal === 'dinner') {
-    return 'Dinner';
-  }
-
-  return meal;
-};
-
-const byAlpha = (a: string, b: string): number => a.localeCompare(b);
-
-const monthHeadingFormatter = new Intl.DateTimeFormat('en-AU', {
-  month: 'long',
-  year: 'numeric'
-});
-
-const getMonthHeadingKey = (dateValue: string | Date): string => {
-  const date = new Date(dateValue);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  return `${year}-${month}`;
-};
-
-const getMonthHeadingLabel = (headingKey: string): string => {
-  const [yearString, monthString] = headingKey.split('-');
-  const year = Number(yearString);
-  const month = Number(monthString);
-  if (Number.isNaN(year) || Number.isNaN(month)) {
-    return headingKey;
-  }
-
-  return monthHeadingFormatter.format(new Date(year, month - 1, 1));
-};
-
-const readUrlState = (): UrlState => {
-  if (typeof window === 'undefined') {
-    return {
-      city: '',
-      hasCityQuery: false,
-      mealType: 'Any',
-      category: 'area',
-      status: 'untriedLiked',
-      excluded: []
-    };
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  const statusFromUrl = params.get('status');
-  const categoryFromUrl = params.get('category');
-  const mealTypeFromUrl = params.get('mealType');
-  const cityFromUrl = params.get('city');
-  const hasCityQuery = params.has('city');
-  const excludedFromUrl = params.getAll('exclude');
-
-  return {
-    city: cityFromUrl?.trim() ?? '',
-    hasCityQuery,
-    mealType: mealTypeFromUrl?.trim() || 'Any',
-    category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)
-      ? (categoryFromUrl as CategoryFilter)
-      : 'area',
-    status: statusFromUrl && statusFilterSet.has(statusFromUrl as StatusFilter)
-      ? (statusFromUrl as StatusFilter)
-      : 'untriedLiked',
-    excluded: excludedFromUrl.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
-  };
-};
-
-const isUrl = (value: string): boolean => {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
 };
 
 export function PublicEatsPage({
@@ -530,7 +441,7 @@ export function PublicEatsPage({
     }
 
     window.confirm(rootCreateErrorMessage);
-    document.cookie = 'root_create_error_message=; Max-Age=0; path=/; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.rootCreateError, '/');
     setIsCreateDialogOpen(true);
   }, [rootCreateErrorMessage]);
 
@@ -539,7 +450,7 @@ export function PublicEatsPage({
       return;
     }
 
-    document.cookie = 'root_create_success_message=; Max-Age=0; path=/; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.rootCreateSuccess, '/');
     setIsCreateDialogOpen(false);
   }, [rootCreateSuccessMessage]);
 
@@ -549,7 +460,7 @@ export function PublicEatsPage({
     }
 
     window.confirm(rootEditErrorMessage);
-    document.cookie = 'root_edit_error_message=; Max-Age=0; path=/; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.rootEditError, '/');
     if (openEditRestaurantId) {
       setEditingRestaurantId(openEditRestaurantId);
     }
@@ -560,7 +471,7 @@ export function PublicEatsPage({
       return;
     }
 
-    document.cookie = 'root_edit_success_message=; Max-Age=0; path=/; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.rootEditSuccess, '/');
     setEditingRestaurantId(null);
   }, [rootEditSuccessMessage]);
 
@@ -570,7 +481,7 @@ export function PublicEatsPage({
     }
 
     window.confirm(rootDeleteErrorMessage);
-    document.cookie = 'root_delete_error_message=; Max-Age=0; path=/; SameSite=Lax';
+    clearFlashCookieClient(flashCookieNames.rootDeleteError, '/');
   }, [rootDeleteErrorMessage]);
 
   const statusCount = (filter: StatusFilter): number => {
@@ -630,12 +541,7 @@ export function PublicEatsPage({
   const canDeleteRestaurants = Boolean(adminTools) && !embedded;
   const resolvedPrimaryColor = primaryColor ?? '#1b0426';
   const resolvedSecondaryColor = secondaryColor ?? '#e8a61a';
-  const rootStyle = {
-    ['--theme-primary' as const]: resolvedPrimaryColor,
-    ['--theme-secondary' as const]: resolvedSecondaryColor,
-    ['--theme-on-primary' as const]: getReadableTextColor(resolvedPrimaryColor),
-    ['--theme-on-secondary' as const]: getReadableTextColor(resolvedSecondaryColor)
-  } as CSSProperties;
+  const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
 
   return (
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot} style={rootStyle}>

@@ -4,16 +4,13 @@ import { notFound } from 'next/navigation';
 import { getCmsData } from '@/app/actions';
 import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
+import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { getDb } from '@/lib/db';
-import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
+import { decodeFlashMessage, flashCookieNames } from '@/lib/flash-cookies';
+import { resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
-const ROOT_CREATE_ERROR_COOKIE = 'root_create_error_message';
-const ROOT_CREATE_SUCCESS_COOKIE = 'root_create_success_message';
-const ROOT_EDIT_ERROR_COOKIE = 'root_edit_error_message';
-const ROOT_EDIT_SUCCESS_COOKIE = 'root_edit_success_message';
-const ROOT_DELETE_ERROR_COOKIE = 'root_delete_error_message';
 
 type RootPageProps = {
   searchParams?: {
@@ -24,7 +21,7 @@ type RootPageProps = {
 
 export default async function RootPage({ searchParams }: RootPageProps) {
   const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
-  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  let tenant: ResolvedTenant;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);
   } catch {
@@ -34,23 +31,13 @@ export default async function RootPage({ searchParams }: RootPageProps) {
   const areaSuggestionsByCity = buildAreaSuggestionsByCity(data.restaurants);
   const cookieStore = cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value ?? '';
-  const encodedRootCreateError = cookieStore.get(ROOT_CREATE_ERROR_COOKIE)?.value ?? null;
-  const rootCreateErrorMessage = encodedRootCreateError ? decodeURIComponent(encodedRootCreateError) : null;
-  const encodedRootCreateSuccess = cookieStore.get(ROOT_CREATE_SUCCESS_COOKIE)?.value ?? null;
-  const rootCreateSuccessMessage = encodedRootCreateSuccess ? decodeURIComponent(encodedRootCreateSuccess) : null;
-  const encodedRootEditError = cookieStore.get(ROOT_EDIT_ERROR_COOKIE)?.value ?? null;
-  const rootEditErrorMessage = encodedRootEditError ? decodeURIComponent(encodedRootEditError) : null;
-  const encodedRootEditSuccess = cookieStore.get(ROOT_EDIT_SUCCESS_COOKIE)?.value ?? null;
-  const rootEditSuccessMessage = encodedRootEditSuccess ? decodeURIComponent(encodedRootEditSuccess) : null;
-  const encodedRootDeleteError = cookieStore.get(ROOT_DELETE_ERROR_COOKIE)?.value ?? null;
-  const rootDeleteErrorMessage = encodedRootDeleteError ? decodeURIComponent(encodedRootDeleteError) : null;
+  const rootCreateErrorMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.rootCreateError)?.value);
+  const rootCreateSuccessMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.rootCreateSuccess)?.value);
+  const rootEditErrorMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.rootEditError)?.value);
+  const rootEditSuccessMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.rootEditSuccess)?.value);
+  const rootDeleteErrorMessage = decodeFlashMessage(cookieStore.get(flashCookieNames.rootDeleteError)?.value);
   const session = token ? await verifyAdminJwt(token) : null;
-  const hasAdminSession = Boolean(
-    session &&
-      session.tenantId === tenant.id &&
-      session.isRoot === tenant.isRoot &&
-      session.tenantKey === (tenant.isRoot ? 'root' : tenant.subdomain ?? '')
-  );
+  const hasAdminSession = doesSessionMatchTenant(session, tenant);
   const title = `${tenant.displayName}'s Favourite Eats`;
 
   return (

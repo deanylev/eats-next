@@ -4,9 +4,10 @@ import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { loginAdmin } from '@/app/actions';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
+import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { getDb } from '@/lib/db';
-import { getReadableTextColor } from '@/lib/theme';
-import { resolveRequestHost, resolveTenantFromHost } from '@/lib/tenant';
+import { buildThemeCssVariables } from '@/lib/theme';
+import { resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
 
 import styles from './style.module.scss';
 
@@ -20,7 +21,7 @@ type LoginPageProps = {
 
 export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
   const host = resolveRequestHost(headers().get('host'), headers().get('x-forwarded-host'));
-  let tenant: Awaited<ReturnType<typeof resolveTenantFromHost>>;
+  let tenant: ResolvedTenant;
   try {
     tenant = await resolveTenantFromHost(getDb(), host);
   } catch {
@@ -28,12 +29,7 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
   }
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
   const session = token ? await verifyAdminJwt(token) : null;
-  const hasSession = Boolean(
-    session &&
-      session.tenantId === tenant.id &&
-      session.isRoot === tenant.isRoot &&
-      session.tenantKey === (tenant.isRoot ? 'root' : tenant.subdomain ?? '')
-  );
+  const hasSession = doesSessionMatchTenant(session, tenant);
   if (hasSession) {
     redirect('/admin');
   }
@@ -47,12 +43,7 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
         : error
           ? 'Invalid username or password.'
           : null;
-  const rootStyle = {
-    ['--tenant-primary' as const]: tenant.primaryColor,
-    ['--tenant-secondary' as const]: tenant.secondaryColor,
-    ['--tenant-on-primary' as const]: getReadableTextColor(tenant.primaryColor),
-    ['--tenant-on-secondary' as const]: getReadableTextColor(tenant.secondaryColor)
-  } as CSSProperties;
+  const rootStyle = buildThemeCssVariables(tenant.primaryColor, tenant.secondaryColor, 'tenant') as CSSProperties;
 
   return (
     <div className={styles.root} style={rootStyle}>
