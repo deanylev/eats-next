@@ -20,7 +20,7 @@ import {
 } from '@/app/components/public-eats-page/utils';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
-import { buildThemeCssVariables } from '@/lib/theme';
+import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 
 import styles from './style.module.scss';
 
@@ -79,8 +79,8 @@ export function PublicEatsPage({
   defaultCityName = null,
   showAdminButton = false,
   title = `Dean's Favourite Eats`,
-  primaryColor = '#1b0426',
-  secondaryColor = '#e8a61a',
+  primaryColor = DEFAULT_PRIMARY_COLOR,
+  secondaryColor = DEFAULT_SECONDARY_COLOR,
   embedded = false,
   allowRestaurantEditing = true,
   adminTools,
@@ -539,8 +539,8 @@ export function PublicEatsPage({
   }, [editingRestaurantId, restaurants]);
   const canEditRestaurants = Boolean(adminTools) && allowRestaurantEditing;
   const canDeleteRestaurants = Boolean(adminTools) && !embedded;
-  const resolvedPrimaryColor = primaryColor ?? '#1b0426';
-  const resolvedSecondaryColor = secondaryColor ?? '#e8a61a';
+  const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
+  const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
 
   return (

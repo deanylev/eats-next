@@ -27,6 +27,7 @@ import {
   tenants
 } from '@/lib/schema';
 import { normalizeHost, parseHostForTenant, resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
+import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -246,7 +247,7 @@ type AdminSessionContext = {
 const parseHexColor = (value: FormDataEntryValue | null, fieldName: string): string => {
   const color = String(value ?? '').trim();
   if (!HEX_COLOR_REGEX.test(color)) {
-    throw userFacingError(`${fieldName} must be a valid hex color like #1b0426.`);
+    throw userFacingError(`${fieldName} must be a valid hex color like ${DEFAULT_PRIMARY_COLOR}.`);
   }
 
   return color.toLowerCase();

@@ -1,3 +1,6 @@
+export const DEFAULT_PRIMARY_COLOR = '#1b0426';
+export const DEFAULT_SECONDARY_COLOR = '#e8a61a';
+
 const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
   const normalized = hex.trim();
   if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {

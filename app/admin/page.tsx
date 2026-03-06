@@ -17,13 +17,14 @@ import {
 } from '@/app/actions';
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { ErrorConfirm } from '@/app/components/error-confirm';
+import { ResetColorButton } from '@/app/components/reset-color-button';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { getDb } from '@/lib/db';
 import { decodeFlashMessage, flashCookieNames } from '@/lib/flash-cookies';
-import { buildThemeCssVariables } from '@/lib/theme';
+import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 import { resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
 
 import styles from './style.module.scss';
@@ -85,17 +86,43 @@ export default async function HomePage() {
               </label>
               <label>
                 Primary color
-                <input name="primaryColor" type="color" required defaultValue={tenant.primaryColor} />
+                <div className={styles.colorPickerRow}>
+                  <input
+                    id="current-tenant-primary-color"
+                    name="primaryColor"
+                    type="color"
+                    required
+                    defaultValue={tenant.primaryColor}
+                  />
+                  <ResetColorButton
+                    inputId="current-tenant-primary-color"
+                    color={DEFAULT_PRIMARY_COLOR}
+                  />
+                </div>
               </label>
               <label>
                 Secondary color
-                <input name="secondaryColor" type="color" required defaultValue={tenant.secondaryColor} />
+                <div className={styles.colorPickerRow}>
+                  <input
+                    id="current-tenant-secondary-color"
+                    name="secondaryColor"
+                    type="color"
+                    required
+                    defaultValue={tenant.secondaryColor}
+                  />
+                  <ResetColorButton
+                    inputId="current-tenant-secondary-color"
+                    color={DEFAULT_SECONDARY_COLOR}
+                  />
+                </div>
               </label>
               <label>
                 New password (leave blank to keep)
                 <input name="adminPassword" type="password" />
               </label>
-              <button type="submit">Save tenant settings</button>
+              <div className={styles.manageActions}>
+                <button type="submit">Save tenant settings</button>
+              </div>
             </form>
           </section>
         ) : null}
@@ -119,17 +146,43 @@ export default async function HomePage() {
                 </label>
                 <label>
                   Primary color
-                  <input name="primaryColor" type="color" required defaultValue="#1b0426" />
+                  <div className={styles.colorPickerRow}>
+                    <input
+                      id="create-subdomain-primary-color"
+                      name="primaryColor"
+                      type="color"
+                      required
+                      defaultValue={DEFAULT_PRIMARY_COLOR}
+                    />
+                    <ResetColorButton
+                      inputId="create-subdomain-primary-color"
+                      color={DEFAULT_PRIMARY_COLOR}
+                    />
+                  </div>
                 </label>
                 <label>
                   Secondary color
-                  <input name="secondaryColor" type="color" required defaultValue="#e8a61a" />
+                  <div className={styles.colorPickerRow}>
+                    <input
+                      id="create-subdomain-secondary-color"
+                      name="secondaryColor"
+                      type="color"
+                      required
+                      defaultValue={DEFAULT_SECONDARY_COLOR}
+                    />
+                    <ResetColorButton
+                      inputId="create-subdomain-secondary-color"
+                      color={DEFAULT_SECONDARY_COLOR}
+                    />
+                  </div>
                 </label>
                 <label>
                   Password
                   <input name="adminPassword" type="password" required />
                 </label>
-                <button type="submit">Create subdomain</button>
+                <div className={styles.manageActions}>
+                  <button type="submit">Create subdomain</button>
+                </div>
               </form>
             </section>
           ) : null}
@@ -220,16 +273,35 @@ export default async function HomePage() {
                       </label>
                       <label>
                         Primary color
-                        <input name="primaryColor" type="color" required defaultValue={subdomainTenant.primaryColor} />
+                        <div className={styles.colorPickerRow}>
+                          <input
+                            id={`subdomain-${subdomainTenant.id}-primary-color`}
+                            name="primaryColor"
+                            type="color"
+                            required
+                            defaultValue={subdomainTenant.primaryColor}
+                          />
+                          <ResetColorButton
+                            inputId={`subdomain-${subdomainTenant.id}-primary-color`}
+                            color={DEFAULT_PRIMARY_COLOR}
+                          />
+                        </div>
                       </label>
                       <label>
                         Secondary color
-                        <input
-                          name="secondaryColor"
-                          type="color"
-                          required
-                          defaultValue={subdomainTenant.secondaryColor}
-                        />
+                        <div className={styles.colorPickerRow}>
+                          <input
+                            id={`subdomain-${subdomainTenant.id}-secondary-color`}
+                            name="secondaryColor"
+                            type="color"
+                            required
+                            defaultValue={subdomainTenant.secondaryColor}
+                          />
+                          <ResetColorButton
+                            inputId={`subdomain-${subdomainTenant.id}-secondary-color`}
+                            color={DEFAULT_SECONDARY_COLOR}
+                          />
+                        </div>
                       </label>
                       <label>
                         New password (leave blank to keep)

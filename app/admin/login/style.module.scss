@@ -1,6 +1,6 @@
 .root {
-  --tenant-primary: #1b0426;
-  --tenant-secondary: #e8a61a;
+  --tenant-primary: var(--default-primary-color);
+  --tenant-secondary: var(--default-secondary-color);
   --tenant-on-primary: #ffffff;
   --tenant-on-secondary: #000000;
   align-items: center;

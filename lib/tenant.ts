@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { getDb } from '@/lib/db';
 import { tenants } from '@/lib/schema';
+import { DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 
 const defaultRootDisplayName = 'Dean';
 type TenantDb = ReturnType<typeof getDb>;
@@ -154,8 +155,8 @@ export const ensureRootTenant = async (db: TenantDb): Promise<RootTenant> => {
     .values({
       isRoot: true,
       displayName: defaultRootDisplayName,
-      primaryColor: '#1b0426',
-      secondaryColor: '#e8a61a',
+      primaryColor: DEFAULT_PRIMARY_COLOR,
+      secondaryColor: DEFAULT_SECONDARY_COLOR,
       subdomain: null,
       adminUsername: null,
       adminPasswordHash: null

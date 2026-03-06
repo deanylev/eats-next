@@ -1,7 +1,7 @@
 .eatsRoot,
 .embeddedRoot {
-  --theme-primary: #1b0426;
-  --theme-secondary: #e8a61a;
+  --theme-primary: var(--default-primary-color);
+  --theme-secondary: var(--default-secondary-color);
   --theme-on-primary: #ffffff;
   --theme-on-secondary: #000000;
   --theme-secondary-border: color-mix(in srgb, var(--theme-secondary) 74%, black 26%);

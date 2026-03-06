@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --default-primary-color: #1b0426;
+  --default-secondary-color: #e8a61a;
 }
 
 * {

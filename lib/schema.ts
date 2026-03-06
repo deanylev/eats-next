@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid
 } from 'drizzle-orm/pg-core';
+import { DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 
 export const mealTypeEnum = pgEnum('meal_type', [
   'snack',
@@ -29,8 +30,8 @@ export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
   subdomain: text('subdomain').unique(),
   displayName: text('display_name').notNull(),
-  primaryColor: text('primary_color').default('#1b0426').notNull(),
-  secondaryColor: text('secondary_color').default('#e8a61a').notNull(),
+  primaryColor: text('primary_color').default(DEFAULT_PRIMARY_COLOR).notNull(),
+  secondaryColor: text('secondary_color').default(DEFAULT_SECONDARY_COLOR).notNull(),
   adminUsername: text('admin_username'),
   adminPasswordHash: text('admin_password_hash'),
   isRoot: boolean('is_root').default(false).notNull(),
