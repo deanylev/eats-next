@@ -196,12 +196,6 @@ const requireAdminSession = async (): Promise<AdminSessionContext> => {
 
   const session = await verifyAdminJwt(token);
   if (!session || !doesSessionMatchTenant(session, tenant)) {
-    cookies().set(ADMIN_SESSION_COOKIE, '', {
-      httpOnly: true,
-      maxAge: 0,
-      path: '/',
-      sameSite: 'lax'
-    });
     redirect('/admin/login');
   }
 
