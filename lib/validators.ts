@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mealTypeEnum, restaurantStatusEnum } from '@/lib/schema';
+import { isGoogleMapsUrl } from '@/lib/url';
 
 const httpUrlSchema = z
   .string()
@@ -13,26 +14,6 @@ const httpUrlSchema = z
       return false;
     }
   }, 'URL must start with http:// or https://.');
-const googleMapsHostnames = ['google.com', 'www.google.com', 'maps.google.com', 'maps.app.goo.gl'];
-
-const isGoogleMapsUrl = (url: string): boolean => {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    const path = parsed.pathname.toLowerCase();
-    const isGoogleHost = googleMapsHostnames.some(
-      (candidate) => host === candidate || host.endsWith(`.${candidate}`)
-    );
-    if (!isGoogleHost) {
-      return false;
-    }
-
-    return host === 'maps.app.goo.gl' || path === '/maps' || path.startsWith('/maps/');
-  } catch {
-    return false;
-  }
-};
-
 const emojiRegex = /(\p{Extended_Pictographic}|\p{Emoji_Presentation})/u;
 
 export const countryInputSchema = z.object({

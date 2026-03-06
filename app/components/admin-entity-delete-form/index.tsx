@@ -1,6 +1,7 @@
 'use client';
 
 import { deleteCity, deleteCountry, deleteRestaurantType } from '@/app/actions';
+import { ConfirmingActionForm } from '@/app/components/confirming-action-form';
 
 type EntityType = 'country' | 'city' | 'type';
 
@@ -46,19 +47,11 @@ export function AdminEntityDeleteForm({
   const confirmText = `Delete "${entityName}"? This cannot be undone.`;
 
   return (
-    <form
-      action={action}
-      onSubmit={(event) => {
-        const confirmed = window.confirm(confirmText);
-        if (!confirmed) {
-          event.preventDefault();
-        }
-      }}
-    >
+    <ConfirmingActionForm action={action} confirmText={confirmText}>
       <input type="hidden" name={idFieldName} value={entityId} />
       <button data-delete-button="true" type="submit">
         {buttonLabel}
       </button>
-    </form>
+    </ConfirmingActionForm>
   );
 }

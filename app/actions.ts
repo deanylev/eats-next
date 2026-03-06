@@ -10,12 +10,13 @@ import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   type AdminJwtPayload,
-  createAdminJwt,
-  verifyAdminJwt
+  createAdminJwt
 } from '@/lib/auth';
-import { doesSessionMatchTenant, getTenantSessionKey } from '@/lib/admin-session';
+import { getTenantSessionKey } from '@/lib/admin-session';
 import { getDb } from '@/lib/db';
-import { flashCookieNames } from '@/lib/flash-cookies';
+import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
+import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
+import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
 import {
   cities,
   countries,
@@ -116,33 +117,13 @@ const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 const MAX_FAILED_LOGIN_ATTEMPTS = 8;
 const loginAttemptsByIp = new Map<string, { count: number; firstFailedAt: number; blockedUntil: number }>();
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
-const FLASH_MAX_AGE_SECONDS = 60;
-
-const setFlashCookie = (name: string, message: string, path: '/admin' | '/'): void => {
-  cookies().set(name, encodeURIComponent(message), {
-    httpOnly: false,
-    maxAge: FLASH_MAX_AGE_SECONDS,
-    path,
-    sameSite: 'lax'
-  });
-};
-
-const clearFlashCookie = (name: string, path: '/admin' | '/'): void => {
-  cookies().set(name, '', {
-    httpOnly: false,
-    maxAge: 0,
-    path,
-    sameSite: 'lax'
-  });
-};
-
-const setAdminSuccess = (message: string): void => setFlashCookie(ADMIN_SUCCESS_COOKIE, message, '/admin');
-const setRootSuccess = (name: string, message: string): void => setFlashCookie(name, message, '/');
-const clearRootFlash = (name: string): void => clearFlashCookie(name, '/');
-const setRootError = (name: string, message: string): void => setFlashCookie(name, message, '/');
+const setAdminSuccess = (message: string): void => setFlashCookieServer(ADMIN_SUCCESS_COOKIE, message, '/admin');
+const setRootSuccess = (name: FlashCookieName, message: string): void => setFlashCookieServer(name, message, '/');
+const clearRootFlash = (name: FlashCookieName): void => clearFlashCookieServer(name, '/');
+const setRootError = (name: FlashCookieName, message: string): void => setFlashCookieServer(name, message, '/');
 
 const bounce = (errorMessage: string): never => {
-  setFlashCookie(ADMIN_ERROR_COOKIE, errorMessage, '/admin');
+  setFlashCookieServer(ADMIN_ERROR_COOKIE, errorMessage, '/admin');
   redirect('/admin');
 };
 
@@ -182,25 +163,21 @@ const assertSameOrigin = (): void => {
 
 const requireAdminSession = async (): Promise<AdminSessionContext> => {
   assertSameOrigin();
-  const db = getDb();
-  const host = getRequestHost();
-  let tenant: ResolvedTenant;
   try {
-    tenant = await resolveTenantFromHost(db, host);
+    const tenant = await resolveRequestTenant();
+    const session = await getCurrentAdminSession();
+    if (!session) {
+      redirect('/admin/login');
+    }
+
+    if (session.tenantId !== tenant.id || session.isRoot !== tenant.isRoot || session.tenantKey !== getTenantSessionKey(tenant)) {
+      redirect('/admin/login');
+    }
+
+    return { tenant, session };
   } catch {
     redirect('/admin/login');
   }
-  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? '';
-  if (!token) {
-    redirect('/admin/login');
-  }
-
-  const session = await verifyAdminJwt(token);
-  if (!session || !doesSessionMatchTenant(session, tenant)) {
-    redirect('/admin/login');
-  }
-
-  return { tenant, session };
 };
 
 const normalizedSha256 = (value: string): Buffer =>
@@ -260,6 +237,202 @@ const parseUuid = (value: FormDataEntryValue | null, message: string): string =>
   }
 
   return parsed;
+};
+
+const parseCountryInput = (formData: FormData) =>
+  countryInputSchema.parse({
+    name: formData.get('name')
+  });
+
+const parseCityInput = (formData: FormData) => ({
+  setAsDefault: formData.get('isDefault') === 'on',
+  ...cityInputSchema.parse({
+    name: formData.get('name'),
+    countryId: formData.get('countryId')
+  })
+});
+
+const parseRestaurantTypeInput = (formData: FormData) =>
+  restaurantTypeInputSchema.parse({
+    name: formData.get('name'),
+    emoji: formData.get('emoji')
+  });
+
+const parseRestaurantInput = (formData: FormData) =>
+  restaurantInputSchema.parse({
+    cityId: formData.get('cityId'),
+    areas: parseAreas(formData.get('areas')),
+    mealTypes: formData.getAll('mealTypes'),
+    name: formData.get('name'),
+    notes: formData.get('notes'),
+    referredBy: formData.get('referredBy') ?? undefined,
+    typeIds: formData.getAll('typeIds'),
+    url: formData.get('url'),
+    status: formData.get('status'),
+    dislikedReason: formData.get('dislikedReason') ?? undefined
+  });
+
+type ParsedTenantSettings = {
+  displayName: string;
+  adminUsername: string;
+  adminPassword: string;
+  primaryColor: string;
+  secondaryColor: string;
+};
+
+const parseTenantSettings = (
+  formData: FormData,
+  options: { requirePassword: boolean }
+): ParsedTenantSettings => {
+  const displayName = String(formData.get('displayName') ?? '').trim();
+  const adminUsername = String(formData.get('adminUsername') ?? '').trim();
+  const adminPassword = String(formData.get('adminPassword') ?? '');
+  const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
+  const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
+
+  if (displayName.length < 1) {
+    throw userFacingError('Display name is required.');
+  }
+  if (adminUsername.length < 3) {
+    throw userFacingError('Username must be at least 3 characters.');
+  }
+  if (options.requirePassword && adminPassword.length < 8) {
+    throw userFacingError('Password must be at least 8 characters.');
+  }
+
+  return {
+    displayName,
+    adminUsername,
+    adminPassword,
+    primaryColor,
+    secondaryColor
+  };
+};
+
+const setAdminSessionCookie = (token: string): void => {
+  cookies().set(ADMIN_SESSION_COOKIE, token, {
+    httpOnly: true,
+    maxAge: ADMIN_SESSION_TTL_SECONDS,
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  });
+};
+
+const clearAdminSessionCookie = (): void => {
+  cookies().set(ADMIN_SESSION_COOKIE, '', {
+    httpOnly: true,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  });
+};
+
+const runAdminAction = async (
+  action: () => Promise<void>,
+  options?: { successMessage?: string }
+): Promise<never> => {
+  try {
+    await action();
+  } catch (error) {
+    bounce(getUserErrorText(error));
+  }
+
+  if (options?.successMessage) {
+    setAdminSuccess(options.successMessage);
+  }
+  redirect('/admin');
+};
+
+const getRefererRedirectTarget = (
+  updates: Array<[key: string, value: string | null]>,
+  fallbackPath: string
+): string => {
+  const referer = headers().get('referer') ?? fallbackPath;
+
+  try {
+    const url = new URL(referer);
+    for (const [key, value] of updates) {
+      if (value === null) {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, value);
+      }
+    }
+
+    const query = url.searchParams.toString();
+    return `${url.pathname}${query ? `?${query}` : ''}`;
+  } catch {
+    if (updates.length === 0) {
+      return fallbackPath;
+    }
+
+    const params = new URLSearchParams();
+    for (const [key, value] of updates) {
+      if (value !== null) {
+        params.set(key, value);
+      }
+    }
+    const query = params.toString();
+    return `${fallbackPath}${query ? `?${query}` : ''}`;
+  }
+};
+
+const runRootAction = async (
+  action: () => Promise<void>,
+  options: {
+    errorCookie: FlashCookieName;
+    successCookie?: FlashCookieName;
+    successMessage?: string;
+    successRedirectTarget: string;
+    errorRedirectTarget: string;
+  }
+): Promise<never> => {
+  try {
+    await action();
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    setRootError(options.errorCookie, getUserErrorText(error));
+    redirect(options.errorRedirectTarget);
+  }
+
+  clearRootFlash(options.errorCookie);
+  if (options.successCookie && options.successMessage) {
+    setRootSuccess(options.successCookie, options.successMessage);
+  }
+  redirect(options.successRedirectTarget);
+};
+
+const requireRootAdminSession = async (): Promise<AdminSessionContext> => {
+  const context = await requireAdminSession();
+  if (!context.tenant.isRoot || !context.session.isRoot) {
+    throw userFacingError('Only root admin can manage subdomains.');
+  }
+
+  return context;
+};
+
+const requireNonRootAdminSession = async (): Promise<AdminSessionContext> => {
+  const context = await requireAdminSession();
+  if (context.tenant.isRoot) {
+    throw userFacingError('Root tenant settings cannot be changed here.');
+  }
+
+  return context;
+};
+
+const ensureCountryBelongsToTenant = async (tenantId: string, countryId: string): Promise<void> => {
+  const foundCountry = await getDb().query.countries.findFirst({
+    where: and(eq(countries.id, countryId), eq(countries.tenantId, tenantId))
+  });
+
+  if (!foundCountry) {
+    throw userFacingError('Country not found.');
+  }
 };
 
 const getClientIp = (): string => {
@@ -387,57 +560,30 @@ export const loginAdmin = async (formData: FormData): Promise<void> => {
     tenantKey: getTenantSessionKey(tenant),
     isRoot: tenant.isRoot
   });
-  cookies().set(ADMIN_SESSION_COOKIE, token, {
-    httpOnly: true,
-    maxAge: ADMIN_SESSION_TTL_SECONDS,
-    path: '/',
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production'
-  });
+  setAdminSessionCookie(token);
 
   redirect('/admin');
 };
 
 export const logoutAdmin = async (): Promise<void> => {
   assertSameOrigin();
-  cookies().set(ADMIN_SESSION_COOKIE, '', {
-    httpOnly: true,
-    maxAge: 0,
-    path: '/',
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production'
-  });
+  clearAdminSessionCookie();
   redirect('/admin/login');
 };
 
 export const createSubdomainTenant = async (formData: FormData): Promise<void> => {
-  try {
-    const { tenant, session } = await requireAdminSession();
-    if (!tenant.isRoot || !session?.isRoot) {
-      throw userFacingError('Only root admin can create subdomains.');
-    }
-
+  return runAdminAction(async () => {
+    await requireRootAdminSession();
     const db = getDb();
     const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
-    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
-    const adminPassword = String(formData.get('adminPassword') ?? '');
-    const displayName = String(formData.get('displayName') ?? '').trim();
-    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
-    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
+    const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
+      requirePassword: true
+    });
 
     if (!isValidTenantSubdomain(subdomain)) {
       throw userFacingError(
         'Subdomain must start with "eats-" and use lowercase letters, numbers, or hyphens (4-63 chars).'
       );
-    }
-    if (adminUsername.length < 3) {
-      throw userFacingError('Username must be at least 3 characters.');
-    }
-    if (adminPassword.length < 8) {
-      throw userFacingError('Password must be at least 8 characters.');
-    }
-    if (displayName.length < 1) {
-      throw userFacingError('Display name is required.');
     }
 
     await db.insert(tenants).values({
@@ -449,40 +595,23 @@ export const createSubdomainTenant = async (formData: FormData): Promise<void> =
       adminPasswordHash: hashTenantPassword(adminPassword),
       isRoot: false
     });
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Subdomain tenant created.');
-  redirect('/admin');
+  }, { successMessage: 'Subdomain tenant created.' });
 };
 
 export const updateSubdomainTenant = async (formData: FormData): Promise<void> => {
-  try {
-    const { tenant, session } = await requireAdminSession();
-    if (!tenant.isRoot || !session?.isRoot) {
-      throw userFacingError('Only root admin can update subdomains.');
-    }
-
+  return runAdminAction(async () => {
+    await requireRootAdminSession();
     const db = getDb();
     const tenantId = parseUuid(formData.get('tenantId'), 'Invalid tenant id.');
     const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
-    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
-    const adminPassword = String(formData.get('adminPassword') ?? '');
-    const displayName = String(formData.get('displayName') ?? '').trim();
-    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
-    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
+    const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
+      requirePassword: false
+    });
 
     if (!isValidTenantSubdomain(subdomain)) {
       throw userFacingError(
         'Subdomain must start with "eats-" and use lowercase letters, numbers, or hyphens (4-63 chars).'
       );
-    }
-    if (adminUsername.length < 3) {
-      throw userFacingError('Username must be at least 3 characters.');
-    }
-    if (displayName.length < 1) {
-      throw userFacingError('Display name is required.');
     }
 
     const found = await db.query.tenants.findFirst({
@@ -503,34 +632,16 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
         ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
       })
       .where(and(eq(tenants.id, tenantId), eq(tenants.isRoot, false)));
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Subdomain tenant updated.');
-  redirect('/admin');
+  }, { successMessage: 'Subdomain tenant updated.' });
 };
 
 export const updateCurrentTenantSettings = async (formData: FormData): Promise<void> => {
-  try {
-    const { tenant, session } = await requireAdminSession();
-    if (tenant.isRoot) {
-      throw userFacingError('Root tenant settings cannot be changed here.');
-    }
-
+  return runAdminAction(async () => {
+    const { tenant, session } = await requireNonRootAdminSession();
     const db = getDb();
-    const displayName = String(formData.get('displayName') ?? '').trim();
-    const primaryColor = parseHexColor(formData.get('primaryColor'), 'Primary color');
-    const secondaryColor = parseHexColor(formData.get('secondaryColor'), 'Secondary color');
-    if (displayName.length < 1) {
-      throw userFacingError('Display name is required.');
-    }
-
-    const adminUsername = String(formData.get('adminUsername') ?? '').trim();
-    const adminPassword = String(formData.get('adminPassword') ?? '');
-    if (adminUsername.length < 3) {
-      throw userFacingError('Username must be at least 3 characters.');
-    }
+    const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
+      requirePassword: false
+    });
 
     await db
       .update(tenants)
@@ -549,51 +660,30 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
         tenantKey: tenant.subdomain ?? '',
         isRoot: false
       });
-      cookies().set(ADMIN_SESSION_COOKIE, nextToken, {
-        httpOnly: true,
-        maxAge: ADMIN_SESSION_TTL_SECONDS,
-        path: '/',
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
-      });
+      setAdminSessionCookie(nextToken);
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Tenant settings saved.');
-  redirect('/admin');
+  }, { successMessage: 'Tenant settings saved.' });
 };
 
 export const createCountry = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
-    const parsed = countryInputSchema.parse({
-      name: formData.get('name')
-    });
+    const parsed = parseCountryInput(formData);
 
     await db.insert(countries).values({
       tenantId: tenant.id,
       name: parsed.name
     });
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Country created.');
-  redirect('/admin');
+  }, { successMessage: 'Country created.' });
 };
 
 export const updateCountry = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const countryId = parseUuid(formData.get('countryId'), 'Invalid country id.');
-
-    const parsed = countryInputSchema.parse({
-      name: formData.get('name')
-    });
+    const parsed = parseCountryInput(formData);
 
     const updated = await db
       .update(countries)
@@ -606,15 +696,11 @@ export const updateCountry = async (formData: FormData): Promise<void> => {
     if (updated.length === 0) {
       throw userFacingError('Country not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const deleteCountry = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const countryId = parseUuid(formData.get('countryId'), 'Invalid country id.');
@@ -627,33 +713,18 @@ export const deleteCountry = async (formData: FormData): Promise<void> => {
     if (deleted.length === 0) {
       throw userFacingError('Country not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const createCity = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
-    const setAsDefault = formData.get('isDefault') === 'on';
-    const parsed = cityInputSchema.parse({
-      name: formData.get('name'),
-      countryId: formData.get('countryId')
-    });
-
-    const foundCountry = await db.query.countries.findFirst({
-      where: and(eq(countries.id, parsed.countryId), eq(countries.tenantId, tenant.id))
-    });
-
-    if (!foundCountry) {
-      throw userFacingError('Country not found.');
-    }
+    const parsed = parseCityInput(formData);
+    await ensureCountryBelongsToTenant(tenant.id, parsed.countryId);
 
     await db.transaction(async (tx) => {
-      if (setAsDefault) {
+      if (parsed.setAsDefault) {
         await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
       }
 
@@ -661,38 +732,22 @@ export const createCity = async (formData: FormData): Promise<void> => {
         tenantId: tenant.id,
         name: parsed.name,
         countryId: parsed.countryId,
-        isDefault: setAsDefault
+        isDefault: parsed.setAsDefault
       });
     });
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('City created.');
-  redirect('/admin');
+  }, { successMessage: 'City created.' });
 };
 
 export const updateCity = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
-    const setAsDefault = formData.get('isDefault') === 'on';
     const cityId = parseUuid(formData.get('cityId'), 'Invalid city id.');
-
-    const parsed = cityInputSchema.parse({
-      name: formData.get('name'),
-      countryId: formData.get('countryId')
-    });
-
-    const foundCountry = await db.query.countries.findFirst({
-      where: and(eq(countries.id, parsed.countryId), eq(countries.tenantId, tenant.id))
-    });
-    if (!foundCountry) {
-      throw userFacingError('Country not found.');
-    }
+    const parsed = parseCityInput(formData);
+    await ensureCountryBelongsToTenant(tenant.id, parsed.countryId);
 
     const updated = await db.transaction(async (tx) => {
-      if (setAsDefault) {
+      if (parsed.setAsDefault) {
         await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
       }
 
@@ -702,7 +757,7 @@ export const updateCity = async (formData: FormData): Promise<void> => {
           name: parsed.name,
           tenantId: tenant.id,
           countryId: parsed.countryId,
-          ...(setAsDefault ? { isDefault: true } : {})
+          ...(parsed.setAsDefault ? { isDefault: true } : {})
         })
         .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenant.id)))
         .returning({ id: cities.id });
@@ -711,15 +766,11 @@ export const updateCity = async (formData: FormData): Promise<void> => {
     if (updated.length === 0) {
       throw userFacingError('City not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const deleteCity = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const cityId = parseUuid(formData.get('cityId'), 'Invalid city id.');
@@ -739,45 +790,29 @@ export const deleteCity = async (formData: FormData): Promise<void> => {
     if (deleted.length === 0) {
       throw userFacingError('City not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const createRestaurantType = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
-    const parsed = restaurantTypeInputSchema.parse({
-      name: formData.get('name'),
-      emoji: formData.get('emoji')
-    });
+    const parsed = parseRestaurantTypeInput(formData);
 
     await db.insert(restaurantTypes).values({
       tenantId: tenant.id,
       name: parsed.name,
       emoji: parsed.emoji
     });
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Restaurant type created.');
-  redirect('/admin');
+  }, { successMessage: 'Restaurant type created.' });
 };
 
 export const updateRestaurantType = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const typeId = parseUuid(formData.get('typeId'), 'Invalid type id.');
-
-    const parsed = restaurantTypeInputSchema.parse({
-      name: formData.get('name'),
-      emoji: formData.get('emoji')
-    });
+    const parsed = parseRestaurantTypeInput(formData);
 
     const updated = await db
       .update(restaurantTypes)
@@ -791,15 +826,11 @@ export const updateRestaurantType = async (formData: FormData): Promise<void> =>
     if (updated.length === 0) {
       throw userFacingError('Restaurant type not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const deleteRestaurantType = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const typeId = parseUuid(formData.get('typeId'), 'Invalid type id.');
@@ -828,40 +859,19 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
     if (deleted.length === 0) {
       throw userFacingError('Restaurant type not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 export const createRestaurant = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     await createRestaurantRecord(formData, tenant.id);
-
-    setAdminSuccess('Restaurant created.');
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  }, { successMessage: 'Restaurant created.' });
 };
 
 const createRestaurantRecord = async (formData: FormData, tenantId: string): Promise<void> => {
   const db = getDb();
-  const parsed = restaurantInputSchema.parse({
-    cityId: formData.get('cityId'),
-    areas: parseAreas(formData.get('areas')),
-    mealTypes: formData.getAll('mealTypes'),
-    name: formData.get('name'),
-    notes: formData.get('notes'),
-    referredBy: formData.get('referredBy') ?? undefined,
-    typeIds: formData.getAll('typeIds'),
-    url: formData.get('url'),
-    status: formData.get('status'),
-    dislikedReason: formData.get('dislikedReason') ?? undefined
-  });
+  const parsed = parseRestaurantInput(formData);
 
   const foundCity = await db.query.cities.findFirst({
     where: and(eq(cities.id, parsed.cityId), eq(cities.tenantId, tenantId))
@@ -941,67 +951,32 @@ const createRestaurantRecord = async (formData: FormData, tenantId: string): Pro
 };
 
 export const createRestaurantFromRoot = async (formData: FormData): Promise<void> => {
-  const referer = headers().get('referer') ?? '/';
-  const getRedirectTarget = (shouldOpenDialog: boolean): string => {
-    try {
-      const url = new URL(referer);
-      if (shouldOpenDialog) {
-        url.searchParams.set('openCreateDialog', '1');
-      } else {
-        url.searchParams.delete('openCreateDialog');
-      }
-
-      const query = url.searchParams.toString();
-      return `${url.pathname}${query ? `?${query}` : ''}`;
-    } catch {
-      return shouldOpenDialog ? '/?openCreateDialog=1' : '/';
+  return runRootAction(
+    async () => {
+      const { tenant } = await requireAdminSession();
+      await createRestaurantRecord(formData, tenant.id);
+    },
+    {
+      errorCookie: ROOT_CREATE_ERROR_COOKIE,
+      successCookie: ROOT_CREATE_SUCCESS_COOKIE,
+      successMessage: 'Restaurant created successfully.',
+      successRedirectTarget: getRefererRedirectTarget([['openCreateDialog', null]], '/'),
+      errorRedirectTarget: getRefererRedirectTarget([['openCreateDialog', '1']], '/')
     }
-  };
-
-  try {
-    const { tenant } = await requireAdminSession();
-    await createRestaurantRecord(formData, tenant.id);
-  } catch (error) {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
-
-    setRootError(ROOT_CREATE_ERROR_COOKIE, getUserErrorText(error));
-    redirect(getRedirectTarget(true));
-  }
-
-  clearRootFlash(ROOT_CREATE_ERROR_COOKIE);
-  setRootSuccess(ROOT_CREATE_SUCCESS_COOKIE, 'Restaurant created successfully.');
-  redirect(getRedirectTarget(false));
+  );
 };
 
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     await updateRestaurantRecord(formData, tenant.id);
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  redirect('/admin');
+  });
 };
 
 const updateRestaurantRecord = async (formData: FormData, tenantId: string): Promise<string> => {
   const db = getDb();
   const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-
-  const parsed = restaurantInputSchema.parse({
-    cityId: formData.get('cityId'),
-    areas: parseAreas(formData.get('areas')),
-    mealTypes: formData.getAll('mealTypes'),
-    name: formData.get('name'),
-    notes: formData.get('notes'),
-    referredBy: formData.get('referredBy') ?? undefined,
-    typeIds: formData.getAll('typeIds'),
-    url: formData.get('url'),
-    status: formData.get('status'),
-    dislikedReason: formData.get('dislikedReason') ?? undefined
-  });
+  const parsed = parseRestaurantInput(formData);
 
   const foundRestaurant = await db.query.restaurants.findFirst({
     where: and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId))
@@ -1096,81 +1071,50 @@ const updateRestaurantRecord = async (formData: FormData, tenantId: string): Pro
 };
 
 export const updateRestaurantFromRoot = async (formData: FormData): Promise<void> => {
-  const referer = headers().get('referer') ?? '/';
-  const getRedirectTarget = (restaurantId: string | null): string => {
-    try {
-      const url = new URL(referer);
-      if (restaurantId) {
-        url.searchParams.set('openEditRestaurant', restaurantId);
-      } else {
-        url.searchParams.delete('openEditRestaurant');
-      }
+  const rawRestaurantId = String(formData.get('restaurantId') ?? '').trim();
+  const safeRestaurantId = ADMIN_ID_REGEX.test(rawRestaurantId) ? rawRestaurantId : null;
 
-      const query = url.searchParams.toString();
-      return `${url.pathname}${query ? `?${query}` : ''}`;
-    } catch {
-      return restaurantId ? `/?openEditRestaurant=${restaurantId}` : '/';
+  return runRootAction(
+    async () => {
+      const { tenant } = await requireAdminSession();
+      await updateRestaurantRecord(formData, tenant.id);
+    },
+    {
+      errorCookie: ROOT_EDIT_ERROR_COOKIE,
+      successCookie: ROOT_EDIT_SUCCESS_COOKIE,
+      successMessage: 'Restaurant updated successfully.',
+      successRedirectTarget: getRefererRedirectTarget([['openEditRestaurant', null]], '/'),
+      errorRedirectTarget: getRefererRedirectTarget([['openEditRestaurant', safeRestaurantId]], '/')
     }
-  };
-
-  try {
-    const { tenant } = await requireAdminSession();
-    await updateRestaurantRecord(formData, tenant.id);
-    clearRootFlash(ROOT_EDIT_ERROR_COOKIE);
-    setRootSuccess(ROOT_EDIT_SUCCESS_COOKIE, 'Restaurant updated successfully.');
-    redirect(getRedirectTarget(null));
-  } catch (error) {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
-
-    const rawRestaurantId = String(formData.get('restaurantId') ?? '').trim();
-    const safeRestaurantId = ADMIN_ID_REGEX.test(rawRestaurantId) ? rawRestaurantId : null;
-    setRootError(ROOT_EDIT_ERROR_COOKIE, getUserErrorText(error));
-    redirect(getRedirectTarget(safeRestaurantId));
-  }
+  );
 };
 
 export const deleteRestaurant = async (formData: FormData): Promise<void> => {
-  const referer = headers().get('referer') ?? '/';
-  const getRedirectTarget = (): string => {
-    try {
-      const url = new URL(referer);
-      const query = url.searchParams.toString();
-      return `${url.pathname}${query ? `?${query}` : ''}`;
-    } catch {
-      return '/';
+  return runRootAction(
+    async () => {
+      const { tenant } = await requireAdminSession();
+      const db = getDb();
+      const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+
+      const deleted = await db
+        .update(restaurants)
+        .set({ deletedAt: new Date() })
+        .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
+        .returning({ id: restaurants.id });
+      if (deleted.length === 0) {
+        throw userFacingError('Restaurant not found.');
+      }
+    },
+    {
+      errorCookie: ROOT_DELETE_ERROR_COOKIE,
+      successRedirectTarget: getRefererRedirectTarget([], '/'),
+      errorRedirectTarget: getRefererRedirectTarget([], '/')
     }
-  };
-
-  try {
-    const { tenant } = await requireAdminSession();
-    const db = getDb();
-    const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-
-    const deleted = await db
-      .update(restaurants)
-      .set({ deletedAt: new Date() })
-      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
-      .returning({ id: restaurants.id });
-    if (deleted.length === 0) {
-      throw userFacingError('Restaurant not found.');
-    }
-  } catch (error) {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
-
-    setRootError(ROOT_DELETE_ERROR_COOKIE, getUserErrorText(error));
-    redirect(getRedirectTarget());
-  }
-
-  clearRootFlash(ROOT_DELETE_ERROR_COOKIE);
-  redirect(getRedirectTarget());
+  );
 };
 
 export const restoreRestaurant = async (formData: FormData): Promise<void> => {
-  try {
+  return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const db = getDb();
     const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
@@ -1184,12 +1128,7 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
     if (restored.length === 0) {
       throw userFacingError('Deleted restaurant not found.');
     }
-  } catch (error) {
-    bounce(getUserErrorText(error));
-  }
-
-  setAdminSuccess('Restaurant restored successfully.');
-  redirect('/admin');
+  }, { successMessage: 'Restaurant restored successfully.' });
 };
 
 export const getCmsData = async (tenantId: string, options?: { includeDeleted?: boolean }) => {

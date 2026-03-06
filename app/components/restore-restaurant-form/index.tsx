@@ -1,6 +1,7 @@
 'use client';
 
 import { restoreRestaurant } from '@/app/actions';
+import { ConfirmingActionForm } from '@/app/components/confirming-action-form';
 
 type RestoreRestaurantFormProps = {
   restaurantId: string;
@@ -9,17 +10,9 @@ type RestoreRestaurantFormProps = {
 
 export function RestoreRestaurantForm({ restaurantId, restaurantName }: RestoreRestaurantFormProps) {
   return (
-    <form
-      action={restoreRestaurant}
-      onSubmit={(event) => {
-        const confirmed = window.confirm(`Restore "${restaurantName}"?`);
-        if (!confirmed) {
-          event.preventDefault();
-        }
-      }}
-    >
+    <ConfirmingActionForm action={restoreRestaurant} confirmText={`Restore "${restaurantName}"?`}>
       <input type="hidden" name="restaurantId" value={restaurantId} />
       <button type="submit">Restore</button>
-    </form>
+    </ConfirmingActionForm>
   );
 }
