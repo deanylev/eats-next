@@ -13,6 +13,21 @@ import {
   createAdminJwt
 } from '@/lib/auth';
 import { getTenantSessionKey } from '@/lib/admin-session';
+import {
+  createCityRecord,
+  createCountryRecord,
+  createRestaurantRecord,
+  createRestaurantTypeRecord,
+  deleteCityRecord,
+  deleteCountryRecord,
+  deleteRestaurantTypeRecord,
+  restoreRestaurantRecord,
+  softDeleteRestaurantRecord,
+  updateCityRecord,
+  updateCountryRecord,
+  updateRestaurantRecord,
+  updateRestaurantTypeRecord
+} from '@/lib/cms-write';
 import { getDb } from '@/lib/db';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
@@ -425,16 +440,6 @@ const requireNonRootAdminSession = async (): Promise<AdminSessionContext> => {
   return context;
 };
 
-const ensureCountryBelongsToTenant = async (tenantId: string, countryId: string): Promise<void> => {
-  const foundCountry = await getDb().query.countries.findFirst({
-    where: and(eq(countries.id, countryId), eq(countries.tenantId, tenantId))
-  });
-
-  if (!foundCountry) {
-    throw userFacingError('Country not found.');
-  }
-};
-
 const getClientIp = (): string => {
   const headerStore = headers();
   const cfConnectingIp = headerStore.get('cf-connecting-ip')?.trim() ?? '';
@@ -668,293 +673,90 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
 export const createCountry = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const parsed = parseCountryInput(formData);
-
-    await db.insert(countries).values({
-      tenantId: tenant.id,
-      name: parsed.name
-    });
+    await createCountryRecord(getDb(), tenant.id, parsed);
   }, { successMessage: 'Country created.' });
 };
 
 export const updateCountry = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const countryId = parseUuid(formData.get('countryId'), 'Invalid country id.');
     const parsed = parseCountryInput(formData);
-
-    const updated = await db
-      .update(countries)
-      .set({
-        name: parsed.name
-      })
-      .where(and(eq(countries.id, countryId), eq(countries.tenantId, tenant.id)))
-      .returning({ id: countries.id });
-
-    if (updated.length === 0) {
-      throw userFacingError('Country not found.');
-    }
+    await updateCountryRecord(getDb(), tenant.id, countryId, parsed);
   });
 };
 
 export const deleteCountry = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const countryId = parseUuid(formData.get('countryId'), 'Invalid country id.');
-
-    const deleted = await db
-      .delete(countries)
-      .where(and(eq(countries.id, countryId), eq(countries.tenantId, tenant.id)))
-      .returning({ id: countries.id });
-
-    if (deleted.length === 0) {
-      throw userFacingError('Country not found.');
-    }
+    await deleteCountryRecord(getDb(), tenant.id, countryId);
   });
 };
 
 export const createCity = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const parsed = parseCityInput(formData);
-    await ensureCountryBelongsToTenant(tenant.id, parsed.countryId);
-
-    await db.transaction(async (tx) => {
-      if (parsed.setAsDefault) {
-        await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
-      }
-
-      await tx.insert(cities).values({
-        tenantId: tenant.id,
-        name: parsed.name,
-        countryId: parsed.countryId,
-        isDefault: parsed.setAsDefault
-      });
-    });
+    await createCityRecord(getDb(), tenant.id, parsed);
   }, { successMessage: 'City created.' });
 };
 
 export const updateCity = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const cityId = parseUuid(formData.get('cityId'), 'Invalid city id.');
     const parsed = parseCityInput(formData);
-    await ensureCountryBelongsToTenant(tenant.id, parsed.countryId);
-
-    const updated = await db.transaction(async (tx) => {
-      if (parsed.setAsDefault) {
-        await tx.update(cities).set({ isDefault: false }).where(eq(cities.tenantId, tenant.id));
-      }
-
-      return tx
-        .update(cities)
-        .set({
-          name: parsed.name,
-          tenantId: tenant.id,
-          countryId: parsed.countryId,
-          ...(parsed.setAsDefault ? { isDefault: true } : {})
-        })
-        .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenant.id)))
-        .returning({ id: cities.id });
-    });
-
-    if (updated.length === 0) {
-      throw userFacingError('City not found.');
-    }
+    await updateCityRecord(getDb(), tenant.id, cityId, parsed);
   });
 };
 
 export const deleteCity = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const cityId = parseUuid(formData.get('cityId'), 'Invalid city id.');
-
-    const inUseByRestaurant = await db.query.restaurants.findFirst({
-      where: and(eq(restaurants.cityId, cityId), eq(restaurants.tenantId, tenant.id))
-    });
-    if (inUseByRestaurant) {
-      throw userFacingError('Cannot delete this city because it has restaurants. Reassign or delete those restaurants first.');
-    }
-
-    const deleted = await db
-      .delete(cities)
-      .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenant.id)))
-      .returning({ id: cities.id });
-
-    if (deleted.length === 0) {
-      throw userFacingError('City not found.');
-    }
+    await deleteCityRecord(getDb(), tenant.id, cityId);
   });
 };
 
 export const createRestaurantType = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const parsed = parseRestaurantTypeInput(formData);
-
-    await db.insert(restaurantTypes).values({
-      tenantId: tenant.id,
-      name: parsed.name,
-      emoji: parsed.emoji
-    });
+    await createRestaurantTypeRecord(getDb(), tenant.id, parsed);
   }, { successMessage: 'Restaurant type created.' });
 };
 
 export const updateRestaurantType = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const typeId = parseUuid(formData.get('typeId'), 'Invalid type id.');
     const parsed = parseRestaurantTypeInput(formData);
-
-    const updated = await db
-      .update(restaurantTypes)
-      .set({
-        name: parsed.name,
-        emoji: parsed.emoji
-      })
-      .where(and(eq(restaurantTypes.id, typeId), eq(restaurantTypes.tenantId, tenant.id)))
-      .returning({ id: restaurantTypes.id });
-
-    if (updated.length === 0) {
-      throw userFacingError('Restaurant type not found.');
-    }
+    await updateRestaurantTypeRecord(getDb(), tenant.id, typeId, parsed);
   });
 };
 
 export const deleteRestaurantType = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const typeId = parseUuid(formData.get('typeId'), 'Invalid type id.');
-
-    const inUseByRestaurant = await db.query.restaurantToTypes.findFirst({
-      where: and(
-        eq(restaurantToTypes.restaurantTypeId, typeId),
-        sql`exists (
-          select 1 from ${restaurants}
-          where ${restaurants.id} = ${restaurantToTypes.restaurantId}
-            and ${restaurants.tenantId} = ${tenant.id}
-        )`
-      )
-    });
-    if (inUseByRestaurant) {
-      throw userFacingError(
-        'Cannot delete this restaurant type because it is used by restaurants. Remove it from those restaurants first.'
-      );
-    }
-
-    const deleted = await db
-      .delete(restaurantTypes)
-      .where(and(eq(restaurantTypes.id, typeId), eq(restaurantTypes.tenantId, tenant.id)))
-      .returning({ id: restaurantTypes.id });
-
-    if (deleted.length === 0) {
-      throw userFacingError('Restaurant type not found.');
-    }
+    await deleteRestaurantTypeRecord(getDb(), tenant.id, typeId);
   });
 };
 
 export const createRestaurant = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    await createRestaurantRecord(formData, tenant.id);
+    await createRestaurantRecord(getDb(), tenant.id, parseRestaurantInput(formData));
   }, { successMessage: 'Restaurant created.' });
-};
-
-const createRestaurantRecord = async (formData: FormData, tenantId: string): Promise<void> => {
-  const db = getDb();
-  const parsed = parseRestaurantInput(formData);
-
-  const foundCity = await db.query.cities.findFirst({
-    where: and(eq(cities.id, parsed.cityId), eq(cities.tenantId, tenantId))
-  });
-
-  if (!foundCity) {
-    throw userFacingError('City not found.');
-  }
-
-  const existingTypes = await db
-    .select({ id: restaurantTypes.id })
-    .from(restaurantTypes)
-    .where(and(inArray(restaurantTypes.id, parsed.typeIds), eq(restaurantTypes.tenantId, tenantId)));
-  const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
-  const invalidTypeIds = parsed.typeIds.filter((entry) => !foundTypeIds.has(entry));
-
-  if (invalidTypeIds.length > 0) {
-    throw userFacingError('One or more restaurant types are invalid.');
-  }
-
-  const duplicateRestaurant = await db.query.restaurants.findFirst({
-    where: and(
-      eq(restaurants.cityId, parsed.cityId),
-      eq(restaurants.tenantId, tenantId),
-      isNull(restaurants.deletedAt),
-      sql`lower(${restaurants.name}) = lower(${parsed.name})`
-    )
-  });
-  if (duplicateRestaurant) {
-    throw userFacingError('A restaurant with this name already exists in this city.');
-  }
-
-  await db.transaction(async (tx) => {
-    const insertedRestaurants = await tx
-      .insert(restaurants)
-      .values({
-        cityId: parsed.cityId,
-        tenantId,
-        name: parsed.name,
-        notes: parsed.notes,
-        referredBy: parsed.referredBy ?? '',
-        url: parsed.url,
-        status: parsed.status,
-        triedAt: parsed.status === 'untried' ? null : new Date(),
-        dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
-      })
-      .returning({ id: restaurants.id });
-    const insertedRestaurant = insertedRestaurants[0];
-
-    if (!insertedRestaurant) {
-      throw userFacingError('Could not create restaurant.');
-    }
-
-    if (parsed.areas.length > 0) {
-      await tx.insert(restaurantAreas).values(
-        parsed.areas.map((area) => ({
-          restaurantId: insertedRestaurant.id,
-          area
-        }))
-      );
-    }
-
-    await tx.insert(restaurantMeals).values(
-      parsed.mealTypes.map((mealType) => ({
-        restaurantId: insertedRestaurant.id,
-        mealType
-      }))
-    );
-
-    await tx.insert(restaurantToTypes).values(
-      parsed.typeIds.map((restaurantTypeId) => ({
-        restaurantId: insertedRestaurant.id,
-        restaurantTypeId
-      }))
-    );
-  });
 };
 
 export const createRestaurantFromRoot = async (formData: FormData): Promise<void> => {
   return runRootAction(
     async () => {
       const { tenant } = await requireAdminSession();
-      await createRestaurantRecord(formData, tenant.id);
+      await createRestaurantRecord(getDb(), tenant.id, parseRestaurantInput(formData));
     },
     {
       errorCookie: ROOT_CREATE_ERROR_COOKIE,
@@ -969,105 +771,9 @@ export const createRestaurantFromRoot = async (formData: FormData): Promise<void
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    await updateRestaurantRecord(formData, tenant.id);
+    const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+    await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantInput(formData));
   });
-};
-
-const updateRestaurantRecord = async (formData: FormData, tenantId: string): Promise<string> => {
-  const db = getDb();
-  const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-  const parsed = parseRestaurantInput(formData);
-
-  const foundRestaurant = await db.query.restaurants.findFirst({
-    where: and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId))
-  });
-  if (!foundRestaurant) {
-    throw userFacingError('Restaurant not found.');
-  }
-
-  const foundCity = await db.query.cities.findFirst({
-    where: and(eq(cities.id, parsed.cityId), eq(cities.tenantId, tenantId))
-  });
-  if (!foundCity) {
-    throw userFacingError('City not found.');
-  }
-
-  const uniqueTypeIds = Array.from(new Set(parsed.typeIds));
-  const existingTypes = await db
-    .select({ id: restaurantTypes.id })
-    .from(restaurantTypes)
-    .where(and(inArray(restaurantTypes.id, uniqueTypeIds), eq(restaurantTypes.tenantId, tenantId)));
-  const foundTypeIds = new Set(existingTypes.map((entry) => entry.id));
-  const invalidTypeIds = uniqueTypeIds.filter((entry) => !foundTypeIds.has(entry));
-  if (invalidTypeIds.length > 0) {
-    throw userFacingError('One or more restaurant types are invalid.');
-  }
-
-  const duplicateRestaurant = await db.query.restaurants.findFirst({
-    where: and(
-      ne(restaurants.id, restaurantId),
-      eq(restaurants.cityId, parsed.cityId),
-      eq(restaurants.tenantId, tenantId),
-      isNull(restaurants.deletedAt),
-      sql`lower(${restaurants.name}) = lower(${parsed.name})`
-    )
-  });
-  if (duplicateRestaurant) {
-    throw userFacingError('A restaurant with this name already exists in this city.');
-  }
-
-  await db.transaction(async (tx) => {
-    const nextTriedAt =
-      parsed.status === 'untried'
-        ? null
-        : foundRestaurant.status === 'untried'
-          ? new Date()
-          : foundRestaurant.triedAt ?? new Date();
-
-    await tx
-      .update(restaurants)
-      .set({
-        cityId: parsed.cityId,
-        tenantId,
-        name: parsed.name,
-        notes: parsed.notes,
-        referredBy: parsed.referredBy ?? '',
-        url: parsed.url,
-        status: parsed.status,
-        triedAt: nextTriedAt,
-        dislikedReason: parsed.status === 'disliked' ? parsed.dislikedReason ?? null : null
-      })
-      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId)));
-
-    await tx.delete(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
-    await tx.delete(restaurantMeals).where(eq(restaurantMeals.restaurantId, restaurantId));
-    await tx.delete(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, restaurantId));
-
-    if (parsed.areas.length > 0) {
-      await tx.insert(restaurantAreas).values(
-        parsed.areas.map((area) => ({
-          restaurantId,
-          area
-        }))
-      );
-    }
-
-    await tx.insert(restaurantMeals).values(
-      parsed.mealTypes.map((mealType) => ({
-        restaurantId,
-        mealType
-      }))
-    );
-
-    await tx.insert(restaurantToTypes).values(
-      uniqueTypeIds.map((restaurantTypeId) => ({
-        restaurantId,
-        restaurantTypeId
-      }))
-    );
-  });
-
-  return restaurantId;
 };
 
 export const updateRestaurantFromRoot = async (formData: FormData): Promise<void> => {
@@ -1077,7 +783,8 @@ export const updateRestaurantFromRoot = async (formData: FormData): Promise<void
   return runRootAction(
     async () => {
       const { tenant } = await requireAdminSession();
-      await updateRestaurantRecord(formData, tenant.id);
+      const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+      await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantInput(formData));
     },
     {
       errorCookie: ROOT_EDIT_ERROR_COOKIE,
@@ -1093,17 +800,8 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
   return runRootAction(
     async () => {
       const { tenant } = await requireAdminSession();
-      const db = getDb();
       const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-
-      const deleted = await db
-        .update(restaurants)
-        .set({ deletedAt: new Date() })
-        .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
-        .returning({ id: restaurants.id });
-      if (deleted.length === 0) {
-        throw userFacingError('Restaurant not found.');
-      }
+      await softDeleteRestaurantRecord(getDb(), tenant.id, restaurantId);
     },
     {
       errorCookie: ROOT_DELETE_ERROR_COOKIE,
@@ -1116,18 +814,8 @@ export const deleteRestaurant = async (formData: FormData): Promise<void> => {
 export const restoreRestaurant = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    const db = getDb();
     const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-
-    const restored = await db
-      .update(restaurants)
-      .set({ deletedAt: null })
-      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNotNull(restaurants.deletedAt)))
-      .returning({ id: restaurants.id });
-
-    if (restored.length === 0) {
-      throw userFacingError('Deleted restaurant not found.');
-    }
+    await restoreRestaurantRecord(getDb(), tenant.id, restaurantId);
   }, { successMessage: 'Restaurant restored successfully.' });
 };
 
