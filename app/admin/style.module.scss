@@ -1,35 +1,13 @@
+@use "../styles/glass" as glass;
+
 .root {
   --tenant-primary: var(--default-primary-color);
   --tenant-secondary: var(--default-secondary-color);
   --tenant-on-primary: #ffffff;
   --tenant-on-secondary: #000000;
-  background:
-    radial-gradient(1200px 650px at 8% -12%, rgba(255, 255, 255, 0.09), transparent 60%),
-    radial-gradient(900px 500px at 96% 8%, color-mix(in srgb, var(--tenant-secondary) 12%, transparent), transparent 56%),
-    linear-gradient(
-      180deg,
-      var(--tenant-primary) 0%,
-      color-mix(in srgb, var(--tenant-primary) 38%, #000 62%) 100%
-    );
-  color: var(--tenant-on-primary);
-  font-family:
-    'Poppins',
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Open Sans',
-    'Helvetica Neue',
-    sans-serif;
-  font-weight: 500;
+  @include glass.themed-shell(var(--tenant-primary), var(--tenant-secondary), var(--tenant-on-primary));
   min-height: 100vh;
   overflow-x: hidden;
-  position: relative;
-  isolation: isolate;
 
   main {
     margin: 0 auto;
@@ -69,25 +47,11 @@
   textarea,
   select,
   button {
-    backdrop-filter: blur(10px);
-    background: rgba(252, 246, 254, 0.86);
-    border: 1px solid rgba(166, 139, 177, 0.75);
-    border-radius: 8px;
-    color: #180321;
-    font: inherit;
-    padding: 8px 10px;
+    @include glass.form-control-surface;
   }
 
   input[type='color'] {
-    appearance: none;
-    -webkit-appearance: none;
-    background: transparent;
-    border: 1px solid rgba(166, 139, 177, 0.75);
-    border-radius: 8px;
-    cursor: pointer;
-    height: 44px;
-    padding: 0;
-    width: 96px;
+    @include glass.color-input;
   }
 
   input[type='color']::-webkit-color-swatch-wrapper {
@@ -150,10 +114,7 @@
 
   form > button:not([data-delete-button='true']),
   :global(.inline-options) + label + button:not([data-delete-button='true']) {
-    background: color-mix(in srgb, var(--tenant-secondary) 85%, white 15%);
-    border: 1px solid color-mix(in srgb, var(--tenant-secondary) 78%, white 22%);
-    color: var(--tenant-on-secondary);
-    font-weight: 700;
+    @include glass.action-button(var(--tenant-secondary), var(--tenant-on-secondary));
   }
 
   :global(.inline-options) {
@@ -180,16 +141,11 @@
   }
 
   :global(.area-suggestion) {
-    background: color-mix(in srgb, var(--tenant-secondary) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--tenant-secondary) 45%, transparent);
-    color: #f6deaa;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 6px 10px;
+    @include glass.area-suggestion(var(--tenant-secondary));
   }
 
   :global(.area-suggestion:hover) {
-    background: color-mix(in srgb, var(--tenant-secondary) 24%, transparent);
+    @include glass.area-suggestion-hover(var(--tenant-secondary));
   }
 
   a {
@@ -213,25 +169,11 @@
 }
 
 .root::before {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0) 70%);
-  filter: blur(10px);
-  height: 330px;
-  left: -100px;
-  top: -120px;
-  width: 330px;
+  @include glass.shell-glow-before;
 }
 
 .root::after {
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--tenant-secondary) 18%, transparent) 0%,
-    color-mix(in srgb, var(--tenant-secondary) 0%, transparent) 70%
-  );
-  filter: blur(10px);
-  height: 280px;
-  right: -110px;
-  top: 140px;
-  width: 280px;
+  @include glass.shell-glow-after(var(--tenant-secondary));
 }
 
 .hero {
@@ -285,11 +227,7 @@
 }
 
 .panel {
-  backdrop-filter: blur(16px);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
-  border: 1px solid rgba(252, 246, 254, 0.18);
-  border-radius: 12px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  @include glass.glass-panel;
   padding: 12px;
 }
 

@@ -1,0 +1,121 @@
+@mixin themed-shell($primary, $secondary, $on-primary) {
+  background:
+    radial-gradient(1200px 650px at 8% -12%, rgba(255, 255, 255, 0.09), transparent 60%),
+    radial-gradient(900px 500px at 96% 8%, color-mix(in srgb, #{$secondary} 12%, transparent), transparent 56%),
+    linear-gradient(
+      180deg,
+      #{$primary} 0%,
+      color-mix(in srgb, #{$primary} 38%, #000 62%) 100%
+    );
+  color: $on-primary;
+  font-family:
+    'Poppins',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Open Sans',
+    'Helvetica Neue',
+    sans-serif;
+  font-weight: 500;
+  position: relative;
+  isolation: isolate;
+}
+
+@mixin shell-glow-before {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(10px);
+  height: 330px;
+  left: -100px;
+  top: -120px;
+  width: 330px;
+}
+
+@mixin shell-glow-after($secondary) {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #{$secondary} 18%, transparent) 0%,
+    color-mix(in srgb, #{$secondary} 0%, transparent) 70%
+  );
+  filter: blur(10px);
+  height: 280px;
+  right: -110px;
+  top: 140px;
+  width: 280px;
+}
+
+@mixin glass-panel($blur: 16px) {
+  backdrop-filter: blur($blur);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(252, 246, 254, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+@mixin form-control-surface {
+  backdrop-filter: blur(10px);
+  background: rgba(252, 246, 254, 0.86);
+  border: 1px solid rgba(166, 139, 177, 0.75);
+  border-radius: 8px;
+  color: #180321;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+@mixin color-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid rgba(166, 139, 177, 0.75);
+  border-radius: 8px;
+  cursor: pointer;
+  height: 44px;
+  padding: 0;
+  width: 96px;
+}
+
+@mixin action-button($secondary, $on-secondary) {
+  background: color-mix(in srgb, #{$secondary} 85%, white 15%);
+  border: 1px solid color-mix(in srgb, #{$secondary} 78%, white 22%);
+  color: $on-secondary;
+  font-weight: 700;
+}
+
+@mixin soft-outline-button($secondary) {
+  background: color-mix(in srgb, #{$secondary} 18%, transparent);
+  border: 1px solid color-mix(in srgb, #{$secondary} 62%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, #{$secondary} 82%, white 18%);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 12px;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+  width: fit-content;
+}
+
+@mixin soft-outline-button-hover($secondary) {
+  background: color-mix(in srgb, #{$secondary} 24%, transparent);
+}
+
+@mixin area-suggestion($secondary) {
+  background: color-mix(in srgb, #{$secondary} 14%, transparent);
+  border: 1px solid color-mix(in srgb, #{$secondary} 45%, transparent);
+  color: #f6deaa;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+@mixin area-suggestion-hover($secondary) {
+  background: color-mix(in srgb, #{$secondary} 24%, transparent);
+}

@@ -1,3 +1,5 @@
+@use "../../styles/glass" as glass;
+
 .eatsRoot,
 .embeddedRoot {
   --theme-primary: var(--default-primary-color);
@@ -7,30 +9,9 @@
   --theme-secondary-border: color-mix(in srgb, var(--theme-secondary) 74%, black 26%);
   --theme-secondary-soft-bg: color-mix(in srgb, var(--theme-secondary) 20%, transparent);
   --theme-secondary-soft-bg-hover: color-mix(in srgb, var(--theme-secondary) 26%, transparent);
-  background: linear-gradient(
-    180deg,
-    var(--theme-primary) 0%,
-    color-mix(in srgb, var(--theme-primary) 38%, #000 62%) 100%
-  );
-  color: var(--theme-on-primary);
-  font-family:
-    'Poppins',
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Open Sans',
-    'Helvetica Neue',
-    sans-serif;
-  font-weight: 500;
+  @include glass.themed-shell(var(--theme-primary), var(--theme-secondary), var(--theme-on-primary));
   overflow-x: hidden;
-  position: relative;
   width: 100%;
-  isolation: isolate;
 
   :global(*) {
     box-sizing: content-box;
@@ -163,12 +144,8 @@
 }
 
 .body {
-  backdrop-filter: blur(14px);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(252, 246, 254, 0.16);
-  border-radius: 12px;
+  @include glass.glass-panel(14px);
   box-sizing: border-box;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.16);
   display: block;
   margin-top: 30px;
   max-width: 100%;
@@ -331,15 +308,10 @@
   }
 
   :global(.area-suggestion) {
-    background: color-mix(in srgb, var(--theme-secondary) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+    @include glass.area-suggestion(var(--theme-secondary));
     border-radius: 8px;
-    color: #f6deaa;
     cursor: pointer;
     font-family: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 6px 10px;
   }
 
   button[type='submit'] {
