@@ -6,6 +6,7 @@ export type UrlState = {
   mealType: string;
   category: CategoryFilter;
   status: StatusFilter;
+  search: string;
   excluded: string[];
 };
 
@@ -66,6 +67,7 @@ export const readUrlState = (): UrlState => {
       mealType: 'Any',
       category: 'area',
       status: 'untriedLiked',
+      search: '',
       excluded: []
     };
   }
@@ -75,6 +77,7 @@ export const readUrlState = (): UrlState => {
   const categoryFromUrl = params.get('category');
   const mealTypeFromUrl = params.get('mealType');
   const cityFromUrl = params.get('city');
+  const searchFromUrl = params.get('q');
   const hasCityQuery = params.has('city');
   const excludedFromUrl = params.getAll('exclude');
 
@@ -88,6 +91,7 @@ export const readUrlState = (): UrlState => {
     status: statusFromUrl && statusFilterSet.has(statusFromUrl as StatusFilter)
       ? (statusFromUrl as StatusFilter)
       : 'untriedLiked',
+    search: searchFromUrl?.trim() ?? '',
     excluded: excludedFromUrl.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
   };
 };

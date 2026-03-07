@@ -1,7 +1,5 @@
 @mixin themed-shell($primary, $secondary, $on-primary) {
   background:
-    radial-gradient(1200px 650px at 8% -12%, rgba(255, 255, 255, 0.09), transparent 60%),
-    radial-gradient(900px 500px at 96% 8%, color-mix(in srgb, #{$secondary} 12%, transparent), transparent 56%),
     linear-gradient(
       180deg,
       #{$primary} 0%,

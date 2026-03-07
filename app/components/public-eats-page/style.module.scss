@@ -152,6 +152,24 @@
   @include glass.glass-panel(14px);
   box-sizing: border-box;
   display: block;
+  margin-top: 18px;
+  max-width: 100%;
+  padding: 16px;
+  width: 100%;
+}
+
+.searchResultsBody {
+  padding-top: 4px;
+}
+
+.searchEmptyBody {
+  padding-top: 10px;
+}
+
+.searchCard {
+  @include glass.glass-panel(14px);
+  box-sizing: border-box;
+  display: block;
   margin-top: 22px;
   max-width: 100%;
   padding: 16px;
@@ -395,6 +413,50 @@
   }
 }
 
+.searchSection {
+  margin: 0;
+}
+
+.searchSectionLabel {
+  color: rgba(252, 246, 254, 0.96);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.searchSectionHelp {
+  color: rgba(252, 246, 254, 0.72);
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 14px;
+}
+
+.searchRow {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+
+  > label {
+    align-self: center;
+    color: rgba(252, 246, 254, 0.9);
+    font-weight: 600;
+  }
+
+  > input[type='search'] {
+    backdrop-filter: blur(10px);
+    background: rgba(252, 246, 254, 0.88);
+    border: 1px solid rgba(166, 139, 177, 0.75);
+    border-radius: 8px;
+    box-sizing: border-box;
+    color: #180321;
+    font-family: inherit;
+    font-size: 15px;
+    padding: 6px 10px;
+    max-width: 240px;
+    width: 100%;
+  }
+}
+
 .sorting {
   display: flex;
   flex-direction: column;
@@ -449,6 +511,22 @@
   border: 1px solid rgba(81, 208, 132, 0.7);
   border-radius: 999px;
   color: #bff5d0;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  margin-left: 0;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.dislikedBadge {
+  background: rgba(194, 53, 53, 0.2);
+  border: 1px solid rgba(227, 94, 94, 0.7);
+  border-radius: 999px;
+  color: #ffc2c2;
   display: inline-block;
   font-size: 12px;
   font-weight: 700;
@@ -524,6 +602,11 @@
     font-weight: 600;
     padding: 5px 10px;
   }
+
+  > button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
 }
 
 .filterDialog {
@@ -592,6 +675,22 @@
       }
     }
   }
+}
+
+.searchPlacesContainer {
+  margin-top: 0;
+}
+
+.noResults {
+  backdrop-filter: blur(10px);
+  background: rgba(252, 246, 254, 0.06);
+  border: 1px solid rgba(252, 246, 254, 0.14);
+  border-radius: 12px;
+  box-sizing: border-box;
+  color: rgba(252, 246, 254, 0.82);
+  margin-top: 6px;
+  padding: 16px 18px;
+  width: 100%;
 }
 
 .luckyCard {

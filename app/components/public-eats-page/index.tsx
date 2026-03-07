@@ -1,5 +1,6 @@
 'use client';
 
+import Fuse from 'fuse.js';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
@@ -105,6 +106,7 @@ export function PublicEatsPage({
   const [selectedMealType, setSelectedMealType] = useState<string>('Any');
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
@@ -128,6 +130,7 @@ export function PublicEatsPage({
     setSelectedCity(urlState.city);
     setSelectedMealType(urlState.mealType);
     setCategory(urlState.category);
+    setSearchQuery(urlState.search);
     setExcluded(urlState.excluded);
     setHasInitializedFilters(true);
   }, [embedded]);
@@ -226,6 +229,29 @@ export function PublicEatsPage({
 
     return cityRestaurants.filter((restaurant) => restaurant.mealTypes.includes(selectedMealType));
   }, [cityRestaurants, selectedMealType]);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearchActive = normalizedSearchQuery.length > 0;
+  const restaurantSearch = useMemo(
+    () =>
+      new Fuse(restaurants, {
+        threshold: 0.3,
+        ignoreLocation: true,
+        includeScore: true,
+        keys: [{ name: 'name', weight: 1 }]
+      }),
+    [restaurants]
+  );
+  const searchedRestaurants = useMemo(() => {
+    if (!isSearchActive) {
+      return [];
+    }
+
+    if (normalizedSearchQuery.length < 2) {
+      return restaurants.filter((restaurant) => restaurant.name.toLowerCase().includes(normalizedSearchQuery));
+    }
+
+    return restaurantSearch.search(normalizedSearchQuery).map((result) => result.item);
+  }, [isSearchActive, normalizedSearchQuery, restaurantSearch, restaurants]);
 
   const headings = useMemo(() => {
     const values = new Set<string>();
@@ -321,6 +347,12 @@ export function PublicEatsPage({
       params.delete('status');
     }
 
+    if (searchQuery.trim().length > 0) {
+      params.set('q', searchQuery.trim());
+    } else {
+      params.delete('q');
+    }
+
     params.delete('exclude');
     for (const entry of excluded) {
       params.append('exclude', entry);
@@ -329,10 +361,21 @@ export function PublicEatsPage({
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [category, embedded, excluded, hasInitializedFilters, selectedCity, selectedMealType, status]);
+  }, [category, embedded, excluded, hasInitializedFilters, searchQuery, selectedCity, selectedMealType, status]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
+
+    if (isSearchActive) {
+      for (const restaurant of searchedRestaurants) {
+        const heading = `${restaurant.cityName}, ${restaurant.countryName}`;
+        const current = map.get(heading) ?? [];
+        current.push(restaurant);
+        map.set(heading, current);
+      }
+
+      return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
+    }
 
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
@@ -364,7 +407,7 @@ export function PublicEatsPage({
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
-  }, [category, excluded, mealFilteredRestaurants, selectedCity]);
+  }, [category, excluded, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
   const visibleRestaurantIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -577,223 +620,254 @@ export function PublicEatsPage({
           wanting to try, and counting!
         </div>
       </div>
-      <div className={styles.body}>
-        <div className={styles.sorting}>
-          <div>
-            <label htmlFor="city">City:</label>
-            <select value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
-              {[...citiesByCountry.entries()].map(([country, cityMap]) => (
-                <optgroup key={country} label={country}>
-                  {[...cityMap.entries()].map(([city, count]) => (
-                    <option key={`${country}-${city}`} value={city}>
-                      {city} ({count})
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="mealType">Meal Type:</label>
-            <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
-              <option value="Any">Any</option>
-              {[...mealTypeCounts.keys()].map((meal) => (
-                <option key={meal} value={meal}>
-                  {mealLabel(meal)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="category">Categorise By:</label>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value as CategoryFilter)}
-            >
-              <option value="area">Area</option>
-              <option value="type">Type of Food</option>
-              <option value="recentlyAdded">Date Added</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="status">Status:</label>
-            <select
-              value={status}
-              onChange={(event) => setStatus(event.target.value as StatusFilter)}
-            >
-              <option value="untriedLiked" disabled={statusCount('untriedLiked') === 0}>
-                Want to Try / Liked ({statusCount('untriedLiked')})
-              </option>
-              <option value="liked" disabled={statusCount('liked') === 0}>
-                Liked ({statusCount('liked')})
-              </option>
-              <option value="untried" disabled={statusCount('untried') === 0}>
-                Want to Try ({statusCount('untried')})
-              </option>
-              <option value="disliked" disabled={statusCount('disliked') === 0}>
-                Disliked ({statusCount('disliked')})
-              </option>
-            </select>
-          </div>
-          <div className={styles.filterControls}>
-            {category !== 'recentlyAdded' && headings.length > 1 ? (
-              <button
-                type="button"
-                onClick={() => setIsFilterDialogOpen(true)}
-              >
-                Filter {category === 'area' ? 'Areas' : 'Types'}
-              </button>
-            ) : null}
-            {!embedded ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (visibleRestaurantIds.length === 0) {
-                    return;
-                  }
-
-                  const luckyId = visibleRestaurantIds[Math.floor(Math.random() * visibleRestaurantIds.length)];
-                  const luckyCard = restaurantCardRefs.current[luckyId];
-                  if (!luckyCard) {
-                    return;
-                  }
-
-                  luckyCardHasEnteredViewport.current = false;
-                  setLuckyRestaurantId(luckyId);
-
-                  const cardRect = luckyCard.getBoundingClientRect();
-                  const currentScrollTop = Math.max(
-                    window.scrollY,
-                    window.pageYOffset,
-                    document.documentElement?.scrollTop ?? 0,
-                    document.body?.scrollTop ?? 0
-                  );
-                  const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
-                  window.scrollTo({
-                    top: targetTop,
-                    behavior: 'smooth'
-                  });
-                }}
-                disabled={visibleRestaurantIds.length === 0}
-              >
-                I'm Feeling Lucky
-              </button>
-            ) : null}
+      <div className={styles.searchCard}>
+        <div className={styles.searchSection}>
+          <div className={styles.searchRow}>
+            <label htmlFor="search">Global Search:</label>
+            <input
+              id="search"
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search restaurant names"
+            />
           </div>
         </div>
-        <div className={styles.placesContainer}>
-          {[...grouped.entries()].map(([heading, places]) => (
-            <Fragment key={heading}>
-              <span className={styles.heading}>
-                {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
-              </span>
-              <div>
-                {places
-                  .slice()
-                  .sort((a, b) => {
-                    if (category === 'recentlyAdded') {
-                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      </div>
+      <div
+        className={`${styles.body} ${
+          isSearchActive ? (grouped.size > 0 ? styles.searchResultsBody : styles.searchEmptyBody) : ''
+        }`}
+      >
+        {!isSearchActive ? (
+          <div className={styles.sorting}>
+            <div>
+              <label htmlFor="city">City:</label>
+              <select value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
+                {[...citiesByCountry.entries()].map(([country, cityMap]) => (
+                  <optgroup key={country} label={country}>
+                    {[...cityMap.entries()].map(([city, count]) => (
+                      <option key={`${country}-${city}`} value={city}>
+                        {city} ({count})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mealType">Meal Type:</label>
+              <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
+                <option value="Any">Any</option>
+                {[...mealTypeCounts.keys()].map((meal) => (
+                  <option key={meal} value={meal}>
+                    {mealLabel(meal)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="category">Categorise By:</label>
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value as CategoryFilter)}
+              >
+                <option value="area">Area</option>
+                <option value="type">Type of Food</option>
+                <option value="recentlyAdded">Date Added</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="status">Status:</label>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as StatusFilter)}
+              >
+                <option value="untriedLiked" disabled={statusCount('untriedLiked') === 0}>
+                  Want to Try / Liked ({statusCount('untriedLiked')})
+                </option>
+                <option value="liked" disabled={statusCount('liked') === 0}>
+                  Liked ({statusCount('liked')})
+                </option>
+                <option value="untried" disabled={statusCount('untried') === 0}>
+                  Want to Try ({statusCount('untried')})
+                </option>
+                <option value="disliked" disabled={statusCount('disliked') === 0}>
+                  Disliked ({statusCount('disliked')})
+                </option>
+              </select>
+            </div>
+            <div className={styles.filterControls}>
+              {category !== 'recentlyAdded' && headings.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setIsFilterDialogOpen(true)}
+                >
+                  Filter {category === 'area' ? 'Areas' : 'Types'}
+                </button>
+              ) : null}
+              {!embedded ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (visibleRestaurantIds.length === 0) {
+                      return;
                     }
 
-                    return a.name.localeCompare(b.name);
-                  })
-                  .map((place) => (
-                    <div
-                      className={`${styles.placeCard} ${luckyRestaurantId === place.id ? styles.luckyCard : ''}`}
-                      key={`${heading}-${place.id}`}
-                      ref={(element) => {
-                        restaurantCardRefs.current[place.id] = element;
-                      }}
-                    >
-                      {luckyRestaurantId === place.id ? (
-                        <div className={styles.confettiLayer} aria-hidden="true">
-                          {confettiPieceIndexes.map((index) => (
-                            <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
-                          ))}
-                        </div>
-                      ) : null}
-                      {status === 'untriedLiked' && place.status === 'untried' ? (
-                        <div className={styles.untriedBadgeRow}>
-                          <span className={styles.untriedBadge}>Want to Try</span>
-                        </div>
-                      ) : null}
-                      {status === 'untriedLiked' && place.status === 'liked' ? (
-                        <div className={styles.untriedBadgeRow}>
-                          <span className={styles.likedBadge}>Liked</span>
-                        </div>
-                      ) : null}
-                      <span>
-                        <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
-                          {place.name}
-                        </a>
-                      </span>
+                    const luckyId = visibleRestaurantIds[Math.floor(Math.random() * visibleRestaurantIds.length)];
+                    const luckyCard = restaurantCardRefs.current[luckyId];
+                    if (!luckyCard) {
+                      return;
+                    }
 
-                      {place.referredBy.trim().length > 0 ? (
-                        isUrl(place.referredBy) ? (
-                          <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
-                            Where I Found It
+                    luckyCardHasEnteredViewport.current = false;
+                    setLuckyRestaurantId(luckyId);
+
+                    const cardRect = luckyCard.getBoundingClientRect();
+                    const currentScrollTop = Math.max(
+                      window.scrollY,
+                      window.pageYOffset,
+                      document.documentElement?.scrollTop ?? 0,
+                      document.body?.scrollTop ?? 0
+                    );
+                    const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
+                    window.scrollTo({
+                      top: targetTop,
+                      behavior: 'smooth'
+                    });
+                  }}
+                  disabled={visibleRestaurantIds.length === 0}
+                >
+                  I'm Feeling Lucky
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
+          {grouped.size === 0 ? (
+            <div className={styles.noResults}>
+              {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : 'No restaurants found.'}
+            </div>
+          ) : (
+            [...grouped.entries()].map(([heading, places]) => (
+              <Fragment key={heading}>
+                <span className={styles.heading}>
+                  {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
+                  {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
+                </span>
+                <div>
+                  {places
+                    .slice()
+                    .sort((a, b) => {
+                      if (category === 'recentlyAdded') {
+                        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                      }
+
+                      return a.name.localeCompare(b.name);
+                    })
+                    .map((place) => (
+                      <div
+                        className={`${styles.placeCard} ${luckyRestaurantId === place.id ? styles.luckyCard : ''}`}
+                        key={`${heading}-${place.id}`}
+                        ref={(element) => {
+                          restaurantCardRefs.current[place.id] = element;
+                        }}
+                      >
+                        {luckyRestaurantId === place.id ? (
+                          <div className={styles.confettiLayer} aria-hidden="true">
+                            {confettiPieceIndexes.map((index) => (
+                              <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
+                            ))}
+                          </div>
+                        ) : null}
+                        {status === 'untriedLiked' && place.status === 'untried' ? (
+                          <div className={styles.untriedBadgeRow}>
+                            <span className={styles.untriedBadge}>Want to Try</span>
+                          </div>
+                        ) : null}
+                        {status === 'untriedLiked' && place.status === 'liked' ? (
+                          <div className={styles.untriedBadgeRow}>
+                            <span className={styles.likedBadge}>Liked</span>
+                          </div>
+                        ) : null}
+                        {place.status === 'disliked' ? (
+                          <div className={styles.untriedBadgeRow}>
+                            <span className={styles.dislikedBadge}>Disliked</span>
+                          </div>
+                        ) : null}
+                        <span>
+                          <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
+                            {place.name}
                           </a>
-                        ) : (
-                          <button
-                            className={styles.referrer}
-                            type="button"
-                            onClick={() => {
-                              window.confirm(place.referredBy);
-                            }}
-                          >
-                            Where I Found It
-                          </button>
-                        )
-                      ) : null}
+                        </span>
 
-                      <span className={styles.areaOrType}>
-                        {category === 'type'
-                          ? place.areas.join(', ')
-                          : category === 'recentlyAdded'
-                            ? `${place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}${
-                              place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
-                            }`
-                            : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
-                        {selectedMealType === 'Any'
-                          ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
-                          : ''}
-                      </span>
-
-                      {place.status === 'disliked' ? (
-                        place.dislikedReason ? (
-                          <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
-                        ) : null
-                      ) : (
-                        <div className={styles.notes}>{place.notes}</div>
-                      )}
-
-                      {canEditRestaurants || canDeleteRestaurants ? (
-                        <div className={styles.cardActions}>
-                          {canEditRestaurants ? (
+                        {place.referredBy.trim().length > 0 ? (
+                          isUrl(place.referredBy) ? (
+                            <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
+                              Where I Found It
+                            </a>
+                          ) : (
                             <button
+                              className={styles.referrer}
                               type="button"
-                              className={styles.editButton}
-                              onClick={() => setEditingRestaurantId(place.id)}
+                              onClick={() => {
+                                window.confirm(place.referredBy);
+                              }}
                             >
-                              Edit
+                              Where I Found It
                             </button>
-                          ) : null}
-                          {canDeleteRestaurants ? (
-                            <DeleteRestaurantForm
-                              restaurantId={place.id}
-                              restaurantName={place.name}
-                              className={styles.deleteForm}
-                              buttonClassName={styles.deleteButton}
-                            />
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-              </div>
-            </Fragment>
-          ))}
+                          )
+                        ) : null}
+
+                        <span className={styles.areaOrType}>
+                          {category === 'type' && !searchQuery
+                            ? place.areas.join(', ')
+                            : (category === 'recentlyAdded' || searchQuery)
+                              ? `${place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}${
+                                place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
+                              }`
+                              : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
+                          {selectedMealType === 'Any'
+                            ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
+                            : ''}
+                        </span>
+
+                        {place.status === 'disliked' ? (
+                          place.dislikedReason ? (
+                            <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
+                          ) : null
+                        ) : (
+                          <div className={styles.notes}>{place.notes}</div>
+                        )}
+
+                        {canEditRestaurants || canDeleteRestaurants ? (
+                          <div className={styles.cardActions}>
+                            {canEditRestaurants ? (
+                              <button
+                                type="button"
+                                className={styles.editButton}
+                                onClick={() => setEditingRestaurantId(place.id)}
+                              >
+                                Edit
+                              </button>
+                            ) : null}
+                            {canDeleteRestaurants ? (
+                              <DeleteRestaurantForm
+                                restaurantId={place.id}
+                                restaurantName={place.name}
+                                className={styles.deleteForm}
+                                buttonClassName={styles.deleteButton}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+              </Fragment>
+            ))
+          )}
         </div>
       </div>
       {createTools && !embedded ? (
