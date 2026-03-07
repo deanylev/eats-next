@@ -81,6 +81,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
     const tabs: AdminTab[] = tenant.isRoot
       ? [
           {
+            description: 'Update the root tenant display name and theme colours.',
+            id: 'settings',
+            label: 'Settings'
+          },
+          {
             count: subdomainTenants.length,
             description: 'Create and manage separate tenant spaces for other people.',
             id: 'subdomains',
@@ -168,10 +173,12 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                   Display name
                   <input name="displayName" required defaultValue={tenant.displayName} />
                 </label>
-                <label>
-                  Username
-                  <input name="adminUsername" required defaultValue={session.username} />
-                </label>
+                {tenant.isRoot ? null : (
+                  <label>
+                    Username
+                    <input name="adminUsername" required defaultValue={session.username} />
+                  </label>
+                )}
                 <ColorField
                   label="Primary color"
                   inputId="current-tenant-primary-color"
@@ -188,10 +195,12 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                   resetColor={DEFAULT_SECONDARY_COLOR}
                   rowClassName={styles.colorPickerRow}
                 />
-                <label>
-                  New password (leave blank to keep)
-                  <input name="adminPassword" type="password" />
-                </label>
+                {tenant.isRoot ? null : (
+                  <label>
+                    New password (leave blank to keep)
+                    <input name="adminPassword" type="password" />
+                  </label>
+                )}
                 <div className={styles.manageActions}>
                   <button type="submit">Save settings</button>
                 </div>

@@ -304,7 +304,7 @@ type ParsedTenantSettings = {
 
 const parseTenantSettings = (
   formData: FormData,
-  options: { requirePassword: boolean }
+  options: { requirePassword: boolean; requireUsername?: boolean }
 ): ParsedTenantSettings => {
   const displayName = String(formData.get('displayName') ?? '').trim();
   const adminUsername = String(formData.get('adminUsername') ?? '').trim();
@@ -315,7 +315,7 @@ const parseTenantSettings = (
   if (displayName.length < 1) {
     throw userFacingError('Display name is required.');
   }
-  if (adminUsername.length < 3) {
+  if ((options.requireUsername ?? true) && adminUsername.length < 3) {
     throw userFacingError('Username must be at least 3 characters.');
   }
   if (options.requirePassword && adminPassword.length < 8) {
@@ -433,15 +433,6 @@ const requireRootAdminSession = async (): Promise<AdminSessionContext> => {
   const context = await requireAdminSession();
   if (!context.tenant.isRoot || !context.session.isRoot) {
     throw userFacingError('Only root admin can manage subdomains.');
-  }
-
-  return context;
-};
-
-const requireNonRootAdminSession = async (): Promise<AdminSessionContext> => {
-  const context = await requireAdminSession();
-  if (context.tenant.isRoot) {
-    throw userFacingError('Root tenant settings cannot be changed here.');
   }
 
   return context;
@@ -649,24 +640,30 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
 
 export const updateCurrentTenantSettings = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
-    const { tenant, session } = await requireNonRootAdminSession();
+    const { tenant, session } = await requireAdminSession();
     const db = getDb();
     const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
-      requirePassword: false
+      requirePassword: false,
+      requireUsername: !tenant.isRoot
     });
 
-    await db
-      .update(tenants)
-      .set({
-        displayName,
-        primaryColor,
-        secondaryColor,
-        adminUsername,
-        ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
-      })
-      .where(and(eq(tenants.id, tenant.id), eq(tenants.isRoot, false)));
+    const tenantUpdate = tenant.isRoot
+      ? {
+          displayName,
+          primaryColor,
+          secondaryColor
+        }
+      : {
+          displayName,
+          primaryColor,
+          secondaryColor,
+          adminUsername,
+          ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
+        };
 
-    if (session && session.username !== adminUsername) {
+    await db.update(tenants).set(tenantUpdate).where(eq(tenants.id, tenant.id));
+
+    if (!tenant.isRoot && session && session.username !== adminUsername) {
       const nextToken = await createAdminJwt(adminUsername, {
         tenantId: tenant.id,
         tenantKey: tenant.subdomain ?? '',
