@@ -412,3 +412,18 @@ export const restoreRestaurantRecord = async (db: Db, tenantId: string, restaura
     .set({ deletedAt: null })
     .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId), isNotNull(restaurants.deletedAt)));
 };
+
+export const permanentlyDeleteRestaurantRecord = async (
+  db: Db,
+  tenantId: string,
+  restaurantId: string
+): Promise<void> => {
+  const foundRestaurant = await db.query.restaurants.findFirst({
+    where: and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId), isNotNull(restaurants.deletedAt))
+  });
+  if (!foundRestaurant) {
+    fail('Deleted restaurant not found.');
+  }
+
+  await db.delete(restaurants).where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId)));
+};

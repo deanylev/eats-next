@@ -22,6 +22,7 @@ import {
   deleteCountryRecord,
   deleteRestaurantTypeRecord,
   restoreRestaurantRecord,
+  permanentlyDeleteRestaurantRecord,
   softDeleteRestaurantRecord,
   updateCityRecord,
   updateCountryRecord,
@@ -817,6 +818,14 @@ export const restoreRestaurant = async (formData: FormData): Promise<void> => {
     const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
     await restoreRestaurantRecord(getDb(), tenant.id, restaurantId);
   }, { successMessage: 'Restaurant restored successfully.' });
+};
+
+export const permanentlyDeleteRestaurant = async (formData: FormData): Promise<void> => {
+  return runAdminAction(async () => {
+    const { tenant } = await requireAdminSession();
+    const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+    await permanentlyDeleteRestaurantRecord(getDb(), tenant.id, restaurantId);
+  }, { successMessage: 'Restaurant permanently deleted.' });
 };
 
 export const getCmsData = async (tenantId: string, options?: { includeDeleted?: boolean }) => {

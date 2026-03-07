@@ -17,6 +17,7 @@ import { AdminPanelSection } from '@/app/components/admin-panel-section';
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { ColorField } from '@/app/components/color-field';
 import { ErrorConfirm } from '@/app/components/error-confirm';
+import { PermanentlyDeleteRestaurantForm } from '@/app/components/permanently-delete-restaurant-form';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
 import { getDb } from '@/lib/db';
@@ -266,11 +267,17 @@ export default async function HomePage() {
                     <div>
                       {restaurant.cityName}, {restaurant.countryName}
                     </div>
-                    <RestoreRestaurantForm restaurantId={restaurant.id} restaurantName={restaurant.name} />
+                    <div className={styles.manageActions}>
+                      <RestoreRestaurantForm restaurantId={restaurant.id} restaurantName={restaurant.name} />
+                      <PermanentlyDeleteRestaurantForm
+                        restaurantId={restaurant.id}
+                        restaurantName={restaurant.name}
+                      />
+                    </div>
                   </div>
                 ))}
-                </div>
-              )}
+              </div>
+            )}
           </AdminPanelSection>
 
           <AdminPanelSection className={styles.panel} title="Manage Countries">
