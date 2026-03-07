@@ -742,10 +742,13 @@ export function PublicEatsPage({
                           : ''}
                       </span>
 
-                      <div className={styles.notes}>{place.notes}</div>
-                      {status === 'disliked' && place.dislikedReason ? (
-                        <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
-                      ) : null}
+                      {place.status === 'disliked' ? (
+                        place.dislikedReason ? (
+                          <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
+                        ) : null
+                      ) : (
+                        <div className={styles.notes}>{place.notes}</div>
+                      )}
 
                       {canEditRestaurants || canDeleteRestaurants ? (
                         <div className={styles.cardActions}>
