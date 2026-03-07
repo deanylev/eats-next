@@ -69,12 +69,19 @@
   }
 }
 
+.headerCard {
+  @include glass.glass-panel(18px);
+  box-sizing: border-box;
+  margin-top: 14px;
+  padding: 20px 20px 18px;
+  width: 100%;
+}
+
 .titleRow {
   align-items: flex-start;
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin-top: 14px;
   margin-bottom: 10px;
 }
 
@@ -96,9 +103,7 @@
 
 .countSummary {
   color: rgba(252, 246, 254, 0.9);
-  margin-top: 14px;
-  margin-bottom: 18px;
-  padding-left: 4px;
+  margin: 0;
 }
 
 .countNumber {
@@ -147,7 +152,7 @@
   @include glass.glass-panel(14px);
   box-sizing: border-box;
   display: block;
-  margin-top: 30px;
+  margin-top: 22px;
   max-width: 100%;
   padding: 16px;
   width: 100%;

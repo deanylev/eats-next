@@ -561,19 +561,21 @@ export function PublicEatsPage({
 
   return (
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot} style={rootStyle}>
-      {title || (showAdminButton && !embedded) ? (
-        <div className={styles.titleRow}>
-          {title ? <div className={styles.title}>{title}</div> : null}
-          {showAdminButton && !embedded ? (
-            <a className={styles.adminLink} href="/admin">
-              Admin
-            </a>
-          ) : null}
+      <div className={styles.headerCard}>
+        {title || (showAdminButton && !embedded) ? (
+          <div className={styles.titleRow}>
+            {title ? <div className={styles.title}>{title}</div> : null}
+            {showAdminButton && !embedded ? (
+              <a className={styles.adminLink} href="/admin">
+                Admin
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+        <div className={styles.countSummary}>
+          <span className={styles.countNumber}>{triedCount}</span> places liked, <span className={styles.countNumber}>{untriedCount}</span>{' '}
+          wanting to try, and counting!
         </div>
-      ) : null}
-      <div className={styles.countSummary}>
-        <span className={styles.countNumber}>{triedCount}</span> places liked, <span className={styles.countNumber}>{untriedCount}</span>{' '}
-        wanting to try, and counting!
       </div>
       <div className={styles.body}>
         <div className={styles.sorting}>
