@@ -668,7 +668,7 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
       });
       setAdminSessionCookie(nextToken);
     }
-  }, { successMessage: 'Tenant settings saved.' });
+  }, { successMessage: 'Settings saved.' });
 };
 
 export const createCountry = async (formData: FormData): Promise<void> => {

@@ -36,7 +36,7 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
     return (
       <div className={styles.root} style={rootStyle}>
         <main className={styles.card}>
-          <h1>{tenant.displayName} Admin Login</h1>
+          <h1>Admin Login</h1>
           {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
           <form action={loginAdmin}>
             <label>

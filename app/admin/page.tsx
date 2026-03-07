@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import {
@@ -13,8 +14,8 @@ import {
   updateCountry,
   updateRestaurantType
 } from '@/app/actions';
-import { AdminPanelSection } from '@/app/components/admin-panel-section';
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
+import { AdminPanelSection } from '@/app/components/admin-panel-section';
 import { ColorField } from '@/app/components/color-field';
 import { ErrorConfirm } from '@/app/components/error-confirm';
 import { PermanentlyDeleteRestaurantForm } from '@/app/components/permanently-delete-restaurant-form';
@@ -29,7 +30,27 @@ import styles from './style.module.scss';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+type AdminTabId = 'settings' | 'subdomains' | 'countries' | 'cities' | 'types' | 'deleted';
+
+type AdminTab = {
+  count?: number;
+  description: string;
+  id: AdminTabId;
+  label: string;
+};
+
+type AdminPageProps = {
+  searchParams?: {
+    tab?: string | string[];
+  };
+};
+
+const getRequestedTab = (searchParams?: AdminPageProps['searchParams']): string | undefined => {
+  const requestedTab = searchParams?.tab;
+  return Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
+};
+
+export default async function HomePage({ searchParams }: AdminPageProps) {
   try {
     const tenant = await resolveRequestTenant();
     const { hasSession, session } = await getAdminSessionForTenant(tenant);
@@ -50,23 +71,86 @@ export default async function HomePage() {
       flashCookieNames.adminSuccess
     ] as const);
     const rootStyle = buildThemeCssVariables(tenant.primaryColor, tenant.secondaryColor, 'tenant') as CSSProperties;
+    const activeRestaurantCount = data.restaurants.length;
+    const deletedRestaurantCount = data.deletedRestaurants.length;
+    const cityCount = data.cities.length;
+    const typeCount = data.types.length;
+    const countryCount = data.countries.length;
+    const tabs: AdminTab[] = tenant.isRoot
+      ? [
+          {
+            count: subdomainTenants.length,
+            description: 'Create and manage separate tenant spaces for other people.',
+            id: 'subdomains',
+            label: 'Subdomains'
+          },
+          {
+            count: countryCount,
+            description: 'Add countries and rename or remove ones that are no longer needed.',
+            id: 'countries',
+            label: 'Countries'
+          },
+          {
+            count: cityCount,
+            description: 'Add cities, move them between countries, and choose the default city.',
+            id: 'cities',
+            label: 'Cities'
+          },
+          {
+            count: typeCount,
+            description: 'Maintain restaurant types and their required emoji labels.',
+            id: 'types',
+            label: 'Restaurant Types'
+          },
+          {
+            count: deletedRestaurantCount,
+            description: 'Restore deleted restaurants or remove them permanently.',
+            id: 'deleted',
+            label: 'Deleted Restaurants'
+          }
+        ]
+      : [
+          {
+            description: 'Update your display name, login credentials, and theme colours.',
+            id: 'settings',
+            label: 'Settings'
+          },
+          {
+            count: countryCount,
+            description: 'Add countries and rename or remove ones that are no longer needed.',
+            id: 'countries',
+            label: 'Countries'
+          },
+          {
+            count: cityCount,
+            description: 'Add cities, move them between countries, and choose the default city.',
+            id: 'cities',
+            label: 'Cities'
+          },
+          {
+            count: typeCount,
+            description: 'Maintain restaurant types and their required emoji labels.',
+            id: 'types',
+            label: 'Restaurant Types'
+          },
+          {
+            count: deletedRestaurantCount,
+            description: 'Restore deleted restaurants or remove them permanently.',
+            id: 'deleted',
+            label: 'Deleted Restaurants'
+          }
+        ];
+    const requestedTab = getRequestedTab(searchParams);
+    const activeTab = tabs.some((tab) => tab.id === requestedTab)
+      ? (requestedTab as AdminTabId)
+      : tabs[0].id;
+    const activeTabConfig = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
-    return (
-      <div className={styles.root} style={rootStyle}>
-        <main>
-          <header className={styles.hero}>
-            <div className={styles.heroTop}>
-              <h1>{tenant.displayName} Admin</h1>
-              <form action={logoutAdmin}>
-                <button type="submit">Log Out</button>
-              </form>
-            </div>
-          </header>
-          <ErrorConfirm message={flashMessages[flashCookieNames.adminError]} />
-          <SuccessConfirm message={flashMessages[flashCookieNames.adminSuccess]} />
-
-          {!tenant.isRoot ? (
-            <AdminPanelSection className={styles.panel} title="Tenant Settings">
+    const renderActiveTab = () => {
+      if (activeTab === 'settings') {
+        return (
+          <div className={styles.resourceGridSingle}>
+            <AdminPanelSection className={styles.panel} title="Settings">
               <form action={updateCurrentTenantSettings}>
                 <label>
                   Display name
@@ -97,113 +181,60 @@ export default async function HomePage() {
                   <input name="adminPassword" type="password" />
                 </label>
                 <div className={styles.manageActions}>
-                  <button type="submit">Save tenant settings</button>
+                  <button type="submit">Save settings</button>
                 </div>
               </form>
             </AdminPanelSection>
-          ) : null}
-
-          <div className={styles.builderGrid}>
-            {tenant.isRoot ? (
-              <AdminPanelSection className={styles.panel} title="Add Subdomain Tenant">
-                <form action={createSubdomainTenant} data-reset-on-success="true">
-                  <label>
-                    Subdomain
-                    <input name="subdomain" required />
-                  </label>
-                  <label>
-                    Display name
-                    <input name="displayName" required />
-                  </label>
-                  <label>
-                    Username
-                    <input name="adminUsername" required />
-                  </label>
-                  <ColorField
-                    label="Primary color"
-                    inputId="create-subdomain-primary-color"
-                    name="primaryColor"
-                    defaultValue={DEFAULT_PRIMARY_COLOR}
-                    resetColor={DEFAULT_PRIMARY_COLOR}
-                    rowClassName={styles.colorPickerRow}
-                  />
-                  <ColorField
-                    label="Secondary color"
-                    inputId="create-subdomain-secondary-color"
-                    name="secondaryColor"
-                    defaultValue={DEFAULT_SECONDARY_COLOR}
-                    resetColor={DEFAULT_SECONDARY_COLOR}
-                    rowClassName={styles.colorPickerRow}
-                  />
-                  <label>
-                    Password
-                    <input name="adminPassword" type="password" required />
-                  </label>
-                  <div className={styles.manageActions}>
-                    <button type="submit">Create subdomain</button>
-                  </div>
-                </form>
-              </AdminPanelSection>
-            ) : null}
-
-            <AdminPanelSection className={styles.panel} title="Add Country">
-              <form action={createCountry} data-reset-on-success="true">
-                <label>
-                  Country name
-                  <input name="name" required />
-                </label>
-                <button type="submit">Create country</button>
-              </form>
-            </AdminPanelSection>
-
-            <AdminPanelSection className={styles.panel} title="Add City">
-              <form action={createCity} data-reset-on-success="true">
-                <label>
-                  City name
-                  <input name="name" required />
-                </label>
-                <label>
-                  Country
-                  <select name="countryId" required defaultValue="">
-                    <option value="" disabled>
-                      Select country
-                    </option>
-                    {data.countries.map((country) => (
-                      <option key={country.id} value={country.id}>
-                        {country.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <input name="isDefault" type="checkbox" />
-                  Set as default city
-                </label>
-                <button type="submit" disabled={data.countries.length === 0}>
-                  Create city
-                </button>
-              </form>
-            </AdminPanelSection>
-
-            <AdminPanelSection className={styles.panel} title="Add Restaurant Type">
-              <form action={createRestaurantType} data-reset-on-success="true">
-                <label>
-                  Type name
-                  <input name="name" required />
-                </label>
-                <label>
-                  Emoji (required)
-                  <input name="emoji" required />
-                </label>
-                <button type="submit">Create type</button>
-              </form>
-            </AdminPanelSection>
           </div>
+        );
+      }
 
-          {tenant.isRoot ? (
-            <AdminPanelSection className={styles.panel} title="Manage Subdomains">
+      if (activeTab === 'subdomains') {
+        return (
+          <div className={styles.resourceGrid}>
+            <AdminPanelSection className={styles.panel} title="Create Subdomain">
+              <form action={createSubdomainTenant} data-reset-on-success="true">
+                <label>
+                  Subdomain
+                  <input name="subdomain" required />
+                </label>
+                <label>
+                  Display name
+                  <input name="displayName" required />
+                </label>
+                <label>
+                  Username
+                  <input name="adminUsername" required />
+                </label>
+                <ColorField
+                  label="Primary color"
+                  inputId="create-subdomain-primary-color"
+                  name="primaryColor"
+                  defaultValue={DEFAULT_PRIMARY_COLOR}
+                  resetColor={DEFAULT_PRIMARY_COLOR}
+                  rowClassName={styles.colorPickerRow}
+                />
+                <ColorField
+                  label="Secondary color"
+                  inputId="create-subdomain-secondary-color"
+                  name="secondaryColor"
+                  defaultValue={DEFAULT_SECONDARY_COLOR}
+                  resetColor={DEFAULT_SECONDARY_COLOR}
+                  rowClassName={styles.colorPickerRow}
+                />
+                <label>
+                  Password
+                  <input name="adminPassword" type="password" required />
+                </label>
+                <div className={styles.manageActions}>
+                  <button type="submit">Create subdomain</button>
+                </div>
+              </form>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Existing Subdomains">
               {subdomainTenants.length === 0 ? (
-                <p>No subdomains yet.</p>
+                <p className={styles.emptyState}>No subdomains yet.</p>
               ) : (
                 <div className={styles.manageList}>
                   {subdomainTenants.map((subdomainTenant) => (
@@ -254,11 +285,205 @@ export default async function HomePage() {
                 </div>
               )}
             </AdminPanelSection>
-          ) : null}
+          </div>
+        );
+      }
 
+      if (activeTab === 'countries') {
+        return (
+          <div className={styles.resourceGrid}>
+            <AdminPanelSection className={styles.panel} title="Add Country">
+              <form action={createCountry} data-reset-on-success="true">
+                <label>
+                  Country name
+                  <input name="name" required />
+                </label>
+                <div className={styles.manageActions}>
+                  <button type="submit">Create country</button>
+                </div>
+              </form>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Existing Countries">
+              {data.countries.length === 0 ? (
+                <p className={styles.emptyState}>No countries yet.</p>
+              ) : (
+                <div className={styles.manageList}>
+                  {data.countries.map((country) => (
+                    <details key={country.id} className={styles.manageItem}>
+                      <summary>{country.name}</summary>
+                      <form action={updateCountry}>
+                        <input type="hidden" name="countryId" value={country.id} />
+                        <label>
+                          Country name
+                          <input name="name" required defaultValue={country.name} />
+                        </label>
+                        <div className={styles.manageActions}>
+                          <button type="submit">Save country</button>
+                        </div>
+                      </form>
+                      <AdminEntityDeleteForm
+                        entityType="country"
+                        entityId={country.id}
+                        entityName={country.name}
+                        buttonLabel="Delete country"
+                      />
+                    </details>
+                  ))}
+                </div>
+              )}
+            </AdminPanelSection>
+          </div>
+        );
+      }
+
+      if (activeTab === 'cities') {
+        return (
+          <div className={styles.resourceGrid}>
+            <AdminPanelSection className={styles.panel} title="Add City">
+              <form action={createCity} data-reset-on-success="true">
+                <label>
+                  City name
+                  <input name="name" required />
+                </label>
+                <label>
+                  Country
+                  <select name="countryId" required defaultValue="">
+                    <option value="" disabled>
+                      Select country
+                    </option>
+                    {data.countries.map((country) => (
+                      <option key={country.id} value={country.id}>
+                        {country.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <input name="isDefault" type="checkbox" />
+                  Set as default city
+                </label>
+                <div className={styles.manageActions}>
+                  <button type="submit" disabled={data.countries.length === 0}>
+                    Create city
+                  </button>
+                </div>
+              </form>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Existing Cities">
+              {data.cities.length === 0 ? (
+                <p className={styles.emptyState}>No cities yet.</p>
+              ) : (
+                <div className={styles.manageList}>
+                  {data.cities.map((city) => (
+                    <details key={city.id} className={styles.manageItem}>
+                      <summary>
+                        {city.name}, {city.countryName}
+                        {city.isDefault ? ' (Default)' : ''}
+                      </summary>
+                      <form action={updateCity}>
+                        <input type="hidden" name="cityId" value={city.id} />
+                        <label>
+                          City name
+                          <input name="name" required defaultValue={city.name} />
+                        </label>
+                        <label>
+                          Country
+                          <select name="countryId" required defaultValue={city.countryId}>
+                            {data.countries.map((country) => (
+                              <option key={`${city.id}-${country.id}`} value={country.id}>
+                                {country.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <input name="isDefault" type="checkbox" defaultChecked={city.isDefault} />
+                          Default city
+                        </label>
+                        <div className={styles.manageActions}>
+                          <button type="submit">Save city</button>
+                        </div>
+                      </form>
+                      <AdminEntityDeleteForm
+                        entityType="city"
+                        entityId={city.id}
+                        entityName={`${city.name}, ${city.countryName}`}
+                        buttonLabel="Delete city"
+                      />
+                    </details>
+                  ))}
+                </div>
+              )}
+            </AdminPanelSection>
+          </div>
+        );
+      }
+
+      if (activeTab === 'types') {
+        return (
+          <div className={styles.resourceGrid}>
+            <AdminPanelSection className={styles.panel} title="Add Restaurant Type">
+              <form action={createRestaurantType} data-reset-on-success="true">
+                <label>
+                  Type name
+                  <input name="name" required />
+                </label>
+                <label>
+                  Emoji (required)
+                  <input name="emoji" required />
+                </label>
+                <div className={styles.manageActions}>
+                  <button type="submit">Create type</button>
+                </div>
+              </form>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Existing Restaurant Types">
+              {data.types.length === 0 ? (
+                <p className={styles.emptyState}>No restaurant types yet.</p>
+              ) : (
+                <div className={styles.manageList}>
+                  {data.types.map((type) => (
+                    <details key={type.id} className={styles.manageItem}>
+                      <summary>
+                        {type.emoji} {type.name}
+                      </summary>
+                      <form action={updateRestaurantType}>
+                        <input type="hidden" name="typeId" value={type.id} />
+                        <label>
+                          Type name
+                          <input name="name" required defaultValue={type.name} />
+                        </label>
+                        <label>
+                          Emoji
+                          <input name="emoji" required defaultValue={type.emoji} />
+                        </label>
+                        <div className={styles.manageActions}>
+                          <button type="submit">Save type</button>
+                        </div>
+                      </form>
+                      <AdminEntityDeleteForm
+                        entityType="type"
+                        entityId={type.id}
+                        entityName={`${type.emoji} ${type.name}`}
+                        buttonLabel="Delete type"
+                      />
+                    </details>
+                  ))}
+                </div>
+              )}
+            </AdminPanelSection>
+          </div>
+        );
+      }
+
+      return (
+        <div className={styles.resourceGridSingle}>
           <AdminPanelSection className={styles.panel} title="Deleted Restaurants">
             {data.deletedRestaurants.length === 0 ? (
-              <p>No deleted restaurants.</p>
+              <p className={styles.emptyState}>No deleted restaurants.</p>
             ) : (
               <div className={styles.manageList}>
                 {data.deletedRestaurants.map((restaurant) => (
@@ -267,7 +492,7 @@ export default async function HomePage() {
                     <div>
                       {restaurant.cityName}, {restaurant.countryName}
                     </div>
-                    <div className={styles.manageActions}>
+                    <div className={`${styles.manageActions} ${styles.deletedActions}`}>
                       <RestoreRestaurantForm restaurantId={restaurant.id} restaurantName={restaurant.name} />
                       <PermanentlyDeleteRestaurantForm
                         restaurantId={restaurant.id}
@@ -279,107 +504,71 @@ export default async function HomePage() {
               </div>
             )}
           </AdminPanelSection>
+        </div>
+      );
+    };
 
-          <AdminPanelSection className={styles.panel} title="Manage Countries">
-            <div className={styles.manageList}>
-              {data.countries.map((country) => (
-                <details key={country.id} className={styles.manageItem}>
-                  <summary>{country.name}</summary>
-                  <form action={updateCountry}>
-                    <input type="hidden" name="countryId" value={country.id} />
-                    <label>
-                      Country name
-                      <input name="name" required defaultValue={country.name} />
-                    </label>
-                    <div className={styles.manageActions}>
-                      <button type="submit">Save country</button>
-                    </div>
-                  </form>
-                  <AdminEntityDeleteForm
-                    entityType="country"
-                    entityId={country.id}
-                    entityName={country.name}
-                    buttonLabel="Delete country"
-                  />
-                </details>
-              ))}
+    return (
+      <div className={styles.root} style={rootStyle}>
+        <main>
+          <header className={styles.hero}>
+            <div className={styles.heroTop}>
+              <div className={styles.heroCopy}>
+                <h1>Admin Panel</h1>
+              </div>
+              <form action={logoutAdmin}>
+                <button type="submit">Log Out</button>
+              </form>
             </div>
-          </AdminPanelSection>
+            <div className={styles.heroStats}>
+              <div className={styles.heroStat}>
+                <span className={styles.heroStatValue}>{activeRestaurantCount}</span>
+                <span className={styles.heroStatLabel}>Active Restaurants</span>
+              </div>
+              <div className={styles.heroStat}>
+                <span className={styles.heroStatValue}>{countryCount}</span>
+                <span className={styles.heroStatLabel}>Countries</span>
+              </div>
+              <div className={styles.heroStat}>
+                <span className={styles.heroStatValue}>{cityCount}</span>
+                <span className={styles.heroStatLabel}>Cities</span>
+              </div>
+              <div className={styles.heroStat}>
+                <span className={styles.heroStatValue}>{typeCount}</span>
+                <span className={styles.heroStatLabel}>Restaurant Types</span>
+              </div>
+            </div>
+          </header>
 
-          <AdminPanelSection className={styles.panel} title="Manage Cities">
-            <div className={styles.manageList}>
-              {data.cities.map((city) => (
-                <details key={city.id} className={styles.manageItem}>
-                  <summary>
-                    {city.name}, {city.countryName}
-                    {city.isDefault ? ' (Default)' : ''}
-                  </summary>
-                  <form action={updateCity}>
-                    <input type="hidden" name="cityId" value={city.id} />
-                    <label>
-                      City name
-                      <input name="name" required defaultValue={city.name} />
-                    </label>
-                    <label>
-                      Country
-                      <select name="countryId" required defaultValue={city.countryId}>
-                        {data.countries.map((country) => (
-                          <option key={`${city.id}-${country.id}`} value={country.id}>
-                            {country.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <input name="isDefault" type="checkbox" defaultChecked={city.isDefault} />
-                      Default city
-                    </label>
-                    <div className={styles.manageActions}>
-                      <button type="submit">Save city</button>
-                    </div>
-                  </form>
-                  <AdminEntityDeleteForm
-                    entityType="city"
-                    entityId={city.id}
-                    entityName={`${city.name}, ${city.countryName}`}
-                    buttonLabel="Delete city"
-                  />
-                </details>
-              ))}
-            </div>
-          </AdminPanelSection>
+          <ErrorConfirm message={flashMessages[flashCookieNames.adminError]} />
+          <SuccessConfirm message={flashMessages[flashCookieNames.adminSuccess]} />
 
-          <AdminPanelSection className={styles.panel} title="Manage Restaurant Types">
-            <div className={styles.manageList}>
-              {data.types.map((type) => (
-                <details key={type.id} className={styles.manageItem}>
-                  <summary>
-                    {type.emoji} {type.name}
-                  </summary>
-                  <form action={updateRestaurantType}>
-                    <input type="hidden" name="typeId" value={type.id} />
-                    <label>
-                      Type name
-                      <input name="name" required defaultValue={type.name} />
-                    </label>
-                    <label>
-                      Emoji
-                      <input name="emoji" required defaultValue={type.emoji} />
-                    </label>
-                    <div className={styles.manageActions}>
-                      <button type="submit">Save type</button>
-                    </div>
-                  </form>
-                  <AdminEntityDeleteForm
-                    entityType="type"
-                    entityId={type.id}
-                    entityName={`${type.emoji} ${type.name}`}
-                    buttonLabel="Delete type"
-                  />
-                </details>
-              ))}
+          <section className={styles.tabsShell}>
+            <div className={styles.tabsIntro}>
+              <h2>{activeTabConfig.label}</h2>
+              <p className={styles.tabsBlurb}>{activeTabConfig.description}</p>
             </div>
-          </AdminPanelSection>
+            <nav className={styles.tabsList} aria-label="Admin resources">
+              {tabs.map((tab) => (
+                <Link
+                  key={tab.id}
+                  href={`/admin?tab=${tab.id}`}
+                  className={`${styles.tabLink} ${activeTab === tab.id ? styles.tabLinkActive : ''}`}
+                  aria-current={activeTab === tab.id ? 'page' : undefined}
+                  scroll={false}
+                >
+                  <span>{tab.label}</span>
+                  {typeof tab.count === 'number' ? (
+                    <span className={styles.tabCount}>{tab.count}</span>
+                  ) : null}
+                </Link>
+              ))}
+            </nav>
+          </section>
+
+          <section key={activeTab} className={styles.tabContent}>
+            {renderActiveTab()}
+          </section>
         </main>
       </div>
     );

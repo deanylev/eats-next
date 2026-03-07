@@ -5,60 +5,14 @@
   --tenant-secondary: var(--default-secondary-color);
   --tenant-on-primary: #ffffff;
   --tenant-on-secondary: #000000;
-  align-items: center;
   @include glass.themed-shell(var(--tenant-primary), var(--tenant-secondary), var(--tenant-on-primary));
+  align-items: center;
   display: flex;
   justify-content: center;
   min-height: 100vh;
   overflow: hidden;
-  padding: 16px;
-}
-
-.card {
-  @include glass.glass-panel(18px);
-  max-width: 420px;
-  padding: 20px;
-  width: 100%;
-
-  h1 {
-    color: var(--tenant-secondary);
-    margin: 0 0 12px;
-  }
-
-  form {
-    display: grid;
-    gap: 10px;
-  }
-
-  label {
-    display: grid;
-    gap: 5px;
-  }
-
-  input,
-  button {
-    border-radius: 8px;
-    font: inherit;
-    padding: 8px 10px;
-  }
-
-  input {
-    @include glass.form-control-surface;
-  }
-
-  button {
-    @include glass.action-button(var(--tenant-secondary), var(--tenant-on-secondary));
-    cursor: pointer;
-    transition: box-shadow 160ms ease, transform 160ms ease;
-    width: fit-content;
-  }
-
-  button:hover {
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--tenant-secondary) 72%, white 28%),
-      0 0 18px color-mix(in srgb, var(--tenant-secondary) 45%, transparent);
-    transform: translateY(-1px);
-  }
+  padding: 18px;
+  position: relative;
 }
 
 .root::before,
@@ -77,7 +31,86 @@
   @include glass.shell-glow-after(var(--tenant-secondary));
 }
 
-.error {
-  color: #ffb6b6;
+.card {
+  @include glass.glass-panel(20px);
+  max-width: 480px;
+  padding: 24px;
+  width: 100%;
+
+  h1 {
+    color: rgba(252, 246, 254, 0.98);
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 0.98;
+    margin: 0 0 10px;
+  }
+
+  form {
+    display: grid;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  label {
+    color: rgba(252, 246, 254, 0.92);
+    display: grid;
+    gap: 6px;
+    font-size: 16px;
+    font-weight: 400;
+  }
+
+  input,
+  button {
+    font: inherit;
+  }
+
+  input {
+    @include glass.form-control-surface;
+  }
+
+  button {
+    @include glass.form-control-surface;
+    @include glass.action-button(var(--tenant-secondary), var(--tenant-on-secondary));
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 10px 14px;
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      background 160ms ease;
+    width: fit-content;
+  }
+
+  button:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--tenant-secondary) 72%, white 28%),
+      0 0 18px color-mix(in srgb, var(--tenant-secondary) 45%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+.eyebrow {
+  color: var(--tenant-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
   margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.blurb {
+  color: rgba(252, 246, 254, 0.76);
+  font-size: 17px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.error {
+  background: rgba(194, 51, 51, 0.18);
+  border: 1px solid rgba(226, 95, 95, 0.5);
+  border-radius: 12px;
+  color: #fff0f0;
+  margin: 16px 0 0;
+  padding: 10px 12px;
 }
