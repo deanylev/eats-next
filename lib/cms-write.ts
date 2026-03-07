@@ -312,6 +312,7 @@ export const updateRestaurantRecord = async (
   if (!foundRestaurant) {
     fail('Restaurant not found.');
   }
+  const existingRestaurant = foundRestaurant ?? fail('Restaurant not found.');
 
   await validateRestaurantRefs(db, tenantId, input);
 
@@ -333,9 +334,9 @@ export const updateRestaurantRecord = async (
     const nextTriedAt =
       input.status === 'untried'
         ? null
-        : foundRestaurant.status === 'untried'
+        : existingRestaurant.status === 'untried'
           ? new Date()
-          : foundRestaurant.triedAt ?? new Date();
+          : existingRestaurant.triedAt ?? new Date();
 
     await tx
       .update(restaurants)
