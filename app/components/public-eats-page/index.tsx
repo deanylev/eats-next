@@ -109,6 +109,7 @@ export function PublicEatsPage({
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
+  const [isSavingEditRestaurant, setIsSavingEditRestaurant] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
@@ -459,6 +460,7 @@ export function PublicEatsPage({
       return;
     }
 
+    setIsSavingEditRestaurant(false);
     window.confirm(rootEditErrorMessage);
     clearFlashCookieClient(flashCookieNames.rootEditError, '/');
     if (openEditRestaurantId) {
@@ -471,9 +473,23 @@ export function PublicEatsPage({
       return;
     }
 
+    setIsSavingEditRestaurant(false);
     clearFlashCookieClient(flashCookieNames.rootEditSuccess, '/');
     setEditingRestaurantId(null);
   }, [rootEditSuccessMessage]);
+
+  useEffect(() => {
+    if (!isSavingEditRestaurant) {
+      return;
+    }
+
+    if (rootEditErrorMessage || openEditRestaurantId) {
+      return;
+    }
+
+    setIsSavingEditRestaurant(false);
+    setEditingRestaurantId(null);
+  }, [isSavingEditRestaurant, openEditRestaurantId, rootEditErrorMessage]);
 
   useEffect(() => {
     if (!rootDeleteErrorMessage) {
@@ -940,6 +956,8 @@ export function PublicEatsPage({
                   event.preventDefault();
                   return;
                 }
+
+                setIsSavingEditRestaurant(true);
               }}
             >
               <input type="hidden" name="restaurantId" value={editingRestaurant.id} />
