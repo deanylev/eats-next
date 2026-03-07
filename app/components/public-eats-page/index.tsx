@@ -288,7 +288,7 @@ export function PublicEatsPage({
     }
 
     setExcluded([]);
-  }, [category, hasInitializedFilters, selectedCity, selectedMealType, status]);
+  }, [category, hasInitializedFilters, selectedCity, status]);
 
   useEffect(() => {
     if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
