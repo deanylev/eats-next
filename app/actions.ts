@@ -30,6 +30,12 @@ import {
   updateRestaurantTypeRecord
 } from '@/lib/cms-write';
 import { getDb } from '@/lib/db';
+import {
+  importAllTenants,
+  importIntoCurrentTenant,
+  parseImportExportPayload,
+  type ImportExportPayload
+} from '@/lib/data-transfer';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
@@ -669,6 +675,49 @@ export const updateCurrentTenantSettings = async (formData: FormData): Promise<v
       setAdminSessionCookie(nextToken);
     }
   }, { successMessage: 'Settings saved.' });
+};
+
+const parseImportFile = async (formData: FormData): Promise<ImportExportPayload> => {
+  const uploadedFile = formData.get('importFile');
+  if (!(uploadedFile instanceof File)) {
+    throw userFacingError('Choose a JSON export file to import.');
+  }
+
+  if (uploadedFile.size === 0) {
+    throw userFacingError('The import file is empty.');
+  }
+
+  let rawText = '';
+  try {
+    rawText = await uploadedFile.text();
+  } catch {
+    throw userFacingError('Could not read the import file.');
+  }
+
+  try {
+    return parseImportExportPayload(rawText);
+  } catch {
+    throw userFacingError('That file is not a valid Eats export.');
+  }
+};
+
+export const importAdminData = async (formData: FormData): Promise<void> => {
+  return runAdminAction(async () => {
+    const { tenant } = await requireAdminSession();
+    const payload = await parseImportFile(formData);
+    const db = getDb();
+
+    if (payload.scope === 'all-tenants') {
+      if (!tenant.isRoot) {
+        throw userFacingError('Only the root tenant can import an all-tenants export.');
+      }
+
+      await importAllTenants(db, tenant, payload);
+      return;
+    }
+
+    await importIntoCurrentTenant(db, tenant, payload);
+  }, { successMessage: 'Data imported successfully.' });
 };
 
 export const createCountry = async (formData: FormData): Promise<void> => {

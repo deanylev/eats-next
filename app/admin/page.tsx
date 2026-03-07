@@ -7,6 +7,7 @@ import {
   createCountry,
   createRestaurantType,
   getCmsData,
+  importAdminData,
   logoutAdmin,
   updateCurrentTenantSettings,
   updateSubdomainTenant,
@@ -17,6 +18,7 @@ import {
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { AdminPanelSection } from '@/app/components/admin-panel-section';
 import { ColorField } from '@/app/components/color-field';
+import { ConfirmingActionForm } from '@/app/components/confirming-action-form';
 import { ErrorConfirm } from '@/app/components/error-confirm';
 import { PermanentlyDeleteRestaurantForm } from '@/app/components/permanently-delete-restaurant-form';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
@@ -30,7 +32,7 @@ import styles from './style.module.scss';
 
 export const dynamic = 'force-dynamic';
 
-type AdminTabId = 'settings' | 'subdomains' | 'countries' | 'cities' | 'types' | 'deleted';
+type AdminTabId = 'settings' | 'subdomains' | 'countries' | 'cities' | 'types' | 'deleted' | 'backup';
 
 type AdminTab = {
   count?: number;
@@ -107,6 +109,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
             description: 'Restore deleted restaurants or remove them permanently.',
             id: 'deleted',
             label: 'Deleted Restaurants'
+          },
+          {
+            description: 'Export JSON backups and replace data by importing a previous export.',
+            id: 'backup',
+            label: 'Backup & Restore'
           }
         ]
       : [
@@ -138,6 +145,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
             description: 'Restore deleted restaurants or remove them permanently.',
             id: 'deleted',
             label: 'Deleted Restaurants'
+          },
+          {
+            description: 'Export your tenant as JSON or replace it from a previous export.',
+            id: 'backup',
+            label: 'Backup & Restore'
           }
         ];
     const requestedTab = getRequestedTab(searchParams);
@@ -474,6 +486,49 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                   ))}
                 </div>
               )}
+            </AdminPanelSection>
+          </div>
+        );
+      }
+
+      if (activeTab === 'backup') {
+        return (
+          <div className={styles.resourceGrid}>
+            <AdminPanelSection className={styles.panel} title="Export Data">
+              <div className={styles.exportActions}>
+                <a className={styles.exportLink} href="/admin/export">
+                  {tenant.isRoot ? 'Export current tenant JSON' : 'Export tenant JSON'}
+                </a>
+                {tenant.isRoot ? (
+                  <a className={styles.exportLink} href="/admin/export?scope=all">
+                    Export all tenants JSON
+                  </a>
+                ) : null}
+              </div>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Import Data">
+              <ConfirmingActionForm
+                action={importAdminData}
+                confirmText={
+                  tenant.isRoot
+                    ? 'Import this backup? This replaces the current root tenant data, or all tenants if the file is an all-tenants export.'
+                    : 'Import this backup? This replaces your current tenant data.'
+                }
+              >
+                <label>
+                  JSON export file
+                  <input accept="application/json,.json" name="importFile" required type="file" />
+                </label>
+                <p className={styles.importHint}>
+                  {tenant.isRoot
+                    ? 'Imports replace existing data instead of merging. Root imports can restore either root-only exports or all-tenant exports.'
+                    : 'Imports replace existing data instead of merging.'}
+                </p>
+                <div className={styles.manageActions}>
+                  <button type="submit">Import JSON</button>
+                </div>
+              </ConfirmingActionForm>
             </AdminPanelSection>
           </div>
         );
