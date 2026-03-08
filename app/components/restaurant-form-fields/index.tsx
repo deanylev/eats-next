@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
 type RestaurantStatus = 'untried' | 'liked' | 'disliked';
@@ -60,6 +61,17 @@ export function RestaurantFormFields({
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
   const [showAreaSuggestions, setShowAreaSuggestions] = useState<boolean>(true);
   const areasRef = useRef<HTMLTextAreaElement | null>(null);
+  const cityGroups = useMemo(
+    () =>
+      buildCitySelectGroups(
+        cities.map((city) => ({
+          countryName: city.countryName,
+          name: city.name,
+          value: city.id
+        }))
+      ),
+    [cities]
+  );
   const areaSuggestionsForCity = useMemo(
     () => areaSuggestionsByCity?.[selectedCityId] ?? [],
     [areaSuggestionsByCity, selectedCityId]
@@ -128,24 +140,17 @@ export function RestaurantFormFields({
     <>
       <label>
         City
-        <select
+        <CitySelect
+          id={`${keyPrefix}-city`}
           name="cityId"
-          required
+          required={true}
+          groups={cityGroups}
           value={selectedCityId}
-          onChange={(event) => {
-            setSelectedCityId(event.target.value);
+          onChange={(value) => {
+            setSelectedCityId(value);
             setShowAreaSuggestions(true);
           }}
-        >
-          <option value="" disabled>
-            Select city
-          </option>
-          {cities.map((city) => (
-            <option key={`${keyPrefix}-city-${city.id}`} value={city.id}>
-              {city.name}, {city.countryName}
-            </option>
-          ))}
-        </select>
+        />
       </label>
 
       <label>

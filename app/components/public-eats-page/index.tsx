@@ -4,6 +4,7 @@ import Fuse from 'fuse.js';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
+import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
 import {
@@ -423,6 +424,20 @@ export function PublicEatsPage({
     return buildAreaSuggestionsByCity(restaurants);
   }, [restaurants]);
   const areaSuggestionsByCity = adminTools?.areaSuggestionsByCity ?? createAreaSuggestionsByCity;
+  const filterCityGroups = useMemo(
+    () =>
+      buildCitySelectGroups(
+        [...citiesByCountry.entries()].flatMap(([countryName, cityMap]) =>
+          [...cityMap.entries()].map(([cityName, count]) => ({
+            countryName,
+            label: `${cityName} (${count})`,
+            name: cityName,
+            value: cityName
+          }))
+        )
+      ),
+    [citiesByCountry]
+  );
 
   useEffect(() => {
     if (!luckyRestaurantId || typeof window === 'undefined') {
@@ -643,17 +658,7 @@ export function PublicEatsPage({
           <div className={styles.sorting}>
             <div>
               <label htmlFor="city">City:</label>
-              <select value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
-                {[...citiesByCountry.entries()].map(([country, cityMap]) => (
-                  <optgroup key={country} label={country}>
-                    {[...cityMap.entries()].map(([city, count]) => (
-                      <option key={`${country}-${city}`} value={city}>
-                        {city} ({count})
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <CitySelect id="city" groups={filterCityGroups} value={selectedCity} onChange={setSelectedCity} />
             </div>
             <div>
               <label htmlFor="mealType">Meal Type:</label>
