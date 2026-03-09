@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
@@ -42,6 +42,7 @@ type RestaurantFormFieldsProps = {
   submitLabel: string;
   disableSubmit?: boolean;
   keyPrefix: string;
+  showDevelopmentPopulateButton?: boolean;
 };
 
 export function RestaurantFormFields({
@@ -52,14 +53,28 @@ export function RestaurantFormFields({
   defaults,
   submitLabel,
   disableSubmit = false,
-  keyPrefix
+  keyPrefix,
+  showDevelopmentPopulateButton = false
 }: RestaurantFormFieldsProps) {
-  const selectedTypeIds = new Set(defaults?.typeIds ?? []);
-  const selectedMealTypes = new Set(defaults?.mealTypes ?? []);
+  const [availableTypes, setAvailableTypes] = useState(types);
+  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>(defaults?.typeIds ?? []);
+  const [selectedMealTypes, setSelectedMealTypes] = useState<MealType[]>(
+    (defaults?.mealTypes?.filter((mealType): mealType is MealType =>
+      mealTypeChoices.includes(mealType as MealType)
+    ) ?? []) as MealType[]
+  );
   const [selectedCityId, setSelectedCityId] = useState<string>(defaults?.cityId ?? '');
   const [areasValue, setAreasValue] = useState<string>(defaults?.areas?.join('\n') ?? '');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
   const [showAreaSuggestions, setShowAreaSuggestions] = useState<boolean>(true);
+  const [newTypeName, setNewTypeName] = useState<string>('');
+  const [newTypeEmoji, setNewTypeEmoji] = useState<string>('');
+  const [isCreatingType, setIsCreatingType] = useState<boolean>(false);
+  const [nameValue, setNameValue] = useState<string>(defaults?.name ?? '');
+  const [notesValue, setNotesValue] = useState<string>(defaults?.notes ?? '');
+  const [referredByValue, setReferredByValue] = useState<string>(defaults?.referredBy ?? '');
+  const [urlValue, setUrlValue] = useState<string>(defaults?.url ?? '');
+  const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
   const areasRef = useRef<HTMLTextAreaElement | null>(null);
   const cityGroups = useMemo(
     () =>
@@ -112,6 +127,105 @@ export function RestaurantFormFields({
       })
       .slice(0, 8);
   }, [areaSuggestionsForCity, currentAreaDraft, selectedCityId, typedAreas]);
+  const normalizedNewTypeName = newTypeName.trim().toLowerCase();
+  const isDuplicateNewTypeName =
+    normalizedNewTypeName.length > 0 &&
+    availableTypes.some((type) => type.name.trim().toLowerCase() === normalizedNewTypeName);
+  const hasSelectedTypes = selectedTypeIds.length > 0;
+
+  const toggleMealType = (mealType: MealType, checked: boolean): void => {
+    setSelectedMealTypes((current) => {
+      if (checked) {
+        if (current.includes(mealType)) {
+          return current;
+        }
+
+        return [...current, mealType];
+      }
+
+      return current.filter((entry) => entry !== mealType);
+    });
+  };
+
+  const upsertType = (type: { id: string; name: string; emoji: string }): void => {
+    setAvailableTypes((current) => {
+      const next = current.some((existing) => existing.id === type.id)
+        ? current.map((existing) => (existing.id === type.id ? type : existing))
+        : [...current, type];
+
+      return [...next].sort((left, right) => left.name.localeCompare(right.name));
+    });
+    setSelectedTypeIds((current) => (current.includes(type.id) ? current : [...current, type.id]));
+  };
+
+  const handleCreateType = async (): Promise<void> => {
+    const trimmedName = newTypeName.trim();
+    const trimmedEmoji = newTypeEmoji.trim();
+    if (!trimmedName) {
+      window.confirm('Type name is required.');
+      return;
+    }
+
+    if (!trimmedEmoji) {
+      window.confirm('Emoji is required.');
+      return;
+    }
+
+    if (isDuplicateNewTypeName) {
+      return;
+    }
+
+    setIsCreatingType(true);
+
+    try {
+      const response = await fetch('/api/restaurant-types', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          emoji: trimmedEmoji
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { duplicate?: boolean; error?: string; type?: { emoji: string; id: string; name: string } }
+        | null;
+
+      if (!response.ok || !payload?.type) {
+        window.confirm(payload?.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+
+      upsertType(payload.type);
+
+      if (payload.duplicate) {
+        setNewTypeName(payload.type.name);
+        setNewTypeEmoji(payload.type.emoji);
+        return;
+      }
+
+      setNewTypeName('');
+      setNewTypeEmoji('');
+    } catch {
+      window.confirm('Something went wrong. Please try again.');
+    } finally {
+      setIsCreatingType(false);
+    }
+  };
+
+  const handleInlineTypeKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    if (isCreatingType) {
+      return;
+    }
+
+    void handleCreateType();
+  };
 
   const handleAreaSuggestionClick = (area: string): void => {
     const textarea = areasRef.current;
@@ -134,6 +248,29 @@ export function RestaurantFormFields({
       areasRef.current.focus();
       areasRef.current.setSelectionRange(nextCursorPosition, nextCursorPosition);
     });
+  };
+
+  const handlePopulateFakeValues = (): void => {
+    const fakeCityId = selectedCityId || cities[0]?.id || '';
+    const fakeTypeIds = hasSelectedTypes ? selectedTypeIds : availableTypes[0] ? [availableTypes[0].id] : [];
+    const areaSuggestions = fakeCityId ? areaSuggestionsByCity?.[fakeCityId] ?? [] : [];
+    const fakeAreas = areaSuggestions.slice(0, 2);
+    const populatedAreas = fakeAreas.length >= 2 ? fakeAreas : ['CBD', 'North Side'];
+    const fakeSuffix = Math.floor(Date.now() % 100000)
+      .toString()
+      .padStart(5, '0');
+
+    setSelectedCityId(fakeCityId);
+    setAreasValue(populatedAreas.join('\n'));
+    setSelectedMealTypes(['lunch', 'dinner']);
+    setNameValue(`Test Restaurant ${fakeSuffix}`);
+    setNotesValue('Development-only seeded restaurant notes.');
+    setReferredByValue('Local recommendation');
+    setSelectedTypeIds(fakeTypeIds);
+    setUrlValue(`https://example.com/restaurants/test-${fakeSuffix}/`);
+    setStatus('untried');
+    setDislikedReasonValue('');
+    setShowAreaSuggestions(false);
   };
 
   return (
@@ -202,7 +339,8 @@ export function RestaurantFormFields({
                 type="checkbox"
                 name="mealTypes"
                 value={mealType}
-                defaultChecked={selectedMealTypes.has(mealType)}
+                checked={selectedMealTypes.includes(mealType)}
+                onChange={(event) => toggleMealType(mealType, event.target.checked)}
               />
               {mealTypeLabel[mealType]}
             </label>
@@ -212,29 +350,70 @@ export function RestaurantFormFields({
 
       <label>
         Name
-        <input name="name" required defaultValue={defaults?.name ?? ''} />
+        <input name="name" required value={nameValue} onChange={(event) => setNameValue(event.target.value)} />
       </label>
 
       <label>
         Notes
-        <textarea name="notes" rows={4} required defaultValue={defaults?.notes ?? ''} />
+        <textarea
+          name="notes"
+          rows={4}
+          required
+          value={notesValue}
+          onChange={(event) => setNotesValue(event.target.value)}
+        />
       </label>
 
       <label>
         Referred by (URL or free text)
-        <input name="referredBy" defaultValue={defaults?.referredBy ?? ''} />
+        <input name="referredBy" value={referredByValue} onChange={(event) => setReferredByValue(event.target.value)} />
       </label>
 
       <fieldset>
         <legend>Restaurant Types (pick at least 1)</legend>
+        <div className="inline-type-creator">
+          <div className="inline-type-creator-row">
+            <input
+              type="text"
+              value={newTypeName}
+              placeholder="New type name"
+              onChange={(event) => setNewTypeName(event.target.value)}
+              onKeyDown={handleInlineTypeKeyDown}
+            />
+            <input
+              type="text"
+              value={newTypeEmoji}
+              placeholder="Emoji"
+              maxLength={8}
+              onChange={(event) => setNewTypeEmoji(event.target.value)}
+              onKeyDown={handleInlineTypeKeyDown}
+            />
+            <button
+              type="button"
+              className="inline-type-create-button"
+              disabled={isCreatingType || newTypeName.trim().length === 0 || newTypeEmoji.trim().length === 0 || isDuplicateNewTypeName}
+              onClick={() => {
+                void handleCreateType();
+              }}
+            >
+              {isCreatingType ? 'Adding…' : 'Add type'}
+            </button>
+          </div>
+          {isDuplicateNewTypeName ? <div className="inline-type-warning">That type already exists.</div> : null}
+        </div>
         <div className="inline-options">
-          {types.map((type) => (
+          {availableTypes.map((type) => (
             <label key={`${keyPrefix}-type-${type.id}`}>
               <input
                 type="checkbox"
                 name="typeIds"
                 value={type.id}
-                defaultChecked={selectedTypeIds.has(type.id)}
+                checked={selectedTypeIds.includes(type.id)}
+                onChange={(event) => {
+                  setSelectedTypeIds((current) =>
+                    event.target.checked ? [...current, type.id] : current.filter((entry) => entry !== type.id)
+                  );
+                }}
               />
               {type.emoji} {type.name}
             </label>
@@ -244,7 +423,7 @@ export function RestaurantFormFields({
 
       <label>
         URL
-        <input name="url" type="url" required defaultValue={defaults?.url ?? ''} />
+        <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
       </label>
 
       <label>
@@ -252,7 +431,7 @@ export function RestaurantFormFields({
         <select
           name="status"
           required
-          defaultValue={defaults?.status ?? 'untried'}
+          value={status}
           onChange={(event) => setStatus(event.target.value as RestaurantStatus)}
         >
           {statusChoices.map((status) => (
@@ -266,13 +445,26 @@ export function RestaurantFormFields({
       {status === 'disliked' ? (
         <label>
           Disliked Reason
-          <textarea name="dislikedReason" rows={3} required defaultValue={defaults?.dislikedReason ?? ''} />
+          <textarea
+            name="dislikedReason"
+            rows={3}
+            required
+            value={dislikedReasonValue}
+            onChange={(event) => setDislikedReasonValue(event.target.value)}
+          />
         </label>
       ) : null}
 
-      <button type="submit" disabled={disableSubmit}>
-        {submitLabel}
-      </button>
+      <div className="form-actions">
+        <button type="submit" disabled={disableSubmit}>
+          {submitLabel}
+        </button>
+        {showDevelopmentPopulateButton ? (
+          <button type="button" className="secondary-action-button" onClick={handlePopulateFakeValues}>
+            [DEV] Fill fake values
+          </button>
+        ) : null}
+      </div>
     </>
   );
 }

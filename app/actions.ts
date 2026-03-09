@@ -38,6 +38,7 @@ import {
 } from '@/lib/data-transfer';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
+import { assertValidRequestOrigin } from '@/lib/request-origin';
 import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
 import {
   cities,
@@ -49,7 +50,7 @@ import {
   restaurantTypes,
   tenants
 } from '@/lib/schema';
-import { normalizeHost, parseHostForTenant, resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
+import { parseHostForTenant, resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
 import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
 import {
   cityInputSchema,
@@ -151,34 +152,14 @@ const bounce = (errorMessage: string): never => {
 
 const assertSameOrigin = (): void => {
   const headerStore = headers();
-  const origin = headerStore.get('origin');
-  const referer = headerStore.get('referer');
-  const host = resolveRequestHost(headerStore.get('host'), headerStore.get('x-forwarded-host'));
-
-  if (!host) {
-    throw userFacingError('Invalid request origin.');
-  }
-
-  const source = origin || referer;
-  if (!source) {
-    throw userFacingError('Invalid request origin.');
-  }
-
-  let parsedOrigin: URL;
   try {
-    parsedOrigin = new URL(source);
+    assertValidRequestOrigin({
+      host: headerStore.get('host'),
+      forwardedHost: headerStore.get('x-forwarded-host'),
+      origin: headerStore.get('origin'),
+      referer: headerStore.get('referer')
+    });
   } catch {
-    throw userFacingError('Invalid request origin.');
-  }
-
-  const expectedHost = normalizeHost(host);
-  const actualHost = normalizeHost(parsedOrigin.host);
-  if (actualHost !== expectedHost) {
-    throw userFacingError('Invalid request origin.');
-  }
-
-  const isLocalHost = parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1';
-  if (process.env.NODE_ENV === 'production' && !isLocalHost && parsedOrigin.protocol !== 'https:') {
     throw userFacingError('Invalid request origin.');
   }
 };

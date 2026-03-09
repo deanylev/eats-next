@@ -6,6 +6,7 @@ import {
   createCityRecord,
   createCountryRecord,
   createRestaurantRecord,
+  createOrGetRestaurantTypeRecord,
   createRestaurantTypeRecord,
   deleteCityRecord,
   deleteCountryRecord,
@@ -128,6 +129,29 @@ dbTest('createRestaurantTypeRecord creates a tenant-scoped restaurant type', asy
     assert.equal(savedTypes.length, 1);
     assert.equal(savedTypes[0]?.name, 'Steak');
     assert.equal(savedTypes[0]?.emoji, '🥩');
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('createOrGetRestaurantTypeRecord reuses an existing type case-insensitively', async () => {
+  const { db, cleanup } = await createTestDb();
+  const tenantId = randomUUID();
+
+  try {
+    await db.insert(tenants).values({ id: tenantId, displayName: 'Dean', isRoot: false });
+
+    const firstResult = await createOrGetRestaurantTypeRecord(db, tenantId, { name: 'Steak', emoji: '🥩' });
+    const secondResult = await createOrGetRestaurantTypeRecord(db, tenantId, { name: 'sTeAk', emoji: '🍖' });
+
+    const savedTypes = await db.select().from(restaurantTypes).where(eq(restaurantTypes.tenantId, tenantId));
+
+    assert.equal(firstResult.created, true);
+    assert.equal(secondResult.created, false);
+    assert.equal(secondResult.id, firstResult.id);
+    assert.equal(secondResult.name, 'Steak');
+    assert.equal(secondResult.emoji, '🥩');
+    assert.equal(savedTypes.length, 1);
   } finally {
     await cleanup();
   }

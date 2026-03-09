@@ -916,12 +916,13 @@ export function PublicEatsPage({
                     disableAreasUntilCitySelected
                     keyPrefix="root-create-restaurant"
                     submitLabel="Create restaurant"
-                    disableSubmit={createTools.cities.length === 0 || createTools.types.length === 0}
+                    disableSubmit={createTools.cities.length === 0}
                     defaults={{
                       cityId: createDefaultCityId,
                       mealTypes: createDefaultMealTypes,
                       status: createDefaultStatus
                     }}
+                    showDevelopmentPopulateButton={process.env.NODE_ENV !== 'production'}
                   />
                 </form>
               </section>

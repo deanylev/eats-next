@@ -37,6 +37,7 @@ test('readUrlState returns sensible defaults without window', () => {
       mealType: 'Any',
       category: 'area',
       status: 'untriedLiked',
+      search: '',
       excluded: []
     });
   } finally {
@@ -62,6 +63,7 @@ test('readUrlState parses query params from window.location.search', () => {
       mealType: 'Lunch',
       category: 'type',
       status: 'liked',
+      search: '',
       excluded: ['CBD', 'Fitzroy']
     });
   } finally {

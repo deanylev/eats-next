@@ -161,6 +161,56 @@ export const createRestaurantTypeRecord = async (
   });
 };
 
+export const createOrGetRestaurantTypeRecord = async (
+  db: Db,
+  tenantId: string,
+  input: RestaurantTypeInput
+): Promise<{ created: boolean; emoji: string; id: string; name: string }> => {
+  const existingType = await db.query.restaurantTypes.findFirst({
+    where: and(eq(restaurantTypes.tenantId, tenantId), sql`lower(${restaurantTypes.name}) = lower(${input.name})`)
+  });
+  if (existingType) {
+    return {
+      created: false,
+      emoji: existingType.emoji,
+      id: existingType.id,
+      name: existingType.name
+    };
+  }
+
+  const typeId = randomUUID();
+
+  try {
+    await db.insert(restaurantTypes).values({
+      id: typeId,
+      tenantId,
+      name: input.name,
+      emoji: input.emoji
+    });
+  } catch (error) {
+    const duplicateType = await db.query.restaurantTypes.findFirst({
+      where: and(eq(restaurantTypes.tenantId, tenantId), sql`lower(${restaurantTypes.name}) = lower(${input.name})`)
+    });
+    if (duplicateType) {
+      return {
+        created: false,
+        emoji: duplicateType.emoji,
+        id: duplicateType.id,
+        name: duplicateType.name
+      };
+    }
+
+    throw error;
+  }
+
+  return {
+    created: true,
+    emoji: input.emoji,
+    id: typeId,
+    name: input.name
+  };
+};
+
 export const updateRestaurantTypeRecord = async (
   db: Db,
   tenantId: string,
