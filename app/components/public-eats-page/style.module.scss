@@ -10,6 +10,7 @@
   --theme-secondary-soft-bg: color-mix(in srgb, var(--theme-secondary) 20%, transparent);
   --theme-secondary-soft-bg-hover: color-mix(in srgb, var(--theme-secondary) 26%, transparent);
   @include glass.themed-shell(var(--theme-primary), var(--theme-secondary), var(--theme-on-primary));
+  background: var(--theme-primary);
   overflow-x: hidden;
   width: 100%;
 
