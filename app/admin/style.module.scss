@@ -6,6 +6,7 @@
   --tenant-on-primary: #ffffff;
   --tenant-on-secondary: #000000;
   @include glass.themed-shell(var(--tenant-primary), var(--tenant-secondary), var(--tenant-on-primary));
+  background: var(--tenant-primary);
   min-height: 100vh;
   overflow-x: hidden;
 
@@ -155,22 +156,6 @@
   details[open] > summary {
     margin-bottom: 12px;
   }
-}
-
-.root::before,
-.root::after {
-  content: '';
-  pointer-events: none;
-  position: absolute;
-  z-index: -1;
-}
-
-.root::before {
-  @include glass.shell-glow-before;
-}
-
-.root::after {
-  @include glass.shell-glow-after(var(--tenant-secondary));
 }
 
 .hero {
