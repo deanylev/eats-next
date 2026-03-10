@@ -6,6 +6,9 @@
   --theme-secondary: var(--default-secondary-color);
   --theme-on-primary: #ffffff;
   --theme-on-secondary: #000000;
+  --theme-on-primary-strong: color-mix(in srgb, var(--theme-on-primary) 96%, transparent);
+  --theme-on-primary-soft: color-mix(in srgb, var(--theme-on-primary) 90%, transparent);
+  --theme-on-primary-muted: color-mix(in srgb, var(--theme-on-primary) 76%, transparent);
   --theme-secondary-border: color-mix(in srgb, var(--theme-secondary) 74%, black 26%);
   --theme-secondary-soft-bg: color-mix(in srgb, var(--theme-secondary) 20%, transparent);
   --theme-secondary-soft-bg-hover: color-mix(in srgb, var(--theme-secondary) 26%, transparent);
@@ -103,7 +106,7 @@
 }
 
 .countSummary {
-  color: rgba(252, 246, 254, 0.9);
+  color: var(--theme-on-primary-soft);
   margin: 0;
 }
 
@@ -278,7 +281,7 @@
   }
 
   label {
-    color: rgba(252, 246, 254, 0.92);
+    color: var(--theme-on-primary-soft);
     display: grid;
     gap: 5px;
   }
@@ -299,7 +302,7 @@
   }
 
   fieldset {
-    border: 1px solid rgba(252, 246, 254, 0.3);
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 30%, transparent);
     border-radius: 8px;
     margin: 0;
     max-width: 100%;
@@ -326,7 +329,7 @@
   }
 
   :global(.area-autosuggest) > span {
-    color: rgba(252, 246, 254, 0.8);
+    color: var(--theme-on-primary-muted);
     font-size: 14px;
     font-weight: 600;
   }
@@ -348,7 +351,7 @@
   }
 
   :global(.inline-type-creator) small {
-    color: rgba(252, 246, 254, 0.72);
+    color: var(--theme-on-primary-muted);
   }
 
   :global(.inline-type-warning) {
@@ -391,10 +394,10 @@
   }
 
   :global(.secondary-action-button) {
-    background: rgba(252, 246, 254, 0.08);
-    border: 1px solid rgba(252, 246, 254, 0.28);
+    background: color-mix(in srgb, var(--theme-on-primary) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
     border-radius: 8px;
-    color: rgba(252, 246, 254, 0.92);
+    color: var(--theme-on-primary-soft);
     cursor: pointer;
     font-family: inherit;
     font-size: 15px;
@@ -485,14 +488,14 @@
 }
 
 .searchSectionLabel {
-  color: rgba(252, 246, 254, 0.96);
+  color: var(--theme-on-primary-strong);
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .searchSectionHelp {
-  color: rgba(252, 246, 254, 0.72);
+  color: var(--theme-on-primary-muted);
   font-size: 14px;
   line-height: 1.4;
   margin-bottom: 14px;
@@ -505,7 +508,7 @@
 
   > label {
     align-self: center;
-    color: rgba(252, 246, 254, 0.9);
+    color: var(--theme-on-primary-soft);
     font-weight: 600;
   }
 
@@ -536,7 +539,7 @@
 
     > label {
       align-self: center;
-      color: rgba(252, 246, 254, 0.9);
+      color: var(--theme-on-primary-soft);
       font-weight: 600;
     }
   }
@@ -736,7 +739,7 @@
       position: relative;
 
       > div > a {
-        color: #fff;
+        color: var(--theme-on-primary-strong);
         overflow-wrap: anywhere;
         overflow-wrap: break-word;
       }
@@ -750,11 +753,11 @@
 
 .noResults {
   backdrop-filter: blur(10px);
-  background: rgba(252, 246, 254, 0.06);
-  border: 1px solid rgba(252, 246, 254, 0.14);
+  background: color-mix(in srgb, var(--theme-on-primary) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
   border-radius: 12px;
   box-sizing: border-box;
-  color: rgba(252, 246, 254, 0.82);
+  color: var(--theme-on-primary-muted);
   margin-top: 6px;
   padding: 16px 18px;
   width: 100%;
@@ -836,7 +839,7 @@
 }
 
 .cardActions {
-  border-top: 1px dashed rgba(252, 246, 254, 0.28);
+  border-top: 1px dashed color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -886,7 +889,7 @@
   background: rgba(194, 51, 51, 0.9);
   border: 1px solid rgba(226, 95, 95, 0.82);
   border-radius: 8px;
-  color: #fff;
+  color: #ffffff;
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
