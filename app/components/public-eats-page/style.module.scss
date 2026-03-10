@@ -725,10 +725,17 @@
 
     > .placeCard {
       backdrop-filter: blur(14px);
-      background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-      border: 1px solid rgba(252, 246, 254, 0.12);
+      background: linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--theme-on-primary) 10%, transparent),
+        color-mix(in srgb, var(--theme-on-primary) 4%, transparent)
+      );
+      border: 1px solid color-mix(in srgb, var(--theme-on-primary) 16%, transparent);
       border-radius: 12px;
       box-sizing: border-box;
+      box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.16),
+        inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
       display: flex;
       flex-direction: column;
       gap: 8px;
