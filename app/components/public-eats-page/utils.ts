@@ -14,6 +14,23 @@ export const restaurantStatusFilterSet = new Set<RestaurantStatusFilter>(['liked
 export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
 export const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 export const defaultRestaurantStatuses: RestaurantStatusFilter[] = ['untried', 'liked'];
+export const showFeelingLuckyForStatuses = (statuses: RestaurantStatusFilter[]): boolean =>
+  !(statuses.length === 1 && statuses[0] === 'disliked');
+
+export const getFeelingLuckyCandidateIds = (
+  restaurantIds: string[],
+  restaurantsById: Map<string, { status: RestaurantStatusFilter }>,
+  statuses: RestaurantStatusFilter[]
+): string[] => {
+  if (!statuses.includes('liked') && !statuses.includes('untried')) {
+    return restaurantIds;
+  }
+
+  return restaurantIds.filter((id) => {
+    const restaurant = restaurantsById.get(id);
+    return restaurant ? restaurant.status !== 'disliked' : false;
+  });
+};
 
 export const mealLabel = (meal: string): string => {
   if (meal === 'snack') {

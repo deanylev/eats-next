@@ -12,11 +12,13 @@ import {
   categoryFilterSet,
   confettiPieceIndexes,
   defaultRestaurantStatuses,
+  getFeelingLuckyCandidateIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
   mealLabel,
   readUrlState,
+  showFeelingLuckyForStatuses,
   type CategoryFilter,
   type RestaurantStatusFilter
 } from '@/app/components/public-eats-page/utils';
@@ -410,6 +412,16 @@ export function PublicEatsPage({
 
     return [...ids];
   }, [grouped]);
+  const visibleRestaurantsById = useMemo(
+    () => new Map(restaurants.map((restaurant) => [restaurant.id, restaurant])),
+    [restaurants]
+  );
+  const luckyCandidateIds = useMemo(
+    () => getFeelingLuckyCandidateIds(visibleRestaurantIds, visibleRestaurantsById, selectedStatuses),
+    [selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
+  );
+  const disableFeelingLuckyButton =
+    !showFeelingLuckyForStatuses(selectedStatuses) || luckyCandidateIds.length === 0;
   const createAreaSuggestionsByCity = useMemo(() => {
     return buildAreaSuggestionsByCity(restaurants);
   }, [restaurants]);
@@ -589,6 +601,33 @@ export function PublicEatsPage({
       return current.filter((entry) => entry !== status);
     });
   };
+  const handleFeelingLucky = (): void => {
+    if (luckyCandidateIds.length === 0) {
+      return;
+    }
+
+    const luckyId = luckyCandidateIds[Math.floor(Math.random() * luckyCandidateIds.length)];
+    const luckyCard = restaurantCardRefs.current[luckyId];
+    if (!luckyCard) {
+      return;
+    }
+
+    luckyCardHasEnteredViewport.current = false;
+    setLuckyRestaurantId(luckyId);
+
+    const cardRect = luckyCard.getBoundingClientRect();
+    const currentScrollTop = Math.max(
+      window.scrollY,
+      window.pageYOffset,
+      document.documentElement?.scrollTop ?? 0,
+      document.body?.scrollTop ?? 0
+    );
+    const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
+    window.scrollTo({
+      top: targetTop,
+      behavior: 'smooth'
+    });
+  };
   const editingRestaurant = useMemo(() => {
     if (!editingRestaurantId) {
       return null;
@@ -708,34 +747,8 @@ export function PublicEatsPage({
               {!embedded ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (visibleRestaurantIds.length === 0) {
-                      return;
-                    }
-
-                    const luckyId = visibleRestaurantIds[Math.floor(Math.random() * visibleRestaurantIds.length)];
-                    const luckyCard = restaurantCardRefs.current[luckyId];
-                    if (!luckyCard) {
-                      return;
-                    }
-
-                    luckyCardHasEnteredViewport.current = false;
-                    setLuckyRestaurantId(luckyId);
-
-                    const cardRect = luckyCard.getBoundingClientRect();
-                    const currentScrollTop = Math.max(
-                      window.scrollY,
-                      window.pageYOffset,
-                      document.documentElement?.scrollTop ?? 0,
-                      document.body?.scrollTop ?? 0
-                    );
-                    const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
-                    window.scrollTo({
-                      top: targetTop,
-                      behavior: 'smooth'
-                    });
-                  }}
-                  disabled={visibleRestaurantIds.length === 0}
+                  onClick={handleFeelingLucky}
+                  disabled={disableFeelingLuckyButton}
                 >
                   I'm Feeling Lucky
                 </button>

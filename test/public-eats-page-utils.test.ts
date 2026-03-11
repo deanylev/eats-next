@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getFeelingLuckyCandidateIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
   mealLabel,
-  readUrlState
+  readUrlState,
+  showFeelingLuckyForStatuses
 } from '../app/components/public-eats-page/utils';
 
 test('mealLabel capitalizes known meal labels', () => {
@@ -101,4 +103,27 @@ test('readUrlState supports multiple status params and legacy combined status', 
       value: originalWindow
     });
   }
+});
+
+test('showFeelingLuckyForStatuses hides lucky when only disliked is selected', () => {
+  assert.equal(showFeelingLuckyForStatuses(['disliked']), false);
+  assert.equal(showFeelingLuckyForStatuses(['liked']), true);
+  assert.equal(showFeelingLuckyForStatuses(['liked', 'disliked']), true);
+});
+
+test('getFeelingLuckyCandidateIds excludes disliked restaurants when other statuses are selected', () => {
+  const restaurantsById = new Map([
+    ['a', { status: 'untried' as const }],
+    ['b', { status: 'liked' as const }],
+    ['c', { status: 'disliked' as const }]
+  ]);
+
+  assert.deepEqual(
+    getFeelingLuckyCandidateIds(['a', 'b', 'c'], restaurantsById, ['liked', 'disliked']),
+    ['a', 'b']
+  );
+  assert.deepEqual(
+    getFeelingLuckyCandidateIds(['a', 'b', 'c'], restaurantsById, ['disliked']),
+    ['a', 'b', 'c']
+  );
 });
