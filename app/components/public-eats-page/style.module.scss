@@ -661,11 +661,37 @@
   }
 }
 
+.statusFilterGroup {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+
+  @media only screen and (max-width: 670px) {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+.statusFilterLabel {
+  align-self: center;
+  color: var(--theme-on-primary-soft);
+  font-weight: 600;
+  white-space: nowrap;
+
+  @media only screen and (max-width: 670px) {
+    align-self: flex-start;
+  }
+}
+
+.statusFilterGroup .filtersContainer {
+  margin-top: 0;
+}
+
 .filterControls {
   display: flex;
   gap: 10px;
-  margin-top: 10px;
   flex-wrap: wrap;
+  margin-top: 10px;
 
   > button {
     backdrop-filter: blur(8px);

@@ -1,18 +1,19 @@
-export type StatusFilter = 'untriedLiked' | 'liked' | 'untried' | 'disliked';
+export type RestaurantStatusFilter = 'liked' | 'untried' | 'disliked';
 export type CategoryFilter = 'area' | 'type' | 'recentlyAdded';
 export type UrlState = {
   city: string;
   hasCityQuery: boolean;
   mealType: string;
   category: CategoryFilter;
-  status: StatusFilter;
+  statuses: RestaurantStatusFilter[];
   search: string;
   excluded: string[];
 };
 
-export const statusFilterSet = new Set<StatusFilter>(['untriedLiked', 'liked', 'untried', 'disliked']);
+export const restaurantStatusFilterSet = new Set<RestaurantStatusFilter>(['liked', 'untried', 'disliked']);
 export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
 export const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+export const defaultRestaurantStatuses: RestaurantStatusFilter[] = ['untried', 'liked'];
 
 export const mealLabel = (meal: string): string => {
   if (meal === 'snack') {
@@ -66,20 +67,40 @@ export const readUrlState = (): UrlState => {
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
-      status: 'untriedLiked',
+      statuses: defaultRestaurantStatuses,
       search: '',
       excluded: []
     };
   }
 
   const params = new URLSearchParams(window.location.search);
-  const statusFromUrl = params.get('status');
   const categoryFromUrl = params.get('category');
   const mealTypeFromUrl = params.get('mealType');
   const cityFromUrl = params.get('city');
   const searchFromUrl = params.get('q');
   const hasCityQuery = params.has('city');
   const excludedFromUrl = params.getAll('exclude');
+  const parsedStatuses = params
+    .getAll('status')
+    .flatMap((entry) =>
+      entry
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    );
+  const statusesFromUrl =
+    parsedStatuses.length > 0
+      ? parsedStatuses.flatMap((value) => {
+          if (value === 'untriedLiked') {
+            return ['untried', 'liked'] as RestaurantStatusFilter[];
+          }
+
+          return restaurantStatusFilterSet.has(value as RestaurantStatusFilter)
+            ? [value as RestaurantStatusFilter]
+            : [];
+        })
+      : [];
+  const uniqueStatuses = [...new Set(statusesFromUrl)];
 
   return {
     city: cityFromUrl?.trim() ?? '',
@@ -88,9 +109,7 @@ export const readUrlState = (): UrlState => {
     category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)
       ? (categoryFromUrl as CategoryFilter)
       : 'area',
-    status: statusFromUrl && statusFilterSet.has(statusFromUrl as StatusFilter)
-      ? (statusFromUrl as StatusFilter)
-      : 'untriedLiked',
+    statuses: uniqueStatuses.length > 0 ? uniqueStatuses : defaultRestaurantStatuses,
     search: searchFromUrl?.trim() ?? '',
     excluded: excludedFromUrl.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
   };

@@ -16,8 +16,8 @@ const mealTypeLabel: Record<MealType, string> = {
 };
 const statusLabel: Record<RestaurantStatus, string> = {
   untried: 'Want to Try',
-  liked: 'Liked',
-  disliked: 'Disliked'
+  liked: 'Recommended',
+  disliked: 'Not Recommended'
 };
 
 type RestaurantFormDefaults = {
@@ -444,7 +444,7 @@ export function RestaurantFormFields({
 
       {status === 'disliked' ? (
         <label>
-          Disliked Reason
+          Not Recommended Reason
           <textarea
             name="dislikedReason"
             rows={3}

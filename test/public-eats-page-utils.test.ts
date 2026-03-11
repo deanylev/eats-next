@@ -36,7 +36,7 @@ test('readUrlState returns sensible defaults without window', () => {
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
-      status: 'untriedLiked',
+      statuses: ['untried', 'liked'],
       search: '',
       excluded: []
     });
@@ -62,9 +62,38 @@ test('readUrlState parses query params from window.location.search', () => {
       hasCityQuery: true,
       mealType: 'Lunch',
       category: 'type',
-      status: 'liked',
+      statuses: ['liked'],
       search: '',
       excluded: ['CBD', 'Fitzroy']
+    });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow
+    });
+  }
+});
+
+test('readUrlState supports multiple status params and legacy combined status', () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      location: {
+        search: '?status=untried&status=disliked&status=untriedLiked'
+      }
+    }
+  });
+
+  try {
+    assert.deepEqual(readUrlState(), {
+      city: '',
+      hasCityQuery: false,
+      mealType: 'Any',
+      category: 'area',
+      statuses: ['untried', 'disliked', 'liked'],
+      search: '',
+      excluded: []
     });
   } finally {
     Object.defineProperty(globalThis, 'window', {

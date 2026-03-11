@@ -11,14 +11,14 @@ import {
   byAlpha,
   categoryFilterSet,
   confettiPieceIndexes,
+  defaultRestaurantStatuses,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
   mealLabel,
   readUrlState,
-  statusFilterSet,
   type CategoryFilter,
-  type StatusFilter
+  type RestaurantStatusFilter
 } from '@/app/components/public-eats-page/utils';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
@@ -102,7 +102,7 @@ export function PublicEatsPage({
   const skipNextExcludePrune = useRef(false);
   const hasExplicitCityQuery = useRef(false);
 
-  const [status, setStatus] = useState<StatusFilter>('untriedLiked');
+  const [selectedStatuses, setSelectedStatuses] = useState<RestaurantStatusFilter[]>(defaultRestaurantStatuses);
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [selectedMealType, setSelectedMealType] = useState<string>('Any');
   const [category, setCategory] = useState<CategoryFilter>('area');
@@ -127,7 +127,7 @@ export function PublicEatsPage({
     hasExplicitCityQuery.current = urlState.hasCityQuery;
     skipNextExcludeReset.current = urlState.excluded.length > 0;
     skipNextExcludePrune.current = urlState.excluded.length > 0;
-    setStatus(urlState.status);
+    setSelectedStatuses(urlState.statuses);
     setSelectedCity(urlState.city);
     setSelectedMealType(urlState.mealType);
     setCategory(urlState.category);
@@ -137,20 +137,9 @@ export function PublicEatsPage({
   }, [embedded]);
 
   const statusFilteredRestaurants = useMemo(() => {
-    if (status === 'liked') {
-      return restaurants.filter((restaurant) => restaurant.status === 'liked');
-    }
-
-    if (status === 'untried') {
-      return restaurants.filter((restaurant) => restaurant.status === 'untried');
-    }
-
-    if (status === 'disliked') {
-      return restaurants.filter((restaurant) => restaurant.status === 'disliked');
-    }
-
-    return restaurants.filter((restaurant) => restaurant.status !== 'disliked');
-  }, [restaurants, status]);
+    const selectedStatusSet = new Set(selectedStatuses);
+    return restaurants.filter((restaurant) => selectedStatusSet.has(restaurant.status));
+  }, [restaurants, selectedStatuses]);
 
   const citiesByCountry = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
@@ -315,7 +304,7 @@ export function PublicEatsPage({
     }
 
     setExcluded([]);
-  }, [category, hasInitializedFilters, selectedCity, status]);
+  }, [category, hasInitializedFilters, selectedCity, selectedStatuses]);
 
   useEffect(() => {
     if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
@@ -342,10 +331,11 @@ export function PublicEatsPage({
       params.delete('category');
     }
 
-    if (status !== 'untriedLiked') {
-      params.set('status', status);
-    } else {
-      params.delete('status');
+    params.delete('status');
+    if (selectedStatuses.length !== defaultRestaurantStatuses.length || !defaultRestaurantStatuses.every((status) => selectedStatuses.includes(status))) {
+      for (const status of selectedStatuses) {
+        params.append('status', status);
+      }
     }
 
     if (searchQuery.trim().length > 0) {
@@ -362,7 +352,7 @@ export function PublicEatsPage({
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [category, embedded, excluded, hasInitializedFilters, searchQuery, selectedCity, selectedMealType, status]);
+  }, [category, embedded, excluded, hasInitializedFilters, searchQuery, selectedCity, selectedMealType, selectedStatuses]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
@@ -558,30 +548,12 @@ export function PublicEatsPage({
     clearFlashCookieClient(flashCookieNames.rootDeleteError, '/');
   }, [rootDeleteErrorMessage]);
 
-  const statusCount = (filter: StatusFilter): number => {
+  const statusCount = (status: RestaurantStatusFilter): number => {
     if (!selectedCity) {
       return 0;
     }
 
-    return restaurants.filter((restaurant) => {
-      if (restaurant.cityName !== selectedCity) {
-        return false;
-      }
-
-      if (filter === 'untried') {
-        return restaurant.status === 'untried';
-      }
-
-      if (filter === 'liked') {
-        return restaurant.status === 'liked';
-      }
-
-      if (filter === 'disliked') {
-        return restaurant.status === 'disliked';
-      }
-
-      return restaurant.status !== 'disliked';
-    }).length;
+    return restaurants.filter((restaurant) => restaurant.cityName === selectedCity && restaurant.status === status).length;
   };
   const createDefaultCityId = useMemo(() => {
     if (!createTools || !selectedCity) {
@@ -598,12 +570,25 @@ export function PublicEatsPage({
     return [selectedMealType];
   }, [selectedMealType]);
   const createDefaultStatus = useMemo(() => {
-    if (status === 'liked' || status === 'untried' || status === 'disliked') {
-      return status;
+    if (selectedStatuses.length === 1) {
+      return selectedStatuses[0];
     }
 
     return undefined;
-  }, [status]);
+  }, [selectedStatuses]);
+  const toggleSelectedStatus = (status: RestaurantStatusFilter, checked: boolean): void => {
+    setSelectedStatuses((current) => {
+      if (checked) {
+        return current.includes(status) ? current : [...current, status];
+      }
+
+      if (current.length === 1) {
+        return current;
+      }
+
+      return current.filter((entry) => entry !== status);
+    });
+  };
   const editingRestaurant = useMemo(() => {
     if (!editingRestaurantId) {
       return null;
@@ -631,7 +616,7 @@ export function PublicEatsPage({
           </div>
         ) : null}
         <div className={styles.countSummary}>
-          <span className={styles.countNumber}>{triedCount}</span> places liked, <span className={styles.countNumber}>{untriedCount}</span>{' '}
+          <span className={styles.countNumber}>{triedCount}</span> places recommended, <span className={styles.countNumber}>{untriedCount}</span>{' '}
           wanting to try, and counting!
         </div>
       </div>
@@ -682,25 +667,34 @@ export function PublicEatsPage({
                 <option value="recentlyAdded">Date Added</option>
               </select>
             </div>
-            <div>
-              <label htmlFor="status">Status:</label>
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value as StatusFilter)}
-              >
-                <option value="untriedLiked" disabled={statusCount('untriedLiked') === 0}>
-                  Want to Try / Liked ({statusCount('untriedLiked')})
-                </option>
-                <option value="liked" disabled={statusCount('liked') === 0}>
-                  Liked ({statusCount('liked')})
-                </option>
-                <option value="untried" disabled={statusCount('untried') === 0}>
-                  Want to Try ({statusCount('untried')})
-                </option>
-                <option value="disliked" disabled={statusCount('disliked') === 0}>
-                  Disliked ({statusCount('disliked')})
-                </option>
-              </select>
+            <div className={styles.statusFilterGroup}>
+              <span className={styles.statusFilterLabel}>Status:</span>
+              <div className={styles.filtersContainer}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes('untried')}
+                    onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
+                  />
+                  <span>Want to Try ({statusCount('untried')})</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes('liked')}
+                    onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
+                  />
+                  <span>Recommended ({statusCount('liked')})</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes('disliked')}
+                    onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
+                  />
+                  <span>Not Recommended ({statusCount('disliked')})</span>
+                </label>
+              </div>
             </div>
             <div className={styles.filterControls}>
               {category !== 'recentlyAdded' && headings.length > 1 ? (
@@ -786,19 +780,19 @@ export function PublicEatsPage({
                             ))}
                           </div>
                         ) : null}
-                        {status === 'untriedLiked' && place.status === 'untried' ? (
+                        {place.status === 'untried' ? (
                           <div className={styles.untriedBadgeRow}>
                             <span className={styles.untriedBadge}>Want to Try</span>
                           </div>
                         ) : null}
-                        {status === 'untriedLiked' && place.status === 'liked' ? (
+                        {place.status === 'liked' ? (
                           <div className={styles.untriedBadgeRow}>
-                            <span className={styles.likedBadge}>Liked</span>
+                            <span className={styles.likedBadge}>Recommended</span>
                           </div>
                         ) : null}
                         {place.status === 'disliked' ? (
                           <div className={styles.untriedBadgeRow}>
-                            <span className={styles.dislikedBadge}>Disliked</span>
+                            <span className={styles.dislikedBadge}>Not Recommended</span>
                           </div>
                         ) : null}
                         <span>
