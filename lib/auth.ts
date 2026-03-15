@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 
 export const ADMIN_SESSION_COOKIE = 'admin_session';
 export const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+export const ADMIN_HANDOFF_TTL_SECONDS = 60;
 
 export type AdminJwtPayload = {
   sub: 'admin_root' | 'admin_tenant';
@@ -9,6 +10,18 @@ export type AdminJwtPayload = {
   tenantId: string;
   tenantKey: string;
   isRoot: boolean;
+  iat: number;
+  exp: number;
+};
+
+export type AdminHandoffPayload = {
+  sub: 'admin_handoff';
+  sourceUsername: string;
+  sourceTenantId: string;
+  sourceTenantKey: string;
+  sourceIsRoot: true;
+  targetTenantId: string;
+  targetTenantKey: string;
   iat: number;
   exp: number;
 };
@@ -76,6 +89,74 @@ export const verifyAdminJwt = async (token: string): Promise<AdminJwtPayload | n
       tenantId: payload.tenantId,
       tenantKey: payload.tenantKey,
       isRoot: payload.isRoot,
+      iat: payload.iat,
+      exp: payload.exp
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const createAdminHandoffToken = async (options: {
+  sourceUsername: string;
+  sourceTenantId: string;
+  sourceTenantKey: string;
+  targetTenantId: string;
+  targetTenantKey: string;
+}): Promise<string> =>
+  new SignJWT({
+    sourceUsername: options.sourceUsername,
+    sourceTenantId: options.sourceTenantId,
+    sourceTenantKey: options.sourceTenantKey,
+    sourceIsRoot: true,
+    targetTenantId: options.targetTenantId,
+    targetTenantKey: options.targetTenantKey
+  })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject('admin_handoff')
+    .setIssuedAt()
+    .setExpirationTime(`${ADMIN_HANDOFF_TTL_SECONDS}s`)
+    .sign(getSigningKey());
+
+export const verifyAdminHandoffToken = async (token: string): Promise<AdminHandoffPayload | null> => {
+  try {
+    if (token.length > 4096) {
+      return null;
+    }
+
+    const { payload, protectedHeader } = await jwtVerify(token, getSigningKey(), {
+      algorithms: ['HS256']
+    });
+
+    if (protectedHeader.typ !== 'JWT') {
+      return null;
+    }
+
+    if (payload.sub !== 'admin_handoff') {
+      return null;
+    }
+
+    if (
+      typeof payload.sourceUsername !== 'string' ||
+      typeof payload.sourceTenantId !== 'string' ||
+      typeof payload.sourceTenantKey !== 'string' ||
+      payload.sourceIsRoot !== true ||
+      typeof payload.targetTenantId !== 'string' ||
+      typeof payload.targetTenantKey !== 'string' ||
+      typeof payload.iat !== 'number' ||
+      typeof payload.exp !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      sub: 'admin_handoff',
+      sourceUsername: payload.sourceUsername,
+      sourceTenantId: payload.sourceTenantId,
+      sourceTenantKey: payload.sourceTenantKey,
+      sourceIsRoot: true,
+      targetTenantId: payload.targetTenantId,
+      targetTenantKey: payload.targetTenantKey,
       iat: payload.iat,
       exp: payload.exp
     };

@@ -21,6 +21,7 @@ import {
   tenants
 } from '../lib/schema';
 import type { ResolvedTenant } from '../lib/tenant';
+import { deleteSubdomainTenantRecord } from '../lib/tenant-write';
 import { createTestDb, hasTestDatabase } from './helpers/test-db';
 
 const dbTest = hasTestDatabase ? test : test.skip;
@@ -252,6 +253,47 @@ dbTest('buildAllTenantsExport and importAllTenants round-trip tenant datasets wi
     assert.equal(importedSubtenantRestaurants.length, 1);
     assert.equal(importedSubtenantRestaurants[0]?.name, 'Tenant Place');
     assert.notEqual(importedSubtenantRestaurants[0]?.id, subtenantSourceIds.restaurantId);
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('deleting a subtenant removes the tenant row and all tenant-scoped records', async () => {
+  const { db, cleanup } = await createTestDb();
+  const tenantId = await createTenant(db, { displayName: 'Delete Me', subdomain: 'eats-delete-me' });
+
+  try {
+    const ids = await seedTenantData(db, tenantId);
+
+    await deleteSubdomainTenantRecord(db, tenantId);
+
+    const deletedTenant = await db.query.tenants.findFirst({
+      where: eq(tenants.id, tenantId)
+    });
+    const deletedCountry = await db.query.countries.findFirst({
+      where: eq(countries.id, ids.countryId)
+    });
+    const deletedCity = await db.query.cities.findFirst({
+      where: eq(cities.id, ids.cityId)
+    });
+    const deletedType = await db.query.restaurantTypes.findFirst({
+      where: eq(restaurantTypes.id, ids.typeId)
+    });
+    const deletedRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.id, ids.restaurantId)
+    });
+    const areaRows = await db.select().from(restaurantAreas).where(eq(restaurantAreas.restaurantId, ids.restaurantId));
+    const mealRows = await db.select().from(restaurantMeals).where(eq(restaurantMeals.restaurantId, ids.restaurantId));
+    const typeJoinRows = await db.select().from(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, ids.restaurantId));
+
+    assert.equal(deletedTenant, undefined);
+    assert.equal(deletedCountry, undefined);
+    assert.equal(deletedCity, undefined);
+    assert.equal(deletedType, undefined);
+    assert.equal(deletedRestaurant, undefined);
+    assert.equal(areaRows.length, 0);
+    assert.equal(mealRows.length, 0);
+    assert.equal(typeJoinRows.length, 0);
   } finally {
     await cleanup();
   }

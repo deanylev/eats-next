@@ -3,6 +3,14 @@ import { NextResponse } from 'next/server';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { parseHostForTenant, resolveRequestHost } from '@/lib/tenant';
 
+const redirectToRelativePath = (path: string): NextResponse =>
+  new NextResponse(null, {
+    headers: {
+      Location: path
+    },
+    status: 307
+  });
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value ?? '';
@@ -15,17 +23,20 @@ export async function middleware(request: NextRequest) {
       : !session.isRoot && session.tenantKey === (hostTenant.subdomain ?? '')
     : false;
 
+  if (pathname === '/admin/login/handoff') {
+    return NextResponse.next();
+  }
+
   if (pathname === '/admin/login') {
     if (session && sessionMatchesHost) {
-      return NextResponse.redirect(new URL('/admin', request.url));
+      return redirectToRelativePath('/admin');
     }
 
     return NextResponse.next();
   }
 
   if (!session || !sessionMatchesHost) {
-    const loginUrl = new URL('/admin/login', request.url);
-    return NextResponse.redirect(loginUrl);
+    return redirectToRelativePath('/admin/login');
   }
 
   return NextResponse.next();

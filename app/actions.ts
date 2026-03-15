@@ -10,6 +10,7 @@ import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   type AdminJwtPayload,
+  createAdminHandoffToken,
   createAdminJwt
 } from '@/lib/auth';
 import { getTenantSessionKey } from '@/lib/admin-session';
@@ -50,7 +51,17 @@ import {
   restaurantTypes,
   tenants
 } from '@/lib/schema';
-import { parseHostForTenant, resolveRequestHost, resolveTenantFromHost, type ResolvedTenant } from '@/lib/tenant';
+import {
+  buildTenantHost,
+  normalizeHost,
+  parseHostForTenant,
+  resolvePublicRequestHostWithPort,
+  resolveRequestHost,
+  resolveRequestHostWithPort,
+  resolveTenantFromHost,
+  type ResolvedTenant
+} from '@/lib/tenant';
+import { deleteSubdomainTenantRecord } from '@/lib/tenant-write';
 import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
 import {
   cityInputSchema,
@@ -217,6 +228,41 @@ const verifyTenantPassword = (password: string, storedHash: string): boolean => 
 const getRequestHost = (): string => {
   const headerStore = headers();
   return resolveRequestHost(headerStore.get('host'), headerStore.get('x-forwarded-host'));
+};
+
+const getRequestHostWithPort = (): string => {
+  const headerStore = headers();
+  return resolvePublicRequestHostWithPort(
+    headerStore.get('host'),
+    headerStore.get('x-forwarded-host'),
+    headerStore.get('origin'),
+    headerStore.get('referer')
+  );
+};
+
+const getRequestProtocol = (): 'http' | 'https' => {
+  const headerStore = headers();
+  const source = headerStore.get('origin') ?? headerStore.get('referer');
+  if (source) {
+    try {
+      const parsed = new URL(source);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.protocol.slice(0, -1) as 'http' | 'https';
+      }
+    } catch {}
+  }
+
+  const forwardedProto = headerStore
+    .get('x-forwarded-proto')
+    ?.split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .find((entry) => entry === 'http' || entry === 'https');
+  if (forwardedProto === 'http' || forwardedProto === 'https') {
+    return forwardedProto;
+  }
+
+  const host = normalizeHost(getRequestHost());
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') ? 'http' : 'https';
 };
 
 type AdminSessionContext = {
@@ -617,6 +663,59 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
       })
       .where(and(eq(tenants.id, tenantId), eq(tenants.isRoot, false)));
   }, { successMessage: 'Subdomain tenant updated.' });
+};
+
+export const deleteSubdomainTenant = async (formData: FormData): Promise<void> => {
+  return runAdminAction(async () => {
+    await requireRootAdminSession();
+    const db = getDb();
+    const tenantId = parseUuid(formData.get('tenantId'), 'Invalid tenant id.');
+    const found = await db.query.tenants.findFirst({
+      where: and(eq(tenants.id, tenantId), eq(tenants.isRoot, false))
+    });
+
+    if (!found) {
+      throw userFacingError('Subdomain tenant not found.');
+    }
+
+    await deleteSubdomainTenantRecord(db, tenantId);
+  }, { successMessage: 'Subdomain tenant deleted.' });
+};
+
+export const loginToSubdomainTenant = async (formData: FormData): Promise<void> => {
+  assertSameOrigin();
+
+  try {
+    const { tenant, session } = await requireRootAdminSession();
+    const db = getDb();
+    const tenantId = parseUuid(formData.get('tenantId'), 'Invalid tenant id.');
+    const targetTenant = await db.query.tenants.findFirst({
+      where: and(eq(tenants.id, tenantId), eq(tenants.isRoot, false))
+    });
+
+    if (!targetTenant || !targetTenant.subdomain || !targetTenant.adminUsername) {
+      throw userFacingError('Subdomain tenant login is not configured.');
+    }
+
+    const handoffToken = await createAdminHandoffToken({
+      sourceUsername: session.username,
+      sourceTenantId: tenant.id,
+      sourceTenantKey: getTenantSessionKey(tenant),
+      targetTenantId: targetTenant.id,
+      targetTenantKey: getTenantSessionKey(targetTenant)
+    });
+    const protocol = getRequestProtocol();
+    const targetHost = buildTenantHost(getRequestHostWithPort(), targetTenant.subdomain);
+
+    redirect(`${protocol}://${targetHost}/admin/login/handoff?token=${encodeURIComponent(handoffToken)}`);
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    setFlashCookieServer(ADMIN_ERROR_COOKIE, getUserErrorText(error), '/admin');
+    redirect(getRefererRedirectTarget([], '/admin?tab=subdomains'));
+  }
 };
 
 export const updateCurrentTenantSettings = async (formData: FormData): Promise<void> => {

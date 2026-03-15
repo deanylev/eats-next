@@ -17,7 +17,7 @@ export type ResolvedTenant = {
 };
 
 export const getRootDomain = (): string => {
-  const configured = process.env.ROOT_DOMAIN?.trim().toLowerCase() ?? '';
+  const configured = normalizeHost(process.env.ROOT_DOMAIN ?? '');
   if (process.env.NODE_ENV === 'production' && !configured) {
     throw new Error('Missing ROOT_DOMAIN environment variable.');
   }
@@ -26,6 +26,12 @@ export const getRootDomain = (): string => {
 };
 
 export const normalizeHost = (host: string): string => host.trim().toLowerCase().replace(/:\d+$/, '');
+
+const getHostPort = (host: string): string => {
+  const trimmed = host.trim();
+  const match = trimmed.match(/:(\d+)$/);
+  return match ? `:${match[1]}` : '';
+};
 
 const getFirstForwardedHost = (forwardedHost: string | null): string => {
   if (!forwardedHost) {
@@ -36,6 +42,18 @@ const getFirstForwardedHost = (forwardedHost: string | null): string => {
     .split(',')
     .map((entry) => entry.trim())
     .find((entry) => entry.length > 0) ?? '';
+};
+
+const getHostFromUrlLikeHeader = (value: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return '';
+  }
 };
 
 const isPrivateIpv4Host = (host: string): boolean => {
@@ -83,6 +101,41 @@ export const resolveRequestHost = (hostHeader: string | null, forwardedHostHeade
   }
 
   return normalizedHost || normalizedForwardedHost;
+};
+
+export const resolveRequestHostWithPort = (hostHeader: string | null, forwardedHostHeader: string | null): string => {
+  const rawHost = (hostHeader ?? '').trim().toLowerCase();
+  const rawForwardedHost = getFirstForwardedHost(forwardedHostHeader).toLowerCase();
+
+  if (isInternalProxyHost(normalizeHost(rawHost)) && rawForwardedHost) {
+    return rawForwardedHost;
+  }
+
+  return rawHost || rawForwardedHost;
+};
+
+export const resolvePublicRequestHostWithPort = (
+  hostHeader: string | null,
+  forwardedHostHeader: string | null,
+  originHeader: string | null,
+  refererHeader: string | null
+): string => {
+  const originHost = getHostFromUrlLikeHeader(originHeader);
+  if (originHost) {
+    return originHost;
+  }
+
+  const refererHost = getHostFromUrlLikeHeader(refererHeader);
+  if (refererHost) {
+    return refererHost;
+  }
+
+  const rawForwardedHost = getFirstForwardedHost(forwardedHostHeader).toLowerCase();
+  if (rawForwardedHost) {
+    return rawForwardedHost;
+  }
+
+  return (hostHeader ?? '').trim().toLowerCase();
 };
 
 export const parseHostForTenant = (host: string): { isRootHost: boolean; subdomain: string | null } => {
@@ -135,6 +188,35 @@ export const parseHostForTenant = (host: string): { isRootHost: boolean; subdoma
   }
 
   return { isRootHost: false, subdomain: candidateLabel };
+};
+
+export const buildTenantHost = (requestHost: string, subdomain: string | null): string => {
+  const normalizedHost = normalizeHost(requestHost);
+  const port = getHostPort(requestHost);
+
+  if (
+    normalizedHost === 'localhost' ||
+    normalizedHost === '127.0.0.1' ||
+    normalizedHost.endsWith('.localhost')
+  ) {
+    return subdomain ? `${subdomain}.localhost${port}` : `localhost${port}`;
+  }
+
+  const rootDomain = getRootDomain();
+  if (!rootDomain) {
+    throw new Error('Missing ROOT_DOMAIN environment variable.');
+  }
+
+  if (!subdomain) {
+    return rootDomain;
+  }
+
+  const rootParts = rootDomain.split('.');
+  if (rootParts.length < 2) {
+    throw new Error('Invalid ROOT_DOMAIN environment variable.');
+  }
+
+  return `${subdomain}.${rootParts.slice(1).join('.')}`;
 };
 
 export const ensureRootTenant = async (db: TenantDb): Promise<RootTenant> => {

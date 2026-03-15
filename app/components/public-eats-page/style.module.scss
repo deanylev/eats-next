@@ -93,19 +93,31 @@
 }
 
 .adminLink {
+  @include glass.action-button(var(--theme-secondary), var(--theme-on-secondary));
   align-self: flex-start;
-  backdrop-filter: blur(10px);
-  background: color-mix(in srgb, var(--theme-secondary) 20%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 72%, white 28%);
   border-radius: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  color: var(--theme-on-primary);
-  font-size: 16px;
-  font-weight: 700;
+  color: var(--theme-on-secondary);
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 500;
+  justify-content: center;
   line-height: 1;
-  margin-top: 10px;
-  padding: 10px 12px;
+  min-height: 0;
+  padding: 9px 12px;
   text-decoration: none;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.adminLink:hover,
+.adminLink:visited {
+  color: var(--theme-on-secondary);
+}
+
+.adminLink:hover {
+  transform: translateY(-1px);
 }
 
 .countSummary {

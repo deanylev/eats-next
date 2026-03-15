@@ -5,6 +5,13 @@
   --tenant-secondary: var(--default-secondary-color);
   --tenant-on-primary: #ffffff;
   --tenant-on-secondary: #000000;
+  --tenant-on-primary-strong: color-mix(in srgb, var(--tenant-on-primary) 96%, transparent);
+  --tenant-on-primary-soft: color-mix(in srgb, var(--tenant-on-primary) 90%, transparent);
+  --tenant-on-primary-muted: color-mix(in srgb, var(--tenant-on-primary) 76%, transparent);
+  --tenant-surface-bg-strong: color-mix(in srgb, var(--tenant-on-primary) 7%, transparent);
+  --tenant-surface-bg-soft: color-mix(in srgb, var(--tenant-on-primary) 2.5%, transparent);
+  --tenant-surface-border: color-mix(in srgb, var(--tenant-on-primary) 14%, transparent);
+  --tenant-surface-border-strong: color-mix(in srgb, var(--tenant-on-primary) 20%, transparent);
   @include glass.themed-shell(var(--tenant-primary), var(--tenant-secondary), var(--tenant-on-primary));
   background: var(--tenant-primary);
   min-height: 100vh;
@@ -26,7 +33,7 @@
   }
 
   h2 {
-    color: rgba(252, 246, 254, 0.98);
+    color: var(--tenant-on-primary-strong);
     font-size: 34px;
     font-weight: 500;
     line-height: 1.05;
@@ -60,7 +67,7 @@
   }
 
   label {
-    color: rgba(252, 246, 254, 0.92);
+    color: var(--tenant-on-primary-soft);
     display: grid;
     gap: 6px;
     font-size: 16px;
@@ -117,7 +124,7 @@
 
   summary {
     align-items: center;
-    color: rgba(252, 246, 254, 0.98);
+    color: var(--tenant-on-primary-strong);
     cursor: pointer;
     display: flex;
     font-size: 20px;
@@ -160,6 +167,15 @@
 
 .hero {
   @include glass.glass-panel(20px);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tenant-on-primary) 9%, transparent),
+    color-mix(in srgb, var(--tenant-on-primary) 4%, transparent)
+  );
+  border: 1px solid var(--tenant-surface-border-strong);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.11),
+    inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 8%, transparent);
   margin-bottom: 22px;
   padding: 22px 22px 18px;
 }
@@ -173,6 +189,47 @@
   @media only screen and (max-width: 760px) {
     flex-direction: column;
   }
+}
+
+.heroActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroActions form {
+  display: inline-flex;
+  gap: 0;
+  margin: 0;
+}
+
+.heroActions a {
+  @include glass.action-button(var(--tenant-secondary), var(--tenant-on-secondary));
+  align-items: center;
+  border-radius: 8px;
+  color: var(--tenant-on-secondary);
+  display: inline-flex;
+  font-size: 16px;
+  font-weight: 500;
+  justify-content: center;
+  line-height: 1;
+  min-height: 48px;
+  padding: 12px 16px;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.heroActions a:hover,
+.heroActions a:visited {
+  color: var(--tenant-on-secondary);
+}
+
+.heroActions a:hover {
+  transform: translateY(-1px);
 }
 
 .heroCopy {
@@ -201,7 +258,7 @@
 }
 
 .heroBlurb {
-  color: rgba(252, 246, 254, 0.78);
+  color: var(--tenant-on-primary-muted);
   font-size: 18px;
   line-height: 1.45;
   margin: 0;
@@ -227,11 +284,14 @@
   backdrop-filter: blur(14px);
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.06),
-    rgba(255, 255, 255, 0.02)
+    var(--tenant-surface-bg-strong),
+    var(--tenant-surface-bg-soft)
   );
-  border: 1px solid rgba(252, 246, 254, 0.18);
+  border: 1px solid var(--tenant-surface-border);
   border-radius: 16px;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.09),
+    inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 7%, transparent);
   display: grid;
   gap: 4px;
   min-height: 90px;
@@ -246,13 +306,22 @@
 }
 
 .heroStatLabel {
-  color: rgba(252, 246, 254, 0.78);
+  color: var(--tenant-on-primary-muted);
   font-size: 14px;
   font-weight: 400;
 }
 
 .tabsShell {
   @include glass.glass-panel(18px);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tenant-on-primary) 9%, transparent),
+    color-mix(in srgb, var(--tenant-on-primary) 4%, transparent)
+  );
+  border: 1px solid var(--tenant-surface-border-strong);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 8%, transparent);
   margin-top: 26px;
   padding: 24px 18px 20px;
 }
@@ -267,7 +336,7 @@
 }
 
 .tabsBlurb {
-  color: rgba(252, 246, 254, 0.78);
+  color: var(--tenant-on-primary-muted);
   font-size: 17px;
   line-height: 1.45;
   margin-bottom: 0;
@@ -284,12 +353,13 @@
   backdrop-filter: blur(14px);
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.05),
-    rgba(255, 255, 255, 0.025)
+    var(--tenant-surface-bg-strong),
+    var(--tenant-surface-bg-soft)
   );
-  border: 1px solid rgba(252, 246, 254, 0.16);
+  border: 1px solid var(--tenant-surface-border);
   border-radius: 999px;
-  color: rgba(252, 246, 254, 0.9);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 6%, transparent);
+  color: var(--tenant-on-primary-soft);
   display: inline-flex;
   gap: 10px;
   min-height: 48px;
@@ -303,21 +373,21 @@
 }
 
 .tabLink:hover {
-  border-color: rgba(252, 246, 254, 0.28);
+  border-color: var(--tenant-surface-border-strong);
   transform: translateY(-1px);
 }
 
 .tabLinkActive {
   background: color-mix(in srgb, var(--tenant-secondary) 20%, rgba(255, 255, 255, 0.05));
   border-color: color-mix(in srgb, var(--tenant-secondary) 48%, rgba(252, 246, 254, 0.2));
-  color: rgba(252, 246, 254, 0.98);
+  color: var(--tenant-on-primary-strong);
 }
 
 .tabCount {
   align-items: center;
-  background: rgba(252, 246, 254, 0.12);
+  background: color-mix(in srgb, var(--tenant-on-primary) 12%, transparent);
   border-radius: 999px;
-  color: rgba(252, 246, 254, 0.86);
+  color: var(--tenant-on-primary-soft);
   display: inline-flex;
   font-size: 13px;
   font-weight: 500;
@@ -353,6 +423,15 @@
 
 .panel {
   @include glass.glass-panel(16px);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tenant-on-primary) 9%, transparent),
+    color-mix(in srgb, var(--tenant-on-primary) 4%, transparent)
+  );
+  border: 1px solid var(--tenant-surface-border-strong);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 8%, transparent);
   padding: 16px;
 
   > h2:first-child {
@@ -373,15 +452,18 @@
   backdrop-filter: blur(16px);
   background: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.055),
-    rgba(255, 255, 255, 0.025)
+    var(--tenant-surface-bg-strong),
+    var(--tenant-surface-bg-soft)
   );
-  border: 1px solid rgba(252, 246, 254, 0.16);
+  border: 1px solid var(--tenant-surface-border);
   border-radius: 14px;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.09),
+    inset 0 1px 0 color-mix(in srgb, var(--tenant-on-primary) 7%, transparent);
   padding: 14px 14px 12px;
 
   strong {
-    color: rgba(252, 246, 254, 0.98);
+    color: var(--tenant-on-primary-strong);
     display: block;
     font-size: 24px;
     font-weight: 500;
@@ -389,7 +471,7 @@
   }
 
   strong + div {
-    color: rgba(252, 246, 254, 0.72);
+    color: var(--tenant-on-primary-muted);
     margin-top: 6px;
   }
 
@@ -411,6 +493,7 @@
   gap: 0;
   margin: 0;
 }
+
 
 .exportActions {
   display: flex;
@@ -466,12 +549,12 @@
 }
 
 .emptyState {
-  color: rgba(252, 246, 254, 0.72);
+  color: var(--tenant-on-primary-muted);
   margin-bottom: 0;
 }
 
 .importHint {
-  color: rgba(252, 246, 254, 0.72);
+  color: var(--tenant-on-primary-muted);
   font-size: 15px;
   line-height: 1.45;
   margin-bottom: 0;

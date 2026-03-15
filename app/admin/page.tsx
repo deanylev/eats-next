@@ -6,8 +6,10 @@ import {
   createCity,
   createCountry,
   createRestaurantType,
+  deleteSubdomainTenant,
   getCmsData,
   importAdminData,
+  loginToSubdomainTenant,
   logoutAdmin,
   updateCurrentTenantSettings,
   updateSubdomainTenant,
@@ -263,7 +265,7 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                       <summary>
                         {subdomainTenant.subdomain} - {subdomainTenant.displayName}
                       </summary>
-                      <form action={updateSubdomainTenant}>
+                      <form id={`subdomain-form-${subdomainTenant.id}`} action={updateSubdomainTenant}>
                         <input type="hidden" name="tenantId" value={subdomainTenant.id} />
                         <label>
                           Subdomain
@@ -297,10 +299,30 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                           New password (leave blank to keep)
                           <input name="adminPassword" type="password" />
                         </label>
-                        <div className={styles.manageActions}>
-                          <button type="submit">Save subdomain</button>
-                        </div>
                       </form>
+                      <div className={styles.manageActions}>
+                        <button
+                          type="submit"
+                          form={`subdomain-form-${subdomainTenant.id}`}
+                          formAction={loginToSubdomainTenant}
+                        >
+                          Log into tenant
+                        </button>
+                        <button type="submit" form={`subdomain-form-${subdomainTenant.id}`}>
+                          Save subdomain
+                        </button>
+                        <ConfirmingActionForm
+                          action={deleteSubdomainTenant}
+                          confirmText={`Delete tenant "${subdomainTenant.displayName}" and all of its records? This cannot be undone.`}
+                          promptValue={subdomainTenant.subdomain ?? ''}
+                          promptLabel={`Type ${subdomainTenant.subdomain} to delete this tenant`}
+                        >
+                          <input type="hidden" name="tenantId" value={subdomainTenant.id} />
+                          <button data-delete-button="true" type="submit">
+                            Delete tenant
+                          </button>
+                        </ConfirmingActionForm>
+                      </div>
                     </details>
                   ))}
                 </div>
@@ -580,9 +602,12 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
               <div className={styles.heroCopy}>
                 <h1>Admin Panel</h1>
               </div>
-              <form action={logoutAdmin}>
-                <button type="submit">Log Out</button>
-              </form>
+              <div className={styles.heroActions}>
+                <Link href="/">View Site</Link>
+                <form action={logoutAdmin}>
+                  <button type="submit">Log Out</button>
+                </form>
+              </div>
             </div>
             <div className={styles.heroStats}>
               <div className={styles.heroStat}>
