@@ -3,13 +3,13 @@ import { NextResponse } from 'next/server';
 import { ADMIN_SESSION_COOKIE, verifyAdminJwt } from '@/lib/auth';
 import { parseHostForTenant, resolveRequestHost } from '@/lib/tenant';
 
-const redirectToRelativePath = (path: string): NextResponse =>
-  new NextResponse(null, {
-    headers: {
-      Location: path
-    },
-    status: 307
-  });
+const redirectToPath = (request: NextRequest, path: string): NextResponse => {
+  const url = request.nextUrl.clone();
+  url.pathname = path;
+  url.search = '';
+
+  return NextResponse.redirect(url);
+};
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -29,14 +29,14 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === '/admin/login') {
     if (session && sessionMatchesHost) {
-      return redirectToRelativePath('/admin');
+      return redirectToPath(request, '/admin');
     }
 
     return NextResponse.next();
   }
 
   if (!session || !sessionMatchesHost) {
-    return redirectToRelativePath('/admin/login');
+    return redirectToPath(request, '/admin/login');
   }
 
   return NextResponse.next();
