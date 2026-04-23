@@ -18,6 +18,7 @@ import {
   isUrl,
   mealLabel,
   readUrlState,
+  reconcileExcludedAfterStatusChange,
   showFeelingLuckyForStatuses,
   type CategoryFilter,
   type RestaurantStatusFilter
@@ -103,6 +104,7 @@ export function PublicEatsPage({
   const skipNextExcludeReset = useRef(false);
   const skipNextExcludePrune = useRef(false);
   const hasExplicitCityQuery = useRef(false);
+  const statusFilterSnapshot = useRef<{ headings: string[]; excluded: string[] } | null>(null);
 
   const [selectedStatuses, setSelectedStatuses] = useState<RestaurantStatusFilter[]>(defaultRestaurantStatuses);
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -292,6 +294,14 @@ export function PublicEatsPage({
       return;
     }
 
+    const snapshot = statusFilterSnapshot.current;
+    statusFilterSnapshot.current = null;
+
+    if (snapshot) {
+      setExcluded(reconcileExcludedAfterStatusChange(snapshot.headings, snapshot.excluded, headings));
+      return;
+    }
+
     setExcluded((current) => current.filter((entry) => headings.includes(entry)));
   }, [category, hasInitializedFilters, headings, selectedCity]);
 
@@ -306,7 +316,7 @@ export function PublicEatsPage({
     }
 
     setExcluded([]);
-  }, [category, hasInitializedFilters, selectedCity, selectedStatuses]);
+  }, [category, hasInitializedFilters, selectedCity]);
 
   useEffect(() => {
     if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
@@ -589,12 +599,26 @@ export function PublicEatsPage({
     return undefined;
   }, [selectedStatuses]);
   const toggleSelectedStatus = (status: RestaurantStatusFilter, checked: boolean): void => {
+    statusFilterSnapshot.current =
+      category !== 'recentlyAdded'
+        ? {
+            headings,
+            excluded
+          }
+        : null;
+
     setSelectedStatuses((current) => {
       if (checked) {
-        return current.includes(status) ? current : [...current, status];
+        if (current.includes(status)) {
+          statusFilterSnapshot.current = null;
+          return current;
+        }
+
+        return [...current, status];
       }
 
       if (current.length === 1) {
+        statusFilterSnapshot.current = null;
         return current;
       }
 

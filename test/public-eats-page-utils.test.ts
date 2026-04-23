@@ -7,6 +7,7 @@ import {
   isUrl,
   mealLabel,
   readUrlState,
+  reconcileExcludedAfterStatusChange,
   showFeelingLuckyForStatuses
 } from '../app/components/public-eats-page/utils';
 
@@ -125,5 +126,38 @@ test('getFeelingLuckyCandidateIds excludes disliked restaurants when other statu
   assert.deepEqual(
     getFeelingLuckyCandidateIds(['a', 'b', 'c'], restaurantsById, ['disliked']),
     ['a', 'b', 'c']
+  );
+});
+
+test('reconcileExcludedAfterStatusChange keeps current selections and leaves new headings off', () => {
+  assert.deepEqual(
+    reconcileExcludedAfterStatusChange(
+      ['Bentleigh', 'Brighton', 'Carlton'],
+      ['Carlton'],
+      ['Bentleigh', 'Brighton', 'CBD', 'Carlton']
+    ),
+    ['CBD', 'Carlton']
+  );
+});
+
+test('reconcileExcludedAfterStatusChange leaves everything selected when no heading filter is applied', () => {
+  assert.deepEqual(
+    reconcileExcludedAfterStatusChange(
+      ['Bentleigh', 'Brighton'],
+      [],
+      ['Bentleigh', 'Brighton', 'CBD']
+    ),
+    []
+  );
+});
+
+test('reconcileExcludedAfterStatusChange keeps nothing selected when everything was excluded', () => {
+  assert.deepEqual(
+    reconcileExcludedAfterStatusChange(
+      ['Bentleigh', 'Brighton'],
+      ['Bentleigh', 'Brighton'],
+      ['Bentleigh', 'Brighton', 'CBD']
+    ),
+    ['Bentleigh', 'Brighton', 'CBD']
   );
 });

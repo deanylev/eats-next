@@ -32,6 +32,22 @@ export const getFeelingLuckyCandidateIds = (
   });
 };
 
+export const reconcileExcludedAfterStatusChange = (
+  previousHeadings: string[],
+  previousExcluded: string[],
+  nextHeadings: string[]
+): string[] => {
+  if (previousExcluded.length === 0) {
+    return [];
+  }
+
+  const previousExcludedSet = new Set(previousExcluded);
+  const preservedIncluded = previousHeadings.filter((heading) => !previousExcludedSet.has(heading));
+  const preservedIncludedSet = new Set(preservedIncluded);
+
+  return nextHeadings.filter((heading) => !preservedIncludedSet.has(heading));
+};
+
 export const mealLabel = (meal: string): string => {
   if (meal === 'snack') {
     return 'Snack';
