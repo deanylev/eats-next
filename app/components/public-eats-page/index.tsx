@@ -1,7 +1,7 @@
 'use client';
 
 import Fuse from 'fuse.js';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
@@ -113,13 +113,17 @@ export function PublicEatsPage({
   const [excluded, setExcluded] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
-  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
+  const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('down');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
   const [isSavingEditRestaurant, setIsSavingEditRestaurant] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
+  const filterPopoverRef = useRef<HTMLDivElement | null>(null);
+  const filterPopoverPanelRef = useRef<HTMLDivElement | null>(null);
+  const filterPopoverId = useId();
 
   useEffect(() => {
     if (embedded) {
@@ -319,6 +323,74 @@ export function PublicEatsPage({
   }, [category, hasInitializedFilters, selectedCity]);
 
   useEffect(() => {
+    if (category === 'recentlyAdded') {
+      setIsFilterPopoverOpen(false);
+      setFilterPopoverDirection('down');
+    }
+  }, [category]);
+
+  useEffect(() => {
+    if (!isFilterPopoverOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (!filterPopoverRef.current?.contains(event.target as Node)) {
+        setIsFilterPopoverOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setIsFilterPopoverOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isFilterPopoverOpen]);
+
+  useLayoutEffect(() => {
+    if (!isFilterPopoverOpen || typeof window === 'undefined') {
+      return;
+    }
+
+    const updateFilterPopoverDirection = (): void => {
+      const trigger = filterPopoverRef.current;
+      const panel = filterPopoverPanelRef.current;
+      if (!trigger || !panel) {
+        return;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelHeight = panel.offsetHeight;
+      const viewportHeight = window.innerHeight;
+      const margin = 16;
+      const spaceBelow = viewportHeight - triggerRect.bottom - margin;
+      const spaceAbove = triggerRect.top - margin;
+
+      if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
+        setFilterPopoverDirection('down');
+        return;
+      }
+
+      setFilterPopoverDirection('up');
+    };
+
+    updateFilterPopoverDirection();
+    window.addEventListener('resize', updateFilterPopoverDirection);
+
+    return () => {
+      window.removeEventListener('resize', updateFilterPopoverDirection);
+    };
+  }, [headings.length, isFilterPopoverOpen]);
+
+  useEffect(() => {
     if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
       return;
     }
@@ -426,6 +498,17 @@ export function PublicEatsPage({
     () => new Map(restaurants.map((restaurant) => [restaurant.id, restaurant])),
     [restaurants]
   );
+  const includedHeadingsCount = useMemo(
+    () => headings.filter((heading) => !excluded.includes(heading)).length,
+    [excluded, headings]
+  );
+  const filterButtonStateLabel = useMemo(() => {
+    if (headings.length === 0 || includedHeadingsCount === headings.length) {
+      return 'All';
+    }
+
+    return `${includedHeadingsCount} / ${headings.length}`;
+  }, [headings.length, includedHeadingsCount]);
   const luckyCandidateIds = useMemo(
     () => getFeelingLuckyCandidateIds(visibleRestaurantIds, visibleRestaurantsById, selectedStatuses),
     [selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
@@ -761,12 +844,68 @@ export function PublicEatsPage({
             </div>
             <div className={styles.filterControls}>
               {category !== 'recentlyAdded' && headings.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setIsFilterDialogOpen(true)}
-                >
-                  Filter {category === 'area' ? 'Areas' : 'Types'}
-                </button>
+                <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
+                  <button
+                    type="button"
+                    className={styles.filterSummaryButton}
+                    aria-expanded={isFilterPopoverOpen}
+                    aria-controls={filterPopoverId}
+                    onClick={() => setIsFilterPopoverOpen((current) => !current)}
+                  >
+                    {category === 'area' ? 'Filter Areas' : 'Filter Types'} ({filterButtonStateLabel})
+                  </button>
+                  {isFilterPopoverOpen ? (
+                    <div
+                      className={`${styles.filterPopover} ${
+                        filterPopoverDirection === 'up' ? styles.filterPopoverUp : styles.filterPopoverDown
+                      }`}
+                      id={filterPopoverId}
+                      ref={filterPopoverPanelRef}
+                    >
+                      <div className={styles.filterPopoverHeader}>
+                        <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
+                        <div className={styles.filterPopoverActions}>
+                          <button type="button" onClick={() => setExcluded([])}>
+                            Select All
+                          </button>
+                          <button type="button" onClick={() => setExcluded(headings)}>
+                            Clear All
+                          </button>
+                        </div>
+                      </div>
+                      <div className={`${styles.filtersContainer} ${styles.filterPopoverList}`}>
+                        {headings.map((heading) => (
+                          <label key={heading}>
+                            <input
+                              type="checkbox"
+                              checked={!excluded.includes(heading)}
+                              onChange={(event) => {
+                                setExcluded((current) => {
+                                  if (event.target.checked) {
+                                    return current.filter((entry) => entry !== heading);
+                                  }
+
+                                  if (current.includes(heading)) {
+                                    return current;
+                                  }
+
+                                  return [...current, heading];
+                                });
+                              }}
+                            />
+                            <span>
+                              {category === 'type'
+                                ? `${mealFilteredRestaurants
+                                    .flatMap((restaurant) => restaurant.types)
+                                    .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
+                                : heading}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
               {!embedded ? (
                 <button
@@ -979,67 +1118,6 @@ export function PublicEatsPage({
             <path d="M5 12L12 5L19 12" />
           </svg>
         </button>
-      ) : null}
-      {isFilterDialogOpen ? (
-        <div className={styles.createDialogOverlay} onClick={() => setIsFilterDialogOpen(false)}>
-          <section
-            className={`${styles.createDialog} ${styles.filterDialog}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Filter ${category === 'area' ? 'Areas' : 'Types'}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.createDialogHeader}>
-              <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
-              <button
-                type="button"
-                className={styles.createDialogClose}
-                aria-label="Close filter dialog"
-                onClick={() => setIsFilterDialogOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className={styles.filterDialogActions}>
-              <button type="button" onClick={() => setExcluded(headings)}>
-                Clear All
-              </button>
-              <button type="button" onClick={() => setExcluded([])}>
-                Select All
-              </button>
-            </div>
-            <div className={styles.filtersContainer}>
-              {headings.map((heading) => (
-                <label key={heading}>
-                  <input
-                    type="checkbox"
-                    checked={!excluded.includes(heading)}
-                    onChange={(event) => {
-                      setExcluded((current) => {
-                        if (event.target.checked) {
-                          return current.filter((entry) => entry !== heading);
-                        }
-
-                        if (current.includes(heading)) {
-                          return current;
-                        }
-
-                        return [...current, heading];
-                      });
-                    }}
-                  />
-                  <span>
-                    {category === 'type'
-                      ? `${mealFilteredRestaurants
-                          .flatMap((restaurant) => restaurant.types)
-                          .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
-                      : heading}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </section>
-        </div>
       ) : null}
       {canEditRestaurants && adminTools && editingRestaurant ? (
         <div className={styles.createDialogOverlay}>

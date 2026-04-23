@@ -684,6 +684,143 @@
   }
 }
 
+.filterPickerGroup {
+  align-items: flex-start;
+  display: flex;
+  position: relative;
+}
+
+.filterSummaryButton {
+  appearance: none;
+  -webkit-appearance: none;
+  backdrop-filter: blur(8px);
+  background: var(--theme-secondary-soft-bg);
+  border: 1px solid var(--theme-secondary-border);
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--theme-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 5px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+  width: auto;
+}
+
+.filterSummaryButton:hover {
+  background: var(--theme-secondary-soft-bg-hover);
+}
+
+.filterPopover {
+  box-sizing: border-box;
+  backdrop-filter: blur(18px) saturate(135%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-primary) 74%, rgba(14, 5, 23, 0.94) 26%),
+      color-mix(in srgb, var(--theme-primary) 82%, rgba(14, 5, 23, 0.96) 18%)
+    );
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  left: 0;
+  max-height: min(440px, 70vh);
+  overflow: visible;
+  padding: 14px;
+  position: absolute;
+  width: min(420px, calc(100vw - 56px));
+  z-index: 20;
+
+  &::before {
+    content: '';
+    left: 22px;
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    transform: rotate(45deg);
+    backdrop-filter: blur(18px) saturate(135%);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-primary) 74%, rgba(14, 5, 23, 0.94) 26%),
+        color-mix(in srgb, var(--theme-primary) 82%, rgba(14, 5, 23, 0.96) 18%)
+      );
+    box-sizing: border-box;
+  }
+}
+
+.filterPopoverDown {
+  margin-top: 12px;
+  top: 100%;
+
+  &::before {
+    border-left: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    top: -9px;
+  }
+}
+
+.filterPopoverUp {
+  bottom: 100%;
+  margin-bottom: 12px;
+
+  &::before {
+    border-bottom: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    bottom: -9px;
+  }
+}
+
+.filterPopoverHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+
+  > h2 {
+    color: var(--theme-on-primary-strong);
+    font-size: 20px;
+    margin: 0;
+  }
+}
+
+.filterPopoverActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+
+  > button {
+    backdrop-filter: blur(8px);
+    background: var(--theme-secondary-soft-bg);
+    border: 1px solid var(--theme-secondary-border);
+    border-radius: 8px;
+    color: var(--theme-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 5px 10px;
+  }
+
+  > button:hover {
+    background: var(--theme-secondary-soft-bg-hover);
+  }
+}
+
+.filterPopoverList {
+  margin-top: 12px;
+  max-height: min(290px, 46vh);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .statusFilterLabel {
   align-self: center;
   color: var(--theme-on-primary-soft);
@@ -701,11 +838,13 @@
 
 .filterControls {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 10px;
 
-  > button {
+  > button,
+  .filterSummaryButton {
     backdrop-filter: blur(8px);
     background: var(--theme-secondary-soft-bg);
     border: 1px solid var(--theme-secondary-border);
@@ -723,34 +862,8 @@
     opacity: 0.45;
   }
 }
-
-.filterDialog {
-  max-width: min(720px, calc(100vw - 24px));
-}
-
-.filterDialogActions {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-
-  > button {
-    backdrop-filter: blur(8px);
-    background: var(--theme-secondary-soft-bg);
-    border: 1px solid var(--theme-secondary-border);
-    border-radius: 8px;
-    color: var(--theme-secondary);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 15px;
-    font-weight: 600;
-    padding: 5px 10px;
-  }
-}
-
 .filterControls > button:hover,
-.filterDialogActions > button:hover {
+.filterControls .filterSummaryButton:hover {
   background: var(--theme-secondary-soft-bg-hover);
 }
 
