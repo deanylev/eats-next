@@ -32,19 +32,27 @@ export const getFeelingLuckyCandidateIds = (
   });
 };
 
+export const getPreservedIncludedHeadings = (
+  headings: string[],
+  excluded: string[]
+): string[] | null => {
+  if (excluded.length === 0) {
+    return null;
+  }
+
+  const excludedSet = new Set(excluded);
+  return headings.filter((heading) => !excludedSet.has(heading));
+};
+
 export const reconcileExcludedAfterStatusChange = (
-  previousHeadings: string[],
-  previousExcluded: string[],
+  preservedIncludedHeadings: string[] | null,
   nextHeadings: string[]
 ): string[] => {
-  if (previousExcluded.length === 0) {
+  if (preservedIncludedHeadings === null) {
     return [];
   }
 
-  const previousExcludedSet = new Set(previousExcluded);
-  const preservedIncluded = previousHeadings.filter((heading) => !previousExcludedSet.has(heading));
-  const preservedIncludedSet = new Set(preservedIncluded);
-
+  const preservedIncludedSet = new Set(preservedIncludedHeadings);
   return nextHeadings.filter((heading) => !preservedIncludedSet.has(heading));
 };
 

@@ -13,6 +13,7 @@ import {
   confettiPieceIndexes,
   defaultRestaurantStatuses,
   getFeelingLuckyCandidateIds,
+  getPreservedIncludedHeadings,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
@@ -104,7 +105,8 @@ export function PublicEatsPage({
   const skipNextExcludeReset = useRef(false);
   const skipNextExcludePrune = useRef(false);
   const hasExplicitCityQuery = useRef(false);
-  const statusFilterSnapshot = useRef<{ headings: string[]; excluded: string[] } | null>(null);
+  const preservedIncludedHeadings = useRef<string[] | null>(null);
+  const statusFilterSnapshot = useRef<{ preservedIncludedHeadings: string[] | null } | null>(null);
 
   const [selectedStatuses, setSelectedStatuses] = useState<RestaurantStatusFilter[]>(defaultRestaurantStatuses);
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -141,6 +143,7 @@ export function PublicEatsPage({
     setCategory(urlState.category);
     setSearchQuery(urlState.search);
     setExcluded(urlState.excluded);
+    preservedIncludedHeadings.current = null;
     setHasInitializedFilters(true);
   }, [embedded]);
 
@@ -302,7 +305,8 @@ export function PublicEatsPage({
     statusFilterSnapshot.current = null;
 
     if (snapshot) {
-      setExcluded(reconcileExcludedAfterStatusChange(snapshot.headings, snapshot.excluded, headings));
+      preservedIncludedHeadings.current = snapshot.preservedIncludedHeadings;
+      setExcluded(reconcileExcludedAfterStatusChange(snapshot.preservedIncludedHeadings, headings));
       return;
     }
 
@@ -319,6 +323,7 @@ export function PublicEatsPage({
       return;
     }
 
+    preservedIncludedHeadings.current = null;
     setExcluded([]);
   }, [category, hasInitializedFilters, selectedCity]);
 
@@ -685,8 +690,8 @@ export function PublicEatsPage({
     statusFilterSnapshot.current =
       category !== 'recentlyAdded'
         ? {
-            headings,
-            excluded
+            preservedIncludedHeadings:
+              preservedIncludedHeadings.current ?? getPreservedIncludedHeadings(headings, excluded)
           }
         : null;
 
@@ -865,10 +870,22 @@ export function PublicEatsPage({
                       <div className={styles.filterPopoverHeader}>
                         <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
                         <div className={styles.filterPopoverActions}>
-                          <button type="button" onClick={() => setExcluded([])}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              preservedIncludedHeadings.current = null;
+                              setExcluded([]);
+                            }}
+                          >
                             Select All
                           </button>
-                          <button type="button" onClick={() => setExcluded(headings)}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              preservedIncludedHeadings.current = [];
+                              setExcluded(headings);
+                            }}
+                          >
                             Clear All
                           </button>
                         </div>
@@ -881,15 +898,21 @@ export function PublicEatsPage({
                               checked={!excluded.includes(heading)}
                               onChange={(event) => {
                                 setExcluded((current) => {
+                                  let nextExcluded: string[];
                                   if (event.target.checked) {
-                                    return current.filter((entry) => entry !== heading);
+                                    nextExcluded = current.filter((entry) => entry !== heading);
+                                  } else if (current.includes(heading)) {
+                                    nextExcluded = current;
+                                  } else {
+                                    nextExcluded = [...current, heading];
                                   }
 
-                                  if (current.includes(heading)) {
-                                    return current;
-                                  }
+                                  preservedIncludedHeadings.current = getPreservedIncludedHeadings(
+                                    headings,
+                                    nextExcluded
+                                  );
 
-                                  return [...current, heading];
+                                  return nextExcluded;
                                 });
                               }}
                             />

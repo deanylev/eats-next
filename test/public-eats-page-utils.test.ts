@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getPreservedIncludedHeadings,
   getFeelingLuckyCandidateIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
@@ -129,35 +130,48 @@ test('getFeelingLuckyCandidateIds excludes disliked restaurants when other statu
   );
 });
 
+test('getPreservedIncludedHeadings returns null when every heading is selected', () => {
+  assert.equal(getPreservedIncludedHeadings(['Bentleigh', 'Brighton'], []), null);
+});
+
+test('getPreservedIncludedHeadings returns selected headings when filtering is applied', () => {
+  assert.deepEqual(
+    getPreservedIncludedHeadings(['Bentleigh', 'Brighton', 'Carlton'], ['Carlton']),
+    ['Bentleigh', 'Brighton']
+  );
+});
+
 test('reconcileExcludedAfterStatusChange keeps current selections and leaves new headings off', () => {
   assert.deepEqual(
-    reconcileExcludedAfterStatusChange(
-      ['Bentleigh', 'Brighton', 'Carlton'],
-      ['Carlton'],
-      ['Bentleigh', 'Brighton', 'CBD', 'Carlton']
-    ),
+    reconcileExcludedAfterStatusChange(['Bentleigh', 'Brighton'], ['Bentleigh', 'Brighton', 'CBD', 'Carlton']),
     ['CBD', 'Carlton']
   );
 });
 
 test('reconcileExcludedAfterStatusChange leaves everything selected when no heading filter is applied', () => {
   assert.deepEqual(
-    reconcileExcludedAfterStatusChange(
-      ['Bentleigh', 'Brighton'],
-      [],
-      ['Bentleigh', 'Brighton', 'CBD']
-    ),
+    reconcileExcludedAfterStatusChange(null, ['Bentleigh', 'Brighton', 'CBD']),
     []
   );
 });
 
 test('reconcileExcludedAfterStatusChange keeps nothing selected when everything was excluded', () => {
   assert.deepEqual(
-    reconcileExcludedAfterStatusChange(
-      ['Bentleigh', 'Brighton'],
-      ['Bentleigh', 'Brighton'],
-      ['Bentleigh', 'Brighton', 'CBD']
-    ),
+    reconcileExcludedAfterStatusChange([], ['Bentleigh', 'Brighton', 'CBD']),
     ['Bentleigh', 'Brighton', 'CBD']
+  );
+});
+
+test('reconcileExcludedAfterStatusChange preserves selections that temporarily disappear', () => {
+  assert.deepEqual(
+    reconcileExcludedAfterStatusChange(['Bentleigh', 'Brighton', 'Fitzroy North'], ['Bentleigh', 'Brighton']),
+    []
+  );
+  assert.deepEqual(
+    reconcileExcludedAfterStatusChange(
+      ['Bentleigh', 'Brighton', 'Fitzroy North'],
+      ['Bentleigh', 'Brighton', 'CBD', 'Fitzroy North']
+    ),
+    ['CBD']
   );
 });
