@@ -894,7 +894,7 @@ export function PublicEatsPage({
             +
           </button>
           {isCreateDialogOpen ? (
-            <div className={styles.createDialogOverlay} onClick={() => setIsCreateDialogOpen(false)}>
+            <div className={styles.createDialogOverlay}>
               <section
                 className={styles.createDialog}
                 role="dialog"
@@ -1018,7 +1018,7 @@ export function PublicEatsPage({
         </div>
       ) : null}
       {canEditRestaurants && adminTools && editingRestaurant ? (
-        <div className={styles.createDialogOverlay} onClick={() => setEditingRestaurantId(null)}>
+        <div className={styles.createDialogOverlay}>
           <section
             className={styles.createDialog}
             role="dialog"
