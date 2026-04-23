@@ -140,7 +140,13 @@ export const resolvePublicRequestHostWithPort = (
 
 export const parseHostForTenant = (host: string): { isRootHost: boolean; subdomain: string | null } => {
   const normalizedHost = normalizeHost(host);
-  if (normalizedHost === 'localhost' || normalizedHost === '127.0.0.1') {
+  if (
+    normalizedHost === 'localhost' ||
+    normalizedHost === '127.0.0.1' ||
+    normalizedHost === '[::1]' ||
+    normalizedHost === '::1' ||
+    isPrivateIpv4Host(normalizedHost)
+  ) {
     return { isRootHost: true, subdomain: null };
   }
 

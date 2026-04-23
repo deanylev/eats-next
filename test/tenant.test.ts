@@ -50,6 +50,17 @@ test('parseHostForTenant treats localhost as root', () => {
   });
 });
 
+test('parseHostForTenant treats private LAN IPs as root', () => {
+  assert.deepEqual(parseHostForTenant('192.168.1.42:3000'), {
+    isRootHost: true,
+    subdomain: null
+  });
+  assert.deepEqual(parseHostForTenant('10.0.0.5:3000'), {
+    isRootHost: true,
+    subdomain: null
+  });
+});
+
 test('parseHostForTenant extracts localhost tenant subdomains', () => {
   assert.deepEqual(parseHostForTenant('eats-test.localhost:3000'), {
     isRootHost: false,
