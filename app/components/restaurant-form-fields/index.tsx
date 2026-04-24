@@ -1,6 +1,6 @@
 'use client';
 
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
@@ -39,10 +39,24 @@ type RestaurantFormFieldsProps = {
   areaSuggestionsByCity?: Record<string, string[]>;
   disableAreasUntilCitySelected?: boolean;
   defaults?: RestaurantFormDefaults;
+  onDirtyChange?: (isDirty: boolean) => void;
   submitLabel: string;
   disableSubmit?: boolean;
   keyPrefix: string;
   showDevelopmentPopulateButton?: boolean;
+};
+
+const normalizeSetValues = (values: string[] | undefined): string[] => [...(values ?? [])].sort();
+
+const areStringSetsEqual = (left: string[] | undefined, right: string[] | undefined): boolean => {
+  const normalizedLeft = normalizeSetValues(left);
+  const normalizedRight = normalizeSetValues(right);
+
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
 };
 
 export function RestaurantFormFields({
@@ -51,6 +65,7 @@ export function RestaurantFormFields({
   areaSuggestionsByCity,
   disableAreasUntilCitySelected = false,
   defaults,
+  onDirtyChange,
   submitLabel,
   disableSubmit = false,
   keyPrefix,
@@ -132,6 +147,49 @@ export function RestaurantFormFields({
     normalizedNewTypeName.length > 0 &&
     availableTypes.some((type) => type.name.trim().toLowerCase() === normalizedNewTypeName);
   const hasSelectedTypes = selectedTypeIds.length > 0;
+  const isDirty = useMemo(() => {
+    return (
+      selectedCityId !== (defaults?.cityId ?? '') ||
+      areasValue !== (defaults?.areas?.join('\n') ?? '') ||
+      !areStringSetsEqual(selectedMealTypes, defaults?.mealTypes) ||
+      nameValue !== (defaults?.name ?? '') ||
+      notesValue !== (defaults?.notes ?? '') ||
+      referredByValue !== (defaults?.referredBy ?? '') ||
+      !areStringSetsEqual(selectedTypeIds, defaults?.typeIds) ||
+      urlValue !== (defaults?.url ?? '') ||
+      status !== (defaults?.status ?? 'untried') ||
+      dislikedReasonValue !== (defaults?.dislikedReason ?? '') ||
+      newTypeName.length > 0 ||
+      newTypeEmoji.length > 0
+    );
+  }, [
+    areasValue,
+    defaults?.areas,
+    defaults?.cityId,
+    defaults?.dislikedReason,
+    defaults?.mealTypes,
+    defaults?.name,
+    defaults?.notes,
+    defaults?.referredBy,
+    defaults?.status,
+    defaults?.typeIds,
+    defaults?.url,
+    dislikedReasonValue,
+    nameValue,
+    newTypeEmoji,
+    newTypeName,
+    notesValue,
+    referredByValue,
+    selectedCityId,
+    selectedMealTypes,
+    selectedTypeIds,
+    status,
+    urlValue
+  ]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const toggleMealType = (mealType: MealType, checked: boolean): void => {
     setSelectedMealTypes((current) => {

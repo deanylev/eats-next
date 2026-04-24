@@ -1,7 +1,7 @@
 'use client';
 
 import Fuse from 'fuse.js';
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
@@ -118,7 +118,9 @@ export function PublicEatsPage({
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('down');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
+  const [createDialogHasUnsavedChanges, setCreateDialogHasUnsavedChanges] = useState(false);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
+  const [editDialogHasUnsavedChanges, setEditDialogHasUnsavedChanges] = useState(false);
   const [isSavingEditRestaurant, setIsSavingEditRestaurant] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -333,6 +335,50 @@ export function PublicEatsPage({
       setFilterPopoverDirection('down');
     }
   }, [category]);
+
+  const closeCreateDialog = useCallback((): void => {
+    if (createDialogHasUnsavedChanges && !window.confirm('Discard unsaved changes?')) {
+      return;
+    }
+
+    setCreateDialogHasUnsavedChanges(false);
+    setIsCreateDialogOpen(false);
+  }, [createDialogHasUnsavedChanges]);
+
+  const closeEditRestaurantDialog = useCallback((): void => {
+    if (editDialogHasUnsavedChanges && !window.confirm('Discard unsaved changes?')) {
+      return;
+    }
+
+    setEditDialogHasUnsavedChanges(false);
+    setIsSavingEditRestaurant(false);
+    setEditingRestaurantId(null);
+  }, [editDialogHasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!isCreateDialogOpen && !editingRestaurantId) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (editingRestaurantId) {
+        closeEditRestaurantDialog();
+        return;
+      }
+
+      closeCreateDialog();
+    };
+
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [closeCreateDialog, closeEditRestaurantDialog, editingRestaurantId, isCreateDialogOpen]);
 
   useEffect(() => {
     if (!isFilterPopoverOpen) {
@@ -610,6 +656,7 @@ export function PublicEatsPage({
     }
 
     clearFlashCookieClient(flashCookieNames.rootCreateSuccess, '/');
+    setCreateDialogHasUnsavedChanges(false);
     setIsCreateDialogOpen(false);
   }, [rootCreateSuccessMessage]);
 
@@ -633,6 +680,7 @@ export function PublicEatsPage({
 
     setIsSavingEditRestaurant(false);
     clearFlashCookieClient(flashCookieNames.rootEditSuccess, '/');
+    setEditDialogHasUnsavedChanges(false);
     setEditingRestaurantId(null);
   }, [rootEditSuccessMessage]);
 
@@ -646,6 +694,7 @@ export function PublicEatsPage({
     }
 
     setIsSavingEditRestaurant(false);
+    setEditDialogHasUnsavedChanges(false);
     setEditingRestaurantId(null);
   }, [isSavingEditRestaurant, openEditRestaurantId, rootEditErrorMessage]);
 
@@ -1094,7 +1143,7 @@ export function PublicEatsPage({
                     type="button"
                     className={styles.createDialogClose}
                     aria-label="Close add restaurant dialog"
-                    onClick={() => setIsCreateDialogOpen(false)}
+                    onClick={closeCreateDialog}
                   >
                     ×
                   </button>
@@ -1115,6 +1164,7 @@ export function PublicEatsPage({
                       mealTypes: createDefaultMealTypes,
                       status: createDefaultStatus
                     }}
+                    onDirtyChange={setCreateDialogHasUnsavedChanges}
                     showDevelopmentPopulateButton={process.env.NODE_ENV !== 'production'}
                   />
                 </form>
@@ -1157,7 +1207,7 @@ export function PublicEatsPage({
                 type="button"
                 className={styles.createDialogClose}
                 aria-label="Close edit restaurant dialog"
-                onClick={() => setEditingRestaurantId(null)}
+                onClick={closeEditRestaurantDialog}
               >
                 ×
               </button>
@@ -1193,6 +1243,7 @@ export function PublicEatsPage({
                   status: editingRestaurant.status,
                   dislikedReason: editingRestaurant.dislikedReason
                 }}
+                onDirtyChange={setEditDialogHasUnsavedChanges}
               />
             </form>
           </section>
