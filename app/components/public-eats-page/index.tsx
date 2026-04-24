@@ -157,7 +157,7 @@ export function PublicEatsPage({
   const citiesByCountry = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
 
-    for (const restaurant of statusFilteredRestaurants) {
+    for (const restaurant of restaurants) {
       const countryMap = map.get(restaurant.countryName) ?? new Map<string, number>();
       countryMap.set(restaurant.cityName, (countryMap.get(restaurant.cityName) ?? 0) + 1);
       map.set(restaurant.countryName, countryMap);
@@ -168,7 +168,7 @@ export function PublicEatsPage({
         .sort(([countryA], [countryB]) => byAlpha(countryA, countryB))
         .map(([country, cityMap]) => [country, new Map([...cityMap.entries()].sort(([a], [b]) => byAlpha(a, b)))])
     );
-  }, [statusFilteredRestaurants]);
+  }, [restaurants]);
 
   useEffect(() => {
     if (!hasInitializedFilters) {
@@ -468,8 +468,12 @@ export function PublicEatsPage({
 
     params.delete('status');
     if (selectedStatuses.length !== defaultRestaurantStatuses.length || !defaultRestaurantStatuses.every((status) => selectedStatuses.includes(status))) {
-      for (const status of selectedStatuses) {
-        params.append('status', status);
+      if (selectedStatuses.length === 0) {
+        params.append('status', 'none');
+      } else {
+        for (const status of selectedStatuses) {
+          params.append('status', status);
+        }
       }
     }
 
@@ -560,6 +564,9 @@ export function PublicEatsPage({
 
     return `${includedHeadingsCount} / ${headings.length}`;
   }, [headings.length, includedHeadingsCount]);
+  const noResultsMessage = selectedStatuses.length === 0
+    ? 'Select at least one status to show restaurants.'
+    : 'No restaurants match these filters.';
   const luckyCandidateIds = useMemo(
     () => getFeelingLuckyCandidateIds(visibleRestaurantIds, visibleRestaurantsById, selectedStatuses),
     [selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
@@ -754,14 +761,15 @@ export function PublicEatsPage({
         return [...current, status];
       }
 
-      if (current.length === 1) {
-        statusFilterSnapshot.current = null;
-        return current;
-      }
-
       return current.filter((entry) => entry !== status);
     });
   };
+  const handleCityChange = useCallback((city: string): void => {
+    setSelectedCity(city);
+    setSelectedStatuses(defaultRestaurantStatuses);
+    statusFilterSnapshot.current = null;
+    preservedIncludedHeadings.current = null;
+  }, []);
   const handleFeelingLucky = (): void => {
     if (luckyCandidateIds.length === 0) {
       return;
@@ -801,6 +809,7 @@ export function PublicEatsPage({
   const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
+  const filtersReady = embedded || hasInitializedFilters;
 
   return (
     <div className={embedded ? styles.embeddedRoot : styles.eatsRoot} style={rootStyle}>
@@ -820,101 +829,103 @@ export function PublicEatsPage({
           wanting to try, and counting!
         </div>
       </div>
-      <div className={styles.searchCard}>
-        <div className={styles.searchSection}>
-          <div className={styles.searchRow}>
-            <label htmlFor="search">Global Search:</label>
-            <input
-              id="search"
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search restaurant names"
-            />
-          </div>
-        </div>
-      </div>
-      <div
-        className={`${styles.body} ${
-          isSearchActive ? (grouped.size > 0 ? styles.searchResultsBody : styles.searchEmptyBody) : ''
-        }`}
-      >
-        {!isSearchActive ? (
-          <div className={styles.sorting}>
-            <div>
-              <label htmlFor="city">City:</label>
-              <CitySelect id="city" groups={filterCityGroups} value={selectedCity} onChange={setSelectedCity} />
-            </div>
-            <div>
-              <label htmlFor="mealType">Meal Type:</label>
-              <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
-                <option value="Any">Any</option>
-                {[...mealTypeCounts.keys()].map((meal) => (
-                  <option key={meal} value={meal}>
-                    {mealLabel(meal)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="category">Categorise By:</label>
-              <select
-                value={category}
-                onChange={(event) => setCategory(event.target.value as CategoryFilter)}
-              >
-                <option value="area">Area</option>
-                <option value="type">Type of Food</option>
-                <option value="recentlyAdded">Date Added</option>
-              </select>
-            </div>
-            <div className={styles.statusFilterGroup}>
-              <span className={styles.statusFilterLabel}>Status:</span>
-              <div className={styles.filtersContainer}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selectedStatuses.includes('untried')}
-                    onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
-                  />
-                  <span>Want to Try ({statusCount('untried')})</span>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selectedStatuses.includes('liked')}
-                    onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
-                  />
-                  <span>Recommended ({statusCount('liked')})</span>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selectedStatuses.includes('disliked')}
-                    onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
-                  />
-                  <span>Not Recommended ({statusCount('disliked')})</span>
-                </label>
+      {filtersReady ? (
+        <>
+          <div className={styles.searchCard}>
+            <div className={styles.searchSection}>
+              <div className={styles.searchRow}>
+                <label htmlFor="search">Global Search:</label>
+                <input
+                  id="search"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search restaurant names"
+                />
               </div>
             </div>
-            <div className={styles.filterControls}>
-              {category !== 'recentlyAdded' && headings.length > 1 ? (
-                <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
-                  <button
-                    type="button"
-                    className={styles.filterSummaryButton}
-                    aria-expanded={isFilterPopoverOpen}
-                    aria-controls={filterPopoverId}
-                    onClick={() => setIsFilterPopoverOpen((current) => !current)}
+          </div>
+          <div
+            className={`${styles.body} ${
+              isSearchActive ? (grouped.size > 0 ? styles.searchResultsBody : styles.searchEmptyBody) : ''
+            }`}
+          >
+            {!isSearchActive ? (
+              <div className={styles.sorting}>
+                <div>
+                  <label htmlFor="city">City:</label>
+                  <CitySelect id="city" groups={filterCityGroups} value={selectedCity} onChange={handleCityChange} />
+                </div>
+                <div>
+                  <label htmlFor="mealType">Meal Type:</label>
+                  <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
+                    <option value="Any">Any</option>
+                    {[...mealTypeCounts.keys()].map((meal) => (
+                      <option key={meal} value={meal}>
+                        {mealLabel(meal)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="category">Categorise By:</label>
+                  <select
+                    value={category}
+                    onChange={(event) => setCategory(event.target.value as CategoryFilter)}
                   >
-                    {category === 'area' ? 'Filter Areas' : 'Filter Types'} ({filterButtonStateLabel})
-                  </button>
-                  {isFilterPopoverOpen ? (
-                    <div
-                      className={`${styles.filterPopover} ${
-                        filterPopoverDirection === 'up' ? styles.filterPopoverUp : styles.filterPopoverDown
-                      }`}
-                      id={filterPopoverId}
-                      ref={filterPopoverPanelRef}
+                    <option value="area">Area</option>
+                    <option value="type">Type of Food</option>
+                    <option value="recentlyAdded">Date Added</option>
+                  </select>
+                </div>
+                <div className={styles.statusFilterGroup}>
+                  <span className={styles.statusFilterLabel}>Status:</span>
+                  <div className={styles.filtersContainer}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedStatuses.includes('untried')}
+                        onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
+                      />
+                      <span>Want to Try ({statusCount('untried')})</span>
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedStatuses.includes('liked')}
+                        onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
+                      />
+                      <span>Recommended ({statusCount('liked')})</span>
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedStatuses.includes('disliked')}
+                        onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
+                      />
+                      <span>Not Recommended ({statusCount('disliked')})</span>
+                    </label>
+                  </div>
+                </div>
+                <div className={styles.filterControls}>
+                  {category !== 'recentlyAdded' && headings.length > 1 ? (
+                    <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
+                      <button
+                        type="button"
+                        className={styles.filterSummaryButton}
+                        aria-expanded={isFilterPopoverOpen}
+                        aria-controls={filterPopoverId}
+                        onClick={() => setIsFilterPopoverOpen((current) => !current)}
+                      >
+                        {category === 'area' ? 'Filter Areas' : 'Filter Types'} ({filterButtonStateLabel})
+                      </button>
+                      {isFilterPopoverOpen ? (
+                        <div
+                          className={`${styles.filterPopover} ${
+                            filterPopoverDirection === 'up' ? styles.filterPopoverUp : styles.filterPopoverDown
+                          }`}
+                          id={filterPopoverId}
+                          ref={filterPopoverPanelRef}
                     >
                       <div className={styles.filterPopoverHeader}>
                         <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
@@ -994,7 +1005,7 @@ export function PublicEatsPage({
         <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
           {grouped.size === 0 ? (
             <div className={styles.noResults}>
-              {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : 'No restaurants found.'}
+              {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
             </div>
           ) : (
             [...grouped.entries()].map(([heading, places]) => (
@@ -1116,7 +1127,9 @@ export function PublicEatsPage({
             ))
           )}
         </div>
-      </div>
+          </div>
+        </>
+      ) : null}
       {createTools && !embedded ? (
         <>
           <button

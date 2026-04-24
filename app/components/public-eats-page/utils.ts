@@ -132,6 +132,10 @@ export const readUrlState = (): UrlState => {
   const statusesFromUrl =
     parsedStatuses.length > 0
       ? parsedStatuses.flatMap((value) => {
+          if (value === 'none') {
+            return [];
+          }
+
           if (value === 'untriedLiked') {
             return ['untried', 'liked'] as RestaurantStatusFilter[];
           }
@@ -142,6 +146,7 @@ export const readUrlState = (): UrlState => {
         })
       : [];
   const uniqueStatuses = [...new Set(statusesFromUrl)];
+  const hasExplicitEmptyStatusFilter = parsedStatuses.includes('none');
 
   return {
     city: cityFromUrl?.trim() ?? '',
@@ -150,7 +155,11 @@ export const readUrlState = (): UrlState => {
     category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)
       ? (categoryFromUrl as CategoryFilter)
       : 'area',
-    statuses: uniqueStatuses.length > 0 ? uniqueStatuses : defaultRestaurantStatuses,
+    statuses: uniqueStatuses.length > 0
+      ? uniqueStatuses
+      : hasExplicitEmptyStatusFilter
+        ? []
+        : defaultRestaurantStatuses,
     search: searchFromUrl?.trim() ?? '',
     excluded: excludedFromUrl.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
   };

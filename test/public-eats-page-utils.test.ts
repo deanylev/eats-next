@@ -107,6 +107,35 @@ test('readUrlState supports multiple status params and legacy combined status', 
   }
 });
 
+test('readUrlState preserves an explicitly empty status filter', () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      location: {
+        search: '?status=none'
+      }
+    }
+  });
+
+  try {
+    assert.deepEqual(readUrlState(), {
+      city: '',
+      hasCityQuery: false,
+      mealType: 'Any',
+      category: 'area',
+      statuses: [],
+      search: '',
+      excluded: []
+    });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow
+    });
+  }
+});
+
 test('showFeelingLuckyForStatuses hides lucky when only disliked is selected', () => {
   assert.equal(showFeelingLuckyForStatuses(['disliked']), false);
   assert.equal(showFeelingLuckyForStatuses(['liked']), true);
