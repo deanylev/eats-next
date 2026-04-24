@@ -716,15 +716,18 @@
 }
 
 .filterPopover {
+  --filter-popover-surface-start: color-mix(in srgb, var(--theme-primary) 88%, var(--theme-on-primary) 12%);
+  --filter-popover-surface-end: color-mix(in srgb, var(--theme-primary) 94%, var(--theme-on-primary) 6%);
+
   box-sizing: border-box;
   backdrop-filter: blur(18px) saturate(135%);
   background:
     linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--theme-primary) 74%, rgba(14, 5, 23, 0.94) 26%),
-      color-mix(in srgb, var(--theme-primary) 82%, rgba(14, 5, 23, 0.96) 18%)
+      160deg,
+      var(--filter-popover-surface-start),
+      var(--filter-popover-surface-end)
     );
-  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
   border-radius: 14px;
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.42),
@@ -745,12 +748,6 @@
     height: 16px;
     transform: rotate(45deg);
     backdrop-filter: blur(18px) saturate(135%);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--theme-primary) 74%, rgba(14, 5, 23, 0.94) 26%),
-        color-mix(in srgb, var(--theme-primary) 82%, rgba(14, 5, 23, 0.96) 18%)
-      );
     box-sizing: border-box;
   }
 }
@@ -760,8 +757,9 @@
   top: 100%;
 
   &::before {
-    border-left: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
-    border-top: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    background: var(--filter-popover-surface-start);
+    border-left: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
     top: -9px;
   }
 }
@@ -771,8 +769,9 @@
   margin-bottom: 12px;
 
   &::before {
-    border-bottom: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
-    border-right: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    background: var(--filter-popover-surface-end);
+    border-bottom: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
     bottom: -9px;
   }
 }
