@@ -116,7 +116,7 @@ export function PublicEatsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
-  const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('down');
+  const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [createDialogHasUnsavedChanges, setCreateDialogHasUnsavedChanges] = useState(false);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
@@ -332,7 +332,7 @@ export function PublicEatsPage({
   useEffect(() => {
     if (category === 'recentlyAdded') {
       setIsFilterPopoverOpen(false);
-      setFilterPopoverDirection('down');
+      setFilterPopoverDirection('up');
     }
   }, [category]);
 
@@ -425,12 +425,12 @@ export function PublicEatsPage({
       const spaceBelow = viewportHeight - triggerRect.bottom - margin;
       const spaceAbove = triggerRect.top - margin;
 
-      if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
-        setFilterPopoverDirection('down');
+      if (spaceAbove >= panelHeight || spaceAbove >= spaceBelow) {
+        setFilterPopoverDirection('up');
         return;
       }
 
-      setFilterPopoverDirection('up');
+      setFilterPopoverDirection('down');
     };
 
     updateFilterPopoverDirection();
