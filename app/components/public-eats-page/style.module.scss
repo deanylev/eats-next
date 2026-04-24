@@ -670,6 +670,18 @@
       margin-right: 4px;
       vertical-align: middle;
     }
+
+    &:has(> input[type='checkbox']:disabled) {
+      background: color-mix(in srgb, var(--theme-secondary) 54%, #1a1510 46%);
+      border-color: color-mix(in srgb, var(--theme-secondary-border) 58%, #1a1510 42%);
+      color: color-mix(in srgb, #fff5df 74%, #1a1510 26%);
+      cursor: not-allowed;
+    }
+
+    > input[type='checkbox']:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
   }
 }
 

@@ -30,6 +30,8 @@ import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR 
 
 import styles from './style.module.scss';
 
+const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
+
 type RestaurantType = {
   id: string;
   name: string;
@@ -714,13 +716,56 @@ export function PublicEatsPage({
     clearFlashCookieClient(flashCookieNames.rootDeleteError, '/');
   }, [rootDeleteErrorMessage]);
 
-  const statusCount = (status: RestaurantStatusFilter): number => {
+  const statusCounts = useMemo(() => {
+    const counts = new Map<RestaurantStatusFilter, number>(
+      restaurantStatusChoices.map((status) => [status, 0])
+    );
+
     if (!selectedCity) {
-      return 0;
+      return counts;
     }
 
-    return restaurants.filter((restaurant) => restaurant.cityName === selectedCity && restaurant.status === status).length;
-  };
+    for (const restaurant of restaurants) {
+      if (restaurant.cityName !== selectedCity) {
+        continue;
+      }
+
+      counts.set(restaurant.status, (counts.get(restaurant.status) ?? 0) + 1);
+    }
+
+    return counts;
+  }, [restaurants, selectedCity]);
+  const statusCount = useCallback(
+    (status: RestaurantStatusFilter): number => statusCounts.get(status) ?? 0,
+    [statusCounts]
+  );
+  const getAvailableStatusesForCity = useCallback(
+    (city: string): RestaurantStatusFilter[] => {
+      const statuses = new Set(
+        restaurants
+          .filter((restaurant) => restaurant.cityName === city)
+          .map((restaurant) => restaurant.status)
+      );
+
+      return restaurantStatusChoices.filter((status) => statuses.has(status));
+    },
+    [restaurants]
+  );
+  const getDefaultStatusesForCity = useCallback(
+    (city: string): RestaurantStatusFilter[] => {
+      const availableStatuses = getAvailableStatusesForCity(city);
+      const availableDefaults = defaultRestaurantStatuses.filter((status) => availableStatuses.includes(status));
+      return availableDefaults.length > 0 ? availableDefaults : availableStatuses;
+    },
+    [getAvailableStatusesForCity]
+  );
+  useEffect(() => {
+    if (!hasInitializedFilters || !selectedCity) {
+      return;
+    }
+
+    setSelectedStatuses((current) => current.filter((status) => statusCount(status) > 0));
+  }, [hasInitializedFilters, selectedCity, statusCount]);
   const createDefaultCityId = useMemo(() => {
     if (!createTools || !selectedCity) {
       return undefined;
@@ -766,10 +811,10 @@ export function PublicEatsPage({
   };
   const handleCityChange = useCallback((city: string): void => {
     setSelectedCity(city);
-    setSelectedStatuses(defaultRestaurantStatuses);
+    setSelectedStatuses(getDefaultStatusesForCity(city));
     statusFilterSnapshot.current = null;
     preservedIncludedHeadings.current = null;
-  }, []);
+  }, [getDefaultStatusesForCity]);
   const handleFeelingLucky = (): void => {
     if (luckyCandidateIds.length === 0) {
       return;
@@ -885,6 +930,7 @@ export function PublicEatsPage({
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('untried')}
+                        disabled={statusCount('untried') === 0}
                         onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
                       />
                       <span>Want to Try ({statusCount('untried')})</span>
@@ -893,6 +939,7 @@ export function PublicEatsPage({
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('liked')}
+                        disabled={statusCount('liked') === 0}
                         onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
                       />
                       <span>Recommended ({statusCount('liked')})</span>
@@ -901,6 +948,7 @@ export function PublicEatsPage({
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('disliked')}
+                        disabled={statusCount('disliked') === 0}
                         onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
                       />
                       <span>Not Recommended ({statusCount('disliked')})</span>
