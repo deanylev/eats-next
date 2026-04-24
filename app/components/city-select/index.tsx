@@ -19,6 +19,10 @@ type CitySelectProps = {
   required?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  leadingOptions?: Array<{
+    label: string;
+    value: string;
+  }>;
 };
 
 export const buildCitySelectGroups = (
@@ -51,7 +55,8 @@ export function CitySelect({
   name,
   required = false,
   disabled = false,
-  placeholder
+  placeholder,
+  leadingOptions = []
 }: CitySelectProps) {
   return (
     <select
@@ -67,6 +72,11 @@ export function CitySelect({
           {placeholder}
         </option>
       ) : null}
+      {leadingOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
       {groups.map((group) => (
         <optgroup key={group.countryName} label={group.countryName}>
           {group.options.map((option) => (

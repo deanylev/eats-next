@@ -31,6 +31,7 @@ import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR 
 import styles from './style.module.scss';
 
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
+const allCitiesUrlValue = 'all';
 
 type RestaurantType = {
   id: string;
@@ -111,7 +112,7 @@ export function PublicEatsPage({
   const statusFilterSnapshot = useRef<{ preservedIncludedHeadings: string[] | null } | null>(null);
 
   const [selectedStatuses, setSelectedStatuses] = useState<RestaurantStatusFilter[]>(defaultRestaurantStatuses);
-  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string | null>('');
   const [selectedMealType, setSelectedMealType] = useState<string>('Any');
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
@@ -142,9 +143,9 @@ export function PublicEatsPage({
     skipNextExcludeReset.current = urlState.excluded.length > 0;
     skipNextExcludePrune.current = urlState.excluded.length > 0;
     setSelectedStatuses(urlState.statuses);
-    setSelectedCity(urlState.city);
+    setSelectedCity(urlState.city === allCitiesUrlValue ? null : urlState.city);
     setSelectedMealType(urlState.mealType);
-    setCategory(urlState.category);
+    setCategory(urlState.city === allCitiesUrlValue && urlState.category === 'area' ? 'type' : urlState.category);
     setSearchQuery(urlState.search);
     setExcluded(urlState.excluded);
     preservedIncludedHeadings.current = null;
@@ -172,6 +173,8 @@ export function PublicEatsPage({
     );
   }, [restaurants]);
 
+  const isAllCitiesSelected = selectedCity === null;
+
   useEffect(() => {
     if (!hasInitializedFilters) {
       return;
@@ -179,6 +182,10 @@ export function PublicEatsPage({
 
     const preferredDefaultCity = defaultCityName?.trim() || 'Melbourne';
     const defaultCityExists = [...citiesByCountry.values()].some((cityMap) => cityMap.has(preferredDefaultCity));
+
+    if (isAllCitiesSelected) {
+      return;
+    }
 
     if (!selectedCity) {
       if (!hasExplicitCityQuery.current && defaultCityExists) {
@@ -198,11 +205,14 @@ export function PublicEatsPage({
       const firstCity = [...citiesByCountry.values()][0]?.keys().next().value ?? '';
       setSelectedCity(firstCity);
     }
-  }, [citiesByCountry, defaultCityName, hasInitializedFilters, selectedCity]);
+  }, [citiesByCountry, defaultCityName, hasInitializedFilters, isAllCitiesSelected, selectedCity]);
 
   const cityRestaurants = useMemo(
-    () => statusFilteredRestaurants.filter((restaurant) => restaurant.cityName === selectedCity),
-    [selectedCity, statusFilteredRestaurants]
+    () =>
+      isAllCitiesSelected
+        ? statusFilteredRestaurants
+        : statusFilteredRestaurants.filter((restaurant) => restaurant.cityName === selectedCity),
+    [isAllCitiesSelected, selectedCity, statusFilteredRestaurants]
   );
 
   const mealTypeCounts = useMemo(() => {
@@ -264,7 +274,7 @@ export function PublicEatsPage({
     for (const restaurant of mealFilteredRestaurants) {
       if (category === 'area') {
         if (restaurant.areas.length === 0) {
-          values.add(selectedCity);
+          values.add(selectedCity ?? restaurant.cityName);
         } else {
           for (const area of restaurant.areas) {
             values.add(area);
@@ -289,7 +299,7 @@ export function PublicEatsPage({
     }
 
     return headingList.sort((a, b) => byAlpha(a, b));
-  }, [category, mealFilteredRestaurants, selectedCity]);
+  }, [category, isAllCitiesSelected, mealFilteredRestaurants, selectedCity]);
 
   useEffect(() => {
     if (!hasInitializedFilters || !selectedCity) {
@@ -450,7 +460,9 @@ export function PublicEatsPage({
 
     const params = new URLSearchParams(window.location.search);
 
-    if (selectedCity) {
+    if (isAllCitiesSelected) {
+      params.set('city', allCitiesUrlValue);
+    } else if (selectedCity) {
       params.set('city', selectedCity);
     } else {
       params.delete('city');
@@ -493,7 +505,7 @@ export function PublicEatsPage({
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [category, embedded, excluded, hasInitializedFilters, searchQuery, selectedCity, selectedMealType, selectedStatuses]);
+  }, [category, embedded, excluded, hasInitializedFilters, isAllCitiesSelected, searchQuery, selectedCity, selectedMealType, selectedStatuses]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
@@ -512,7 +524,7 @@ export function PublicEatsPage({
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
       if (category === 'area') {
-        headingValues.push(...(restaurant.areas.length > 0 ? restaurant.areas : [selectedCity]));
+        headingValues.push(...(restaurant.areas.length > 0 ? restaurant.areas : [selectedCity ?? restaurant.cityName]));
       }
 
       if (category === 'type') {
@@ -539,7 +551,7 @@ export function PublicEatsPage({
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
-  }, [category, excluded, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
+  }, [category, excluded, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
   const visibleRestaurantIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -721,12 +733,12 @@ export function PublicEatsPage({
       restaurantStatusChoices.map((status) => [status, 0])
     );
 
-    if (!selectedCity) {
+    if (!isAllCitiesSelected && !selectedCity) {
       return counts;
     }
 
     for (const restaurant of restaurants) {
-      if (restaurant.cityName !== selectedCity) {
+      if (!isAllCitiesSelected && restaurant.cityName !== selectedCity) {
         continue;
       }
 
@@ -734,16 +746,16 @@ export function PublicEatsPage({
     }
 
     return counts;
-  }, [restaurants, selectedCity]);
+  }, [isAllCitiesSelected, restaurants, selectedCity]);
   const statusCount = useCallback(
     (status: RestaurantStatusFilter): number => statusCounts.get(status) ?? 0,
     [statusCounts]
   );
   const getAvailableStatusesForCity = useCallback(
-    (city: string): RestaurantStatusFilter[] => {
+    (city: string | null): RestaurantStatusFilter[] => {
       const statuses = new Set(
         restaurants
-          .filter((restaurant) => restaurant.cityName === city)
+          .filter((restaurant) => city === null || restaurant.cityName === city)
           .map((restaurant) => restaurant.status)
       );
 
@@ -752,7 +764,7 @@ export function PublicEatsPage({
     [restaurants]
   );
   const getDefaultStatusesForCity = useCallback(
-    (city: string): RestaurantStatusFilter[] => {
+    (city: string | null): RestaurantStatusFilter[] => {
       const availableStatuses = getAvailableStatusesForCity(city);
       const availableDefaults = defaultRestaurantStatuses.filter((status) => availableStatuses.includes(status));
       return availableDefaults.length > 0 ? availableDefaults : availableStatuses;
@@ -810,11 +822,16 @@ export function PublicEatsPage({
     });
   };
   const handleCityChange = useCallback((city: string): void => {
-    setSelectedCity(city);
-    setSelectedStatuses(getDefaultStatusesForCity(city));
+    const nextCity = city || null;
+
+    setSelectedCity(nextCity);
+    if (nextCity === null && category === 'area') {
+      setCategory('type');
+    }
+    setSelectedStatuses(getDefaultStatusesForCity(nextCity));
     statusFilterSnapshot.current = null;
     preservedIncludedHeadings.current = null;
-  }, [getDefaultStatusesForCity]);
+  }, [category, getDefaultStatusesForCity]);
   const handleFeelingLucky = (): void => {
     if (luckyCandidateIds.length === 0) {
       return;
@@ -899,7 +916,13 @@ export function PublicEatsPage({
               <div className={styles.sorting}>
                 <div>
                   <label htmlFor="city">City:</label>
-                  <CitySelect id="city" groups={filterCityGroups} value={selectedCity} onChange={handleCityChange} />
+                  <CitySelect
+                    id="city"
+                    groups={filterCityGroups}
+                    value={selectedCity ?? ''}
+                    onChange={handleCityChange}
+                    leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
+                  />
                 </div>
                 <div>
                   <label htmlFor="mealType">Meal Type:</label>
@@ -918,7 +941,9 @@ export function PublicEatsPage({
                     value={category}
                     onChange={(event) => setCategory(event.target.value as CategoryFilter)}
                   >
-                    <option value="area">Area</option>
+                    <option value="area" disabled={isAllCitiesSelected}>
+                      Area
+                    </option>
                     <option value="type">Type of Food</option>
                     <option value="recentlyAdded">Date Added</option>
                   </select>
@@ -1107,6 +1132,11 @@ export function PublicEatsPage({
                             {place.name}
                           </a>
                         </span>
+                        {isAllCitiesSelected ? (
+                          <span className={styles.cardCity}>
+                            {place.cityName}, {place.countryName}
+                          </span>
+                        ) : null}
 
                         {place.referredBy.trim().length > 0 ? (
                           isUrl(place.referredBy) ? (
