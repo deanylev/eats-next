@@ -32,6 +32,19 @@ import styles from './style.module.scss';
 
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
+const compactCardsStorageKey = 'publicEatsCompactCards';
+
+const readStoredCompactCards = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(compactCardsStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+};
 
 type RestaurantType = {
   id: string;
@@ -54,6 +67,14 @@ type PublicRestaurant = {
   areas: string[];
   mealTypes: string[];
   types: RestaurantType[];
+};
+
+const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
+  if (restaurant.status === 'disliked') {
+    return restaurant.dislikedReason?.trim() ?? '';
+  }
+
+  return restaurant.notes.trim();
 };
 
 type Props = {
@@ -117,6 +138,8 @@ export function PublicEatsPage({
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [compactCards, setCompactCards] = useState(false);
+  const [expandedCompactCardIds, setExpandedCompactCardIds] = useState<Set<string>>(new Set());
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
@@ -133,6 +156,8 @@ export function PublicEatsPage({
   const filterPopoverId = useId();
 
   useEffect(() => {
+    setCompactCards(readStoredCompactCards());
+
     if (embedded) {
       setHasInitializedFilters(true);
       return;
@@ -151,6 +176,24 @@ export function PublicEatsPage({
     preservedIncludedHeadings.current = null;
     setHasInitializedFilters(true);
   }, [embedded]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hasInitializedFilters) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(compactCardsStorageKey, compactCards ? 'true' : 'false');
+    } catch {
+      // Ignore storage failures; compact mode still works for the current page session.
+    }
+  }, [compactCards, hasInitializedFilters]);
+
+  useEffect(() => {
+    if (!compactCards) {
+      setExpandedCompactCardIds(new Set());
+    }
+  }, [compactCards]);
 
   const statusFilteredRestaurants = useMemo(() => {
     const selectedStatusSet = new Set(selectedStatuses);
@@ -948,6 +991,17 @@ export function PublicEatsPage({
                     <option value="recentlyAdded">Date Added</option>
                   </select>
                 </div>
+                <div className={styles.viewModeGroup}>
+                  <span className={styles.viewModeLabel}>View:</span>
+                  <label className={styles.compactToggle}>
+                    <input
+                      type="checkbox"
+                      checked={compactCards}
+                      onChange={(event) => setCompactCards(event.target.checked)}
+                    />
+                    <span>Compact Cards</span>
+                  </label>
+                </div>
                 <div className={styles.statusFilterGroup}>
                   <span className={styles.statusFilterLabel}>Status:</span>
                   <div className={styles.filtersContainer}>
@@ -1097,14 +1151,27 @@ export function PublicEatsPage({
 
                       return a.name.localeCompare(b.name);
                     })
-                    .map((place) => (
-                      <div
-                        className={`${styles.placeCard} ${luckyRestaurantId === place.id ? styles.luckyCard : ''}`}
-                        key={`${heading}-${place.id}`}
-                        ref={(element) => {
-                          restaurantCardRefs.current[place.id] = element;
-                        }}
-                      >
+                    .map((place) => {
+                      const compactDetailText = getRestaurantDetailText(place);
+                      const compactDetailId = `compact-detail-${place.id}`;
+                      const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
+
+                      return (
+                        <div
+                          className={`${styles.placeCard} ${compactCards ? styles.compactPlaceCard : ''} ${
+                            luckyRestaurantId === place.id ? styles.luckyCard : ''
+                          } ${
+                            place.status === 'liked'
+                              ? styles.likedPlaceCard
+                              : place.status === 'disliked'
+                                ? styles.dislikedPlaceCard
+                                : styles.untriedPlaceCard
+                          }`}
+                          key={`${heading}-${place.id}`}
+                          ref={(element) => {
+                            restaurantCardRefs.current[place.id] = element;
+                          }}
+                        >
                         {luckyRestaurantId === place.id ? (
                           <div className={styles.confettiLayer} aria-hidden="true">
                             {confettiPieceIndexes.map((index) => (
@@ -1112,17 +1179,50 @@ export function PublicEatsPage({
                             ))}
                           </div>
                         ) : null}
-                        {place.status === 'untried' ? (
+                        {compactCards ? (
+                          <span className={styles.compactStatusLabel}>
+                            {place.status === 'liked'
+                              ? 'Recommended'
+                              : place.status === 'disliked'
+                                ? 'Not Recommended'
+                                : 'Want to Try'}
+                          </span>
+                        ) : null}
+                        {compactCards && compactDetailText.length > 0 ? (
+                          <button
+                            type="button"
+                            className={`${styles.compactDetailsToggle} ${
+                              isCompactDetailExpanded ? styles.compactDetailsToggleExpanded : ''
+                            }`}
+                            aria-label={isCompactDetailExpanded ? `Hide notes for ${place.name}` : `Show notes for ${place.name}`}
+                            aria-expanded={isCompactDetailExpanded}
+                            aria-controls={compactDetailId}
+                            onClick={() => {
+                              setExpandedCompactCardIds((current) => {
+                                const next = new Set(current);
+
+                                if (next.has(place.id)) {
+                                  next.delete(place.id);
+                                } else {
+                                  next.add(place.id);
+                                }
+
+                                return next;
+                              });
+                            }}
+                          />
+                        ) : null}
+                        {!compactCards && place.status === 'untried' ? (
                           <div className={styles.untriedBadgeRow}>
                             <span className={styles.untriedBadge}>Want to Try</span>
                           </div>
                         ) : null}
-                        {place.status === 'liked' ? (
+                        {!compactCards && place.status === 'liked' ? (
                           <div className={styles.untriedBadgeRow}>
                             <span className={styles.likedBadge}>Recommended</span>
                           </div>
                         ) : null}
-                        {place.status === 'disliked' ? (
+                        {!compactCards && place.status === 'disliked' ? (
                           <div className={styles.untriedBadgeRow}>
                             <span className={styles.dislikedBadge}>Not Recommended</span>
                           </div>
@@ -1138,7 +1238,7 @@ export function PublicEatsPage({
                           </span>
                         ) : null}
 
-                        {place.referredBy.trim().length > 0 ? (
+                        {!compactCards && place.referredBy.trim().length > 0 ? (
                           isUrl(place.referredBy) ? (
                             <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
                               Where I Found It
@@ -1164,20 +1264,39 @@ export function PublicEatsPage({
                                 place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
                               }`
                               : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
-                          {selectedMealType === 'Any'
+                          {selectedMealType === 'Any' && !compactCards
                             ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
                             : ''}
                         </span>
 
-                        {place.status === 'disliked' ? (
-                          place.dislikedReason ? (
-                            <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
-                          ) : null
-                        ) : (
-                          <div className={styles.notes}>{place.notes}</div>
-                        )}
+                        {!compactCards ? (
+                          place.status === 'disliked' ? (
+                            place.dislikedReason ? (
+                              <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
+                            ) : null
+                          ) : (
+                            <div className={styles.notes}>{place.notes}</div>
+                          )
+                        ) : null}
 
-                        {canEditRestaurants || canDeleteRestaurants ? (
+                        {compactCards && compactDetailText.length > 0 ? (
+                          <>
+                            {isCompactDetailExpanded ? (
+                              <div
+                                className={
+                                  place.status === 'disliked'
+                                    ? `${styles.compactDetails} ${styles.compactDislikedDetails}`
+                                    : styles.compactDetails
+                                }
+                                id={compactDetailId}
+                              >
+                                {place.status === 'disliked' ? `Reason: ${compactDetailText}` : compactDetailText}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+
+                        {!compactCards && (canEditRestaurants || canDeleteRestaurants) ? (
                           <div className={styles.cardActions}>
                             {canEditRestaurants ? (
                               <button
@@ -1198,8 +1317,9 @@ export function PublicEatsPage({
                             ) : null}
                           </div>
                         ) : null}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                 </div>
               </Fragment>
             ))
