@@ -65,10 +65,6 @@
   margin: 0;
 
   @media only screen and (max-width: 600px) {
-    font-size: 35px;
-  }
-
-  @media only screen and (max-width: 400px) {
     font-size: 30px;
   }
 }
@@ -194,22 +190,30 @@
   padding-top: 10px;
 }
 
-.searchCard {
-  @include glass.glass-panel(14px);
-  box-sizing: border-box;
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
-  margin-top: 22px;
-  max-width: 1180px;
-  padding: 16px;
-  width: 100%;
-}
-
 .titleRow,
 .countSummary {
   padding-left: 4px;
   padding-right: 4px;
+}
+
+.floatingActionStack {
+  align-items: flex-end;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: fixed;
+  right: 24px;
+  z-index: 55;
+}
+
+.floatingActionStackRaised {
+  z-index: 59;
+}
+
+.floatingPopoverAnchor {
+  overflow: visible;
+  position: relative;
 }
 
 .eatsRoot button.addFab,
@@ -252,6 +256,23 @@
   z-index: 56;
 }
 
+.eatsRoot button.stackedFab,
+.embeddedRoot button.stackedFab {
+  position: static;
+}
+
+.eatsRoot button.searchFab,
+.embeddedRoot button.searchFab {
+  font-size: 0;
+}
+
+.eatsRoot button.searchFabActive,
+.embeddedRoot button.searchFabActive,
+.eatsRoot button.searchFab:hover,
+.embeddedRoot button.searchFab:hover {
+  background: color-mix(in srgb, var(--theme-secondary) 72%, white 28%);
+}
+
 .backToTopIcon {
   fill: none;
   height: 24px;
@@ -259,6 +280,17 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 4;
+  width: 24px;
+}
+
+.searchFabIcon {
+  fill: none;
+  height: 24px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3.25;
+  transform: translate(-0.25px, 0.25px);
   width: 24px;
 }
 
@@ -501,6 +533,11 @@
     padding: 12px;
   }
 
+  .floatingActionStack {
+    bottom: 16px;
+    right: 16px;
+  }
+
   .eatsRoot button.floatingLeft,
   .embeddedRoot button.floatingLeft {
     bottom: 16px;
@@ -509,47 +546,30 @@
   }
 }
 
-.searchSection {
-  margin: 0;
-}
-
-.searchSectionLabel {
-  color: var(--theme-on-primary-strong);
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.searchSectionHelp {
-  color: var(--theme-on-primary-muted);
-  font-size: 14px;
-  line-height: 1.4;
-  margin-bottom: 14px;
-}
-
-.searchRow {
-  align-items: center;
+.searchPopoverBody {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
 
   > label {
-    align-self: center;
-    color: var(--theme-on-primary-soft);
-    font-weight: 600;
+    color: var(--theme-on-primary-strong);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding-left: 2px;
+    text-wrap: balance;
   }
 
   > input[type='search'] {
     backdrop-filter: blur(10px);
-    background: rgba(252, 246, 254, 0.88);
+    background: rgba(252, 246, 254, 0.92);
     border: 1px solid rgba(166, 139, 177, 0.75);
-    border-radius: 8px;
+    border-radius: 12px;
     box-sizing: border-box;
     color: #180321;
     font-family: inherit;
-    font-size: 15px;
-    padding: 6px 10px;
-    max-width: 240px;
+    font-size: 16px;
+    padding: 8px 11px;
     width: 100%;
   }
 }
@@ -826,6 +846,42 @@
     border-bottom: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
     border-right: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
     bottom: -9px;
+  }
+}
+
+.filterPopover.floatingSearchPopover {
+  bottom: auto;
+  isolation: isolate;
+  left: 0;
+  margin-bottom: 0;
+  max-height: none;
+  padding: 10px;
+  top: 50%;
+  transform: translate(calc(-100% - 14px), -50%);
+  width: min(280px, calc(100vw - 96px));
+  z-index: 58;
+
+  &::before {
+    background:
+      linear-gradient(
+        160deg,
+        var(--filter-popover-surface-start),
+        var(--filter-popover-surface-end)
+      );
+    border-bottom: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+    bottom: auto;
+    box-shadow:
+      8px 8px 18px rgba(0, 0, 0, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    content: '';
+    height: 16px;
+    left: auto;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+    width: 16px;
+    z-index: -1;
   }
 }
 

@@ -143,6 +143,7 @@ export function PublicEatsPage({
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
+  const [isSearchPopoverOpen, setIsSearchPopoverOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [createDialogHasUnsavedChanges, setCreateDialogHasUnsavedChanges] = useState(false);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
@@ -154,6 +155,9 @@ export function PublicEatsPage({
   const filterPopoverRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverPanelRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverId = useId();
+  const searchPopoverRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchPopoverId = useId();
 
   useEffect(() => {
     setCompactCards(readStoredCompactCards());
@@ -391,6 +395,15 @@ export function PublicEatsPage({
     }
   }, [category]);
 
+  useEffect(() => {
+    if (!isSearchPopoverOpen) {
+      return;
+    }
+
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, [isSearchPopoverOpen]);
+
   const closeCreateDialog = useCallback((): void => {
     if (createDialogHasUnsavedChanges && !window.confirm('Discard unsaved changes?')) {
       return;
@@ -436,7 +449,7 @@ export function PublicEatsPage({
   }, [closeCreateDialog, closeEditRestaurantDialog, editingRestaurantId, isCreateDialogOpen]);
 
   useEffect(() => {
-    if (!isFilterPopoverOpen) {
+    if (!isFilterPopoverOpen && !isSearchPopoverOpen) {
       return;
     }
 
@@ -444,11 +457,16 @@ export function PublicEatsPage({
       if (!filterPopoverRef.current?.contains(event.target as Node)) {
         setIsFilterPopoverOpen(false);
       }
+
+      if (!searchPopoverRef.current?.contains(event.target as Node)) {
+        setIsSearchPopoverOpen(false);
+      }
     };
 
     const handleEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setIsFilterPopoverOpen(false);
+        setIsSearchPopoverOpen(false);
       }
     };
 
@@ -459,7 +477,7 @@ export function PublicEatsPage({
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isFilterPopoverOpen]);
+  }, [isFilterPopoverOpen, isSearchPopoverOpen]);
 
   useLayoutEffect(() => {
     if (!isFilterPopoverOpen || typeof window === 'undefined') {
@@ -936,20 +954,6 @@ export function PublicEatsPage({
       </div>
       {filtersReady ? (
         <>
-          <div className={styles.searchCard}>
-            <div className={styles.searchSection}>
-              <div className={styles.searchRow}>
-                <label htmlFor="search">Global Search:</label>
-                <input
-                  id="search"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search restaurant names"
-                />
-              </div>
-            </div>
-          </div>
           <div
             className={`${styles.body} ${
               isSearchActive ? (grouped.size > 0 ? styles.searchResultsBody : styles.searchEmptyBody) : ''
@@ -1042,7 +1046,10 @@ export function PublicEatsPage({
                         className={styles.filterSummaryButton}
                         aria-expanded={isFilterPopoverOpen}
                         aria-controls={filterPopoverId}
-                        onClick={() => setIsFilterPopoverOpen((current) => !current)}
+                        onClick={() => {
+                          setIsSearchPopoverOpen(false);
+                          setIsFilterPopoverOpen((current) => !current);
+                        }}
                       >
                         {category === 'area' ? 'Filter Areas' : 'Filter Types'} ({filterButtonStateLabel})
                       </button>
@@ -1328,17 +1335,66 @@ export function PublicEatsPage({
           </div>
         </>
       ) : null}
-      {createTools && !embedded ? (
-        <>
+      {!embedded ? (
+        <div
+          className={`${styles.floatingActionStack} ${
+            isSearchPopoverOpen ? styles.floatingActionStackRaised : ''
+          }`}
+        >
+          {createTools ? (
           <button
             type="button"
-            className={styles.addFab}
+            className={`${styles.addFab} ${styles.stackedFab}`}
             aria-label="Add restaurant"
             title="Add restaurant"
             onClick={() => setIsCreateDialogOpen(true)}
           >
             +
           </button>
+          ) : null}
+          <div className={styles.floatingPopoverAnchor} ref={searchPopoverRef}>
+            <button
+              type="button"
+              className={`${styles.addFab} ${styles.stackedFab} ${styles.searchFab} ${
+                isSearchPopoverOpen ? styles.searchFabActive : ''
+              }`}
+              aria-label="Search restaurants"
+              title="Search restaurants"
+              aria-expanded={isSearchPopoverOpen}
+              aria-controls={searchPopoverId}
+              onClick={() => {
+                setIsFilterPopoverOpen(false);
+                setIsSearchPopoverOpen((current) => !current);
+              }}
+            >
+              <svg className={styles.searchFabIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="M16 16L20 20" />
+              </svg>
+            </button>
+            {isSearchPopoverOpen ? (
+              <div
+                className={`${styles.filterPopover} ${styles.floatingSearchPopover}`}
+                id={searchPopoverId}
+              >
+                <div className={styles.searchPopoverBody}>
+                  <label htmlFor="floating-search">Search restaurants</label>
+                  <input
+                    id="floating-search"
+                    ref={searchInputRef}
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search restaurant names"
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {createTools && !embedded ? (
+        <>
           {isCreateDialogOpen ? (
             <div className={styles.createDialogOverlay}>
               <section
