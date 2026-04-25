@@ -948,8 +948,8 @@ export function PublicEatsPage({
           </div>
         ) : null}
         <div className={styles.countSummary}>
-          <span className={styles.countNumber}>{triedCount}</span> places recommended, <span className={styles.countNumber}>{untriedCount}</span>{' '}
-          wanting to try, and counting!
+          <span className={styles.countNumber}>{triedCount}</span> recommended, <span className={styles.countNumber}>{untriedCount}</span>{' '}
+          wanting to try!
         </div>
       </div>
       {filtersReady ? (
@@ -961,7 +961,7 @@ export function PublicEatsPage({
           >
             {!isSearchActive ? (
               <div className={styles.sorting}>
-                <div>
+                <div className={`${styles.sortingField} ${styles.cityField}`}>
                   <label htmlFor="city">City:</label>
                   <CitySelect
                     id="city"
@@ -971,7 +971,7 @@ export function PublicEatsPage({
                     leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
                   />
                 </div>
-                <div>
+                <div className={`${styles.sortingField} ${styles.mealField}`}>
                   <label htmlFor="mealType">Meal Type:</label>
                   <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
                     <option value="Any">Any</option>
@@ -982,7 +982,7 @@ export function PublicEatsPage({
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className={`${styles.sortingField} ${styles.categoryField}`}>
                   <label htmlFor="category">Categorise By:</label>
                   <select
                     value={category}
@@ -995,7 +995,7 @@ export function PublicEatsPage({
                     <option value="recentlyAdded">Date Added</option>
                   </select>
                 </div>
-                <div className={styles.viewModeGroup}>
+                <div className={`${styles.sortingField} ${styles.viewModeGroup}`}>
                   <span className={styles.viewModeLabel}>View:</span>
                   <label className={styles.compactToggle}>
                     <input
@@ -1006,7 +1006,7 @@ export function PublicEatsPage({
                     <span>Compact Cards</span>
                   </label>
                 </div>
-                <div className={styles.statusFilterGroup}>
+                <div className={`${styles.sortingField} ${styles.statusFilterGroup}`}>
                   <span className={styles.statusFilterLabel}>Status:</span>
                   <div className={styles.filtersContainer}>
                     <label>

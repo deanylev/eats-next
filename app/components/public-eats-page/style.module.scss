@@ -45,7 +45,7 @@
 .eatsRoot {
   min-height: 100vh;
   overflow-x: hidden;
-  padding: 15px 26px;
+  padding: 8px 26px 15px;
 }
 
 .embeddedRoot {
@@ -60,8 +60,8 @@
 }
 
 .title {
-  font-size: 50px;
-  line-height: 60px;
+  font-size: 48px;
+  line-height: 1.05;
   margin: 0;
 
   @media only screen and (max-width: 600px) {
@@ -74,9 +74,9 @@
   box-sizing: border-box;
   margin-left: auto;
   margin-right: auto;
-  margin-top: 14px;
+  margin-top: 6px;
   max-width: 1180px;
-  padding: 20px 20px 18px;
+  padding: 14px 18px 13px;
   width: 100%;
 }
 
@@ -85,7 +85,7 @@
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .adminLink {
@@ -118,6 +118,7 @@
 
 .countSummary {
   color: var(--theme-on-primary-soft);
+  line-height: 1.3;
   margin: 0;
 }
 
@@ -176,7 +177,7 @@
   display: block;
   margin-left: auto;
   margin-right: auto;
-  margin-top: 18px;
+  margin-top: 12px;
   max-width: 1180px;
   padding: 16px;
   width: 100%;
@@ -192,8 +193,8 @@
 
 .titleRow,
 .countSummary {
-  padding-left: 4px;
-  padding-right: 4px;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
 .floatingActionStack {
@@ -584,45 +585,35 @@
   display: inline-flex;
   font-size: 14px;
   font-weight: 700;
-  gap: 6px;
-  padding: 6px 9px;
+  gap: 8px;
+  padding: 8px 12px;
   white-space: nowrap;
 
   > input[type='checkbox'] {
     flex-shrink: 0;
     margin: 0;
+    margin-left: 8px;
   }
 }
 
 .viewModeGroup {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .viewModeLabel {
-  align-self: center;
   color: var(--theme-on-primary-soft);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .sorting {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-
-  > div {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-
-    > label {
-      align-self: center;
-      color: var(--theme-on-primary-soft);
-      font-weight: 600;
-    }
-  }
+  align-items: start;
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
 
   select {
     backdrop-filter: blur(10px);
@@ -632,7 +623,94 @@
     color: #180321;
     font-family: inherit;
     font-size: 15px;
+    min-height: 40px;
     padding: 6px 10px;
+    width: min(100%, var(--sorting-field-width, 18rem));
+  }
+}
+
+@media only screen and (min-width: 701px) {
+  .sorting {
+    column-gap: 18px;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .sortingField,
+  .cityField,
+  .viewModeGroup {
+    flex: 0 0 auto;
+    grid-column: auto;
+  }
+
+  .cityField {
+    --sorting-field-width: 15rem;
+    grid-column: auto;
+  }
+
+  .mealField {
+    --sorting-field-width: 9rem;
+  }
+
+  .categoryField {
+    --sorting-field-width: 10rem;
+  }
+
+  .statusFilterGroup,
+  .filterControls {
+    flex-basis: 100%;
+    grid-column: auto;
+  }
+}
+
+.sortingField {
+  --sorting-field-width: 14rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: span 3;
+  justify-self: start;
+  min-width: 0;
+  width: min(100%, var(--sorting-field-width));
+
+  > label {
+    color: var(--theme-on-primary-soft);
+    font-weight: 600;
+    line-height: 1.2;
+    padding-left: 2px;
+    text-wrap: balance;
+  }
+}
+
+.cityField {
+  --sorting-field-width: 18rem;
+  grid-column: span 4;
+}
+
+.mealField {
+  --sorting-field-width: 10.5rem;
+}
+
+.categoryField {
+  --sorting-field-width: 11.5rem;
+}
+
+@media only screen and (min-width: 701px) {
+  .cityField {
+    --sorting-field-width: 15rem;
+  }
+
+  .mealField {
+    --sorting-field-width: 9rem;
+  }
+
+  .categoryField {
+    --sorting-field-width: 10rem;
+  }
+
+  .viewModeGroup {
+    --sorting-field-width: 10.5rem;
   }
 }
 
@@ -723,6 +801,7 @@
     font-size: 14px;
     font-weight: 600;
     gap: 2px;
+    min-width: 0;
     padding: 5px;
 
     > input[type='checkbox'] {
@@ -730,6 +809,12 @@
       margin: 0;
       margin-right: 4px;
       vertical-align: middle;
+    }
+
+    > span {
+      min-width: 0;
+      overflow-wrap: normal;
+      text-wrap: pretty;
     }
 
     &:has(> input[type='checkbox']:disabled) {
@@ -749,7 +834,9 @@
 .statusFilterGroup {
   align-items: flex-start;
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  grid-column: 1 / -1;
+  width: 100%;
 
   @media only screen and (max-width: 670px) {
     flex-direction: column;
@@ -930,9 +1017,10 @@
 }
 
 .statusFilterLabel {
-  align-self: center;
   color: var(--theme-on-primary-soft);
   font-weight: 600;
+  line-height: 1.2;
+  padding-left: 2px;
   white-space: nowrap;
 
   @media only screen and (max-width: 670px) {
@@ -949,7 +1037,9 @@
   align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  width: 100%;
 
   > button,
   .filterSummaryButton {
@@ -973,6 +1063,70 @@
 .filterControls > button:hover,
 .filterControls .filterSummaryButton:hover {
   background: var(--theme-secondary-soft-bg-hover);
+}
+
+@media only screen and (max-width: 700px) {
+  .sorting {
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sortingField,
+  .cityField,
+  .viewModeGroup {
+    grid-column: span 1;
+  }
+
+  .sortingField {
+    width: min(100%, var(--sorting-field-width, 14rem));
+  }
+
+  .cityField {
+    --sorting-field-width: 13.5rem;
+  }
+
+  .mealField,
+  .categoryField {
+    --sorting-field-width: 10rem;
+  }
+
+  .statusFilterGroup,
+  .filterControls {
+    grid-column: 1 / -1;
+  }
+
+  .statusFilterGroup {
+    --sorting-field-width: 100%;
+    justify-self: stretch;
+  }
+
+  .statusFilterGroup .filtersContainer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .statusFilterGroup .filtersContainer > label {
+    font-size: 13px;
+    gap: 4px;
+    line-height: 1.15;
+    max-width: 100%;
+    padding: 6px 6px;
+  }
+}
+
+@media only screen and (max-width: 360px) {
+  .sorting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sortingField,
+  .cityField,
+  .viewModeGroup {
+    grid-column: 1 / -1;
+  }
+
 }
 
 .placesContainer {
@@ -1010,11 +1164,30 @@
       overflow: hidden;
       padding: 12px 16px;
       position: relative;
+      transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
 
       > div > a {
         color: var(--theme-on-primary-strong);
         overflow-wrap: anywhere;
         overflow-wrap: break-word;
+      }
+
+      &:hover,
+      &:focus-within {
+        background: linear-gradient(
+          160deg,
+          color-mix(in srgb, var(--theme-on-primary) 15%, transparent),
+          color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+        );
+        border-color: color-mix(in srgb, var(--theme-on-primary) 26%, transparent);
+        box-shadow:
+          0 14px 30px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+        transform: translateY(-1px);
       }
 
       &.luckyCard {
@@ -1066,6 +1239,20 @@
           inset 18px 0 0 var(--compact-status-color),
           0 10px 24px rgba(0, 0, 0, 0.16),
           inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+        &:hover,
+        &:focus-within {
+          background:
+            linear-gradient(
+              160deg,
+              color-mix(in srgb, #51d084 20%, transparent),
+              color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+            );
+          box-shadow:
+            inset 18px 0 0 color-mix(in srgb, #51d084 72%, transparent),
+            0 14px 30px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+        }
       }
 
       &.compactPlaceCard.untriedPlaceCard {
@@ -1080,6 +1267,20 @@
           inset 18px 0 0 var(--compact-status-color),
           0 10px 24px rgba(0, 0, 0, 0.16),
           inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+        &:hover,
+        &:focus-within {
+          background:
+            linear-gradient(
+              160deg,
+              color-mix(in srgb, var(--theme-secondary) 20%, transparent),
+              color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+            );
+          box-shadow:
+            inset 18px 0 0 color-mix(in srgb, var(--theme-secondary) 72%, transparent),
+            0 14px 30px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+        }
       }
 
       &.compactPlaceCard.dislikedPlaceCard {
@@ -1094,6 +1295,20 @@
           inset 18px 0 0 var(--compact-status-color),
           0 10px 24px rgba(0, 0, 0, 0.16),
           inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+        &:hover,
+        &:focus-within {
+          background:
+            linear-gradient(
+              160deg,
+              rgba(194, 53, 53, 0.2),
+              color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+            );
+          box-shadow:
+            inset 18px 0 0 rgba(227, 94, 94, 0.78),
+            0 14px 30px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+        }
       }
     }
   }
@@ -1150,7 +1365,6 @@
 .embeddedRoot button.compactDetailsToggle:hover,
 .eatsRoot button.compactDetailsToggle:focus-visible,
 .embeddedRoot button.compactDetailsToggle:focus-visible {
-  background: color-mix(in srgb, var(--theme-on-primary) 16%, transparent);
   color: var(--theme-on-primary-strong);
 }
 
