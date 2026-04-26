@@ -33,6 +33,8 @@ const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', '
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
+const minimumUpwardFilterPopoverListHeight = 160;
+const filterPopoverOffset = 20;
 
 const readStoredCompactCards = (): boolean => {
   if (typeof window === 'undefined') {
@@ -208,6 +210,8 @@ export function PublicEatsPage({
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
+  const [filterPopoverMaxHeight, setFilterPopoverMaxHeight] = useState<number | null>(null);
+  const [filterPopoverListMaxHeight, setFilterPopoverListMaxHeight] = useState<number | null>(null);
   const [isSearchPopoverOpen, setIsSearchPopoverOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [createDialogHasUnsavedChanges, setCreateDialogHasUnsavedChanges] = useState(false);
@@ -219,6 +223,9 @@ export function PublicEatsPage({
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
   const filterPopoverRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverPanelRef = useRef<HTMLDivElement | null>(null);
+  const filterPopoverHeaderRef = useRef<HTMLDivElement | null>(null);
+  const savedFilterGroupsSectionRef = useRef<HTMLDivElement | null>(null);
+  const filterPopoverListRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverId = useId();
   const searchPopoverRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -586,23 +593,40 @@ export function PublicEatsPage({
     const updateFilterPopoverDirection = (): void => {
       const trigger = filterPopoverRef.current;
       const panel = filterPopoverPanelRef.current;
-      if (!trigger || !panel) {
+      const header = filterPopoverHeaderRef.current;
+      const savedGroupsSection = savedFilterGroupsSectionRef.current;
+      const list = filterPopoverListRef.current;
+      if (!trigger || !panel || !header || !list) {
         return;
       }
 
       const triggerRect = trigger.getBoundingClientRect();
-      const panelHeight = panel.offsetHeight;
       const viewportHeight = window.innerHeight;
       const margin = 16;
-      const spaceBelow = viewportHeight - triggerRect.bottom - margin;
-      const spaceAbove = triggerRect.top - margin;
+      const spaceBelow = viewportHeight - triggerRect.bottom - margin - filterPopoverOffset;
+      const spaceAbove = triggerRect.top - margin - filterPopoverOffset;
+      const panelStyles = window.getComputedStyle(panel);
+      const savedGroupsSectionStyles = savedGroupsSection ? window.getComputedStyle(savedGroupsSection) : null;
+      const panelVerticalPadding =
+        Number.parseFloat(panelStyles.paddingTop) + Number.parseFloat(panelStyles.paddingBottom);
+      const headerHeight = header.offsetHeight;
+      const savedGroupsSectionHeight = savedGroupsSection
+        ? (
+            savedGroupsSection.offsetHeight +
+            Number.parseFloat(savedGroupsSectionStyles?.marginTop ?? '0')
+          )
+        : 0;
+      const staticPanelHeight = panelVerticalPadding + headerHeight + savedGroupsSectionHeight;
+      const minimumUpwardPanelHeight = staticPanelHeight + minimumUpwardFilterPopoverListHeight;
+      const shouldOpenUp = spaceAbove >= minimumUpwardPanelHeight && spaceAbove > spaceBelow;
+      const preferredSpace = shouldOpenUp ? spaceAbove : spaceBelow;
+      const fallbackSpace = shouldOpenUp ? spaceBelow : spaceAbove;
+      const availablePanelHeight = Math.max(0, preferredSpace > 0 ? preferredSpace : fallbackSpace);
+      const availableListHeight = Math.max(0, availablePanelHeight - staticPanelHeight - 24);
 
-      if (spaceAbove >= panelHeight || spaceAbove >= spaceBelow) {
-        setFilterPopoverDirection('up');
-        return;
-      }
-
-      setFilterPopoverDirection('down');
+      setFilterPopoverDirection(shouldOpenUp ? 'up' : 'down');
+      setFilterPopoverMaxHeight(availablePanelHeight);
+      setFilterPopoverListMaxHeight(Math.max(0, availableListHeight));
     };
 
     updateFilterPopoverDirection();
@@ -611,7 +635,7 @@ export function PublicEatsPage({
     return () => {
       window.removeEventListener('resize', updateFilterPopoverDirection);
     };
-  }, [headings.length, isFilterPopoverOpen]);
+  }, [category, headings.length, isFilterPopoverOpen, savedFilterGroups.length, selectedCity]);
 
   useEffect(() => {
     if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
@@ -921,6 +945,18 @@ export function PublicEatsPage({
     window.confirm(rootDeleteErrorMessage);
     clearFlashCookieClient(flashCookieNames.rootDeleteError, '/');
   }, [rootDeleteErrorMessage]);
+
+  useEffect(() => {
+    if (!isFilterPopoverOpen) {
+      setFilterPopoverMaxHeight(null);
+      setFilterPopoverListMaxHeight(null);
+    }
+  }, [isFilterPopoverOpen]);
+
+  useEffect(() => {
+    setFilterPopoverMaxHeight(null);
+    setFilterPopoverListMaxHeight(null);
+  }, [category, selectedCity]);
 
   const statusCounts = useMemo(() => {
     const counts = new Map<RestaurantStatusFilter, number>(
@@ -1261,8 +1297,13 @@ export function PublicEatsPage({
                           }`}
                           id={filterPopoverId}
                           ref={filterPopoverPanelRef}
+                          style={
+                            filterPopoverMaxHeight !== null
+                              ? ({ '--filter-popover-max-height': `${filterPopoverMaxHeight}px` } as CSSProperties)
+                              : undefined
+                          }
                         >
-                          <div className={styles.filterPopoverHeader}>
+                          <div className={styles.filterPopoverHeader} ref={filterPopoverHeaderRef}>
                             <div className={styles.filterPopoverActions}>
                               <button
                                 type="button"
@@ -1293,7 +1334,7 @@ export function PublicEatsPage({
                             </div>
                           </div>
                           {visibleSavedFilterGroups.length > 0 ? (
-                            <div className={styles.savedFilterGroupsSection}>
+                            <div className={styles.savedFilterGroupsSection} ref={savedFilterGroupsSectionRef}>
                               <span className={styles.savedFilterGroupsLabel}>Saved groups</span>
                               <div className={styles.savedFilterGroupsList}>
                                 {visibleSavedFilterGroups.map((group) => (
@@ -1319,7 +1360,15 @@ export function PublicEatsPage({
                               </div>
                             </div>
                           ) : null}
-                          <div className={`${styles.filtersContainer} ${styles.filterPopoverList}`}>
+                          <div
+                            className={`${styles.filtersContainer} ${styles.filterPopoverList}`}
+                            ref={filterPopoverListRef}
+                            style={
+                              filterPopoverListMaxHeight !== null
+                                ? ({ '--filter-popover-list-max-height': `${filterPopoverListMaxHeight}px` } as CSSProperties)
+                                : undefined
+                            }
+                          >
                             {headings.map((heading) => (
                               <label key={heading}>
                                 <input

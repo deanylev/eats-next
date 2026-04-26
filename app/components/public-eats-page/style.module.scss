@@ -974,6 +974,9 @@
   --filter-popover-surface-start: color-mix(in srgb, var(--theme-primary) 88%, var(--theme-on-primary) 12%);
   --filter-popover-surface-end: color-mix(in srgb, var(--theme-primary) 94%, var(--theme-on-primary) 6%);
 
+  --filter-popover-max-height: min(440px, 70vh);
+  --filter-popover-list-max-height: min(290px, 46vh);
+
   box-sizing: border-box;
   backdrop-filter: blur(18px) saturate(135%);
   background:
@@ -987,8 +990,10 @@
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
   left: 0;
-  max-height: min(440px, 70vh);
+  max-height: var(--filter-popover-max-height);
   overflow: visible;
   padding: 14px;
   position: absolute;
@@ -1068,7 +1073,7 @@
 }
 
 .filterPopoverHeader {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .filterPopoverActions {
@@ -1161,16 +1166,18 @@
 }
 
 .filterPopoverList {
-  margin-top: 12px;
-  max-height: min(290px, 46vh);
+  flex: 0 1 auto;
+  margin-top: 8px;
+  max-height: var(--filter-popover-list-max-height);
   overflow-y: auto;
   padding-right: 4px;
 }
 
 .savedFilterGroupsSection {
   border-top: 1px solid color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding-top: 10px;
 }
 
 .savedFilterGroupsLabel {
