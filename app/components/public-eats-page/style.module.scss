@@ -795,6 +795,7 @@
     background: color-mix(in srgb, var(--theme-secondary) 80%, #422f08 20%);
     border: 1px solid var(--theme-secondary-border);
     border-radius: 6px;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 8%, transparent);
     color: #fff5df;
     cursor: pointer;
     display: flex;
@@ -803,6 +804,11 @@
     gap: 2px;
     min-width: 0;
     padding: 5px;
+    transition:
+      background 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
 
     > input[type='checkbox'] {
       flex-shrink: 0;
@@ -820,8 +826,13 @@
     &:has(> input[type='checkbox']:disabled) {
       background: color-mix(in srgb, var(--theme-secondary) 54%, #1a1510 46%);
       border-color: color-mix(in srgb, var(--theme-secondary-border) 58%, #1a1510 42%);
+      box-shadow: none;
       color: color-mix(in srgb, #fff5df 74%, #1a1510 26%);
       cursor: not-allowed;
+    }
+
+    &:has(> input[type='checkbox']:not(:disabled)):hover {
+      transform: translateY(-1px);
     }
 
     > input[type='checkbox']:disabled {
@@ -829,6 +840,52 @@
       opacity: 0.55;
     }
   }
+}
+
+.statusFilterChip {
+  --status-chip-accent: var(--theme-secondary);
+  --status-chip-surface: color-mix(in srgb, var(--status-chip-accent) 18%, rgba(26, 21, 16, 0.82));
+  --status-chip-surface-hover: color-mix(in srgb, var(--status-chip-accent) 24%, rgba(26, 21, 16, 0.78));
+  --status-chip-surface-active: color-mix(in srgb, var(--status-chip-accent) 34%, rgba(26, 21, 16, 0.68));
+  --status-chip-border: color-mix(in srgb, var(--status-chip-accent) 50%, var(--theme-on-primary) 16%);
+  --status-chip-border-active: color-mix(in srgb, var(--status-chip-accent) 72%, white 10%);
+  --status-chip-shadow: color-mix(in srgb, var(--status-chip-accent) 26%, transparent);
+
+  background: var(--status-chip-surface) !important;
+  border-color: var(--status-chip-border) !important;
+
+  &:has(> input[type='checkbox']:not(:disabled)):hover {
+    background: var(--status-chip-surface-hover) !important;
+    border-color: color-mix(in srgb, var(--status-chip-accent) 62%, white 8%) !important;
+    box-shadow:
+      0 8px 18px color-mix(in srgb, var(--status-chip-shadow) 44%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  }
+
+  &:has(> input[type='checkbox']:checked) {
+    background: var(--status-chip-surface-active) !important;
+    border-color: var(--status-chip-border-active) !important;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--status-chip-accent) 30%, transparent),
+      0 10px 22px color-mix(in srgb, var(--status-chip-shadow) 48%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  }
+
+  &:has(> input[type='checkbox']:checked) > span {
+    color: #fff5df;
+  }
+}
+
+.untriedStatusFilterChip {
+  --status-chip-accent: var(--theme-secondary);
+}
+
+.likedStatusFilterChip {
+  --status-chip-accent: #51d084;
+}
+
+.dislikedStatusFilterChip {
+  --status-chip-accent: #e35e5e;
 }
 
 .statusFilterGroup {

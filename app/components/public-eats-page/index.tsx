@@ -1009,7 +1009,7 @@ export function PublicEatsPage({
                 <div className={`${styles.sortingField} ${styles.statusFilterGroup}`}>
                   <span className={styles.statusFilterLabel}>Status:</span>
                   <div className={styles.filtersContainer}>
-                    <label>
+                    <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('untried')}
@@ -1018,7 +1018,7 @@ export function PublicEatsPage({
                       />
                       <span>Want to Try ({statusCount('untried')})</span>
                     </label>
-                    <label>
+                    <label className={`${styles.statusFilterChip} ${styles.likedStatusFilterChip}`}>
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('liked')}
@@ -1027,7 +1027,7 @@ export function PublicEatsPage({
                       />
                       <span>Recommended ({statusCount('liked')})</span>
                     </label>
-                    <label>
+                    <label className={`${styles.statusFilterChip} ${styles.dislikedStatusFilterChip}`}>
                       <input
                         type="checkbox"
                         checked={selectedStatuses.includes('disliked')}
