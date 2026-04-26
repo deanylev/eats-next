@@ -1068,40 +1068,96 @@
 }
 
 .filterPopoverHeader {
-  align-items: flex-start;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-
-  > h2 {
-    color: var(--theme-on-primary-strong);
-    font-size: 20px;
-    margin: 0;
-  }
+  margin-bottom: 12px;
 }
 
 .filterPopoverActions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
 
   > button {
+    -webkit-appearance: none;
+    appearance: none;
     backdrop-filter: blur(8px);
     background: var(--theme-secondary-soft-bg);
     border: 1px solid var(--theme-secondary-border);
     border-radius: 8px;
+    box-shadow:
+      0 10px 22px color-mix(in srgb, rgba(0, 0, 0, 0.26) 72%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
     color: var(--theme-secondary);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-family: inherit;
     font-size: 14px;
     font-weight: 600;
-    padding: 5px 10px;
+    line-height: 1.15;
+    min-height: 0;
+    padding: 6px 12px;
+    transition:
+      background 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      color 160ms ease,
+      opacity 160ms ease;
   }
 
   > button:hover {
     background: var(--theme-secondary-soft-bg-hover);
+    border-color: color-mix(in srgb, var(--theme-secondary-border) 78%, white 10%);
+    box-shadow:
+      0 14px 26px color-mix(in srgb, rgba(0, 0, 0, 0.32) 76%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+    transform: translateY(-1px);
   }
+
+  > button:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+}
+
+.eatsRoot button.saveGroupButton,
+.embeddedRoot button.saveGroupButton {
+  background: color-mix(in srgb, #3f6f66 62%, rgba(26, 21, 16, 0.64));
+  border-color: color-mix(in srgb, #89d7c7 44%, transparent);
+  box-shadow:
+    0 10px 24px color-mix(in srgb, rgba(12, 42, 38, 0.42) 74%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  color: #d8fff6;
+}
+
+.eatsRoot button.saveGroupButton:hover,
+.embeddedRoot button.saveGroupButton:hover {
+  background: color-mix(in srgb, #4b8278 68%, rgba(26, 21, 16, 0.58));
+  border-color: color-mix(in srgb, #a4efe0 56%, transparent);
+  box-shadow:
+    0 14px 28px color-mix(in srgb, rgba(12, 42, 38, 0.5) 78%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+}
+
+.eatsRoot button.saveGroupButton:disabled,
+.embeddedRoot button.saveGroupButton:disabled {
+  background: color-mix(in srgb, #3f6f66 24%, rgba(26, 21, 16, 0.72));
+  border-color: color-mix(in srgb, #89d7c7 18%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  color: color-mix(in srgb, #d8fff6 44%, rgba(255, 255, 255, 0.24));
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.eatsRoot button.saveGroupButton:disabled:hover,
+.embeddedRoot button.saveGroupButton:disabled:hover {
+  background: color-mix(in srgb, #3f6f66 24%, rgba(26, 21, 16, 0.72));
+  border-color: color-mix(in srgb, #89d7c7 18%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transform: none;
 }
 
 .filterPopoverList {
@@ -1109,6 +1165,157 @@
   max-height: min(290px, 46vh);
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.savedFilterGroupsSection {
+  border-top: 1px solid color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.savedFilterGroupsLabel {
+  color: var(--theme-on-primary-soft);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.savedFilterGroupsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.savedFilterGroupRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.eatsRoot button.savedFilterGroupButton,
+.embeddedRoot button.savedFilterGroupButton,
+.eatsRoot button.savedFilterGroupDelete,
+.embeddedRoot button.savedFilterGroupDelete {
+  all: unset;
+  -webkit-appearance: none;
+  appearance: none;
+  align-items: center;
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  box-shadow:
+    0 10px 24px color-mix(in srgb, rgba(0, 0, 0, 0.26) 74%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.15;
+  min-height: 0;
+  padding: 6px 12px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.eatsRoot button.savedFilterGroupButton,
+.embeddedRoot button.savedFilterGroupButton {
+  background: var(--theme-secondary-soft-bg);
+  border: 1px solid var(--theme-secondary-border);
+  color: var(--theme-secondary);
+  flex: 0 1 auto;
+  max-width: min(100%, 220px);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.eatsRoot button.savedFilterGroupDelete,
+.embeddedRoot button.savedFilterGroupDelete {
+  background: color-mix(in srgb, #7c1f1f 56%, rgba(26, 21, 16, 0.7));
+  border: 1px solid color-mix(in srgb, #e35e5e 50%, transparent);
+  border-color: color-mix(in srgb, #e35e5e 50%, transparent);
+  color: #ffc2c2;
+  flex: 0 0 auto;
+}
+
+.eatsRoot button.savedFilterGroupButton:hover,
+.embeddedRoot button.savedFilterGroupButton:hover {
+  background: var(--theme-secondary-soft-bg-hover);
+  border-color: color-mix(in srgb, var(--theme-secondary-border) 78%, white 10%);
+  box-shadow:
+    0 14px 28px color-mix(in srgb, rgba(0, 0, 0, 0.32) 78%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  transform: translateY(-1px);
+}
+
+.eatsRoot button.savedFilterGroupButton:disabled,
+.embeddedRoot button.savedFilterGroupButton:disabled {
+  background: color-mix(in srgb, var(--theme-secondary) 34%, rgba(26, 21, 16, 0.68));
+  border-color: color-mix(in srgb, var(--theme-secondary-border) 82%, white 8%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 34%, transparent),
+    0 10px 22px color-mix(in srgb, rgba(0, 0, 0, 0.24) 74%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  color: #fff5df;
+  cursor: default;
+  opacity: 1;
+  transform: none;
+}
+
+.eatsRoot button.savedFilterGroupButton:disabled:hover,
+.embeddedRoot button.savedFilterGroupButton:disabled:hover {
+  background: color-mix(in srgb, var(--theme-secondary) 34%, rgba(26, 21, 16, 0.68));
+  border-color: color-mix(in srgb, var(--theme-secondary-border) 82%, white 8%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 34%, transparent),
+    0 10px 22px color-mix(in srgb, rgba(0, 0, 0, 0.24) 74%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  transform: none;
+}
+
+.eatsRoot button.savedFilterGroupDelete:hover,
+.embeddedRoot button.savedFilterGroupDelete:hover {
+  background: color-mix(in srgb, #8b2525 62%, rgba(26, 21, 16, 0.65));
+  border-color: color-mix(in srgb, #ff8c8c 58%, transparent);
+  box-shadow:
+    0 14px 28px color-mix(in srgb, rgba(0, 0, 0, 0.32) 78%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  transform: translateY(-1px);
+}
+
+.eatsRoot button.savedFilterGroupButton:active,
+.embeddedRoot button.savedFilterGroupButton:active,
+.eatsRoot button.savedFilterGroupDelete:active,
+.embeddedRoot button.savedFilterGroupDelete:active {
+  transform: scale(0.96);
+}
+
+@media only screen and (max-width: 560px) {
+  .savedFilterGroupRow {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .eatsRoot button.savedFilterGroupButton,
+  .embeddedRoot button.savedFilterGroupButton {
+    flex: 0 1 auto;
+    max-width: min(100%, 200px);
+  }
+
+  .eatsRoot button.savedFilterGroupDelete,
+  .embeddedRoot button.savedFilterGroupDelete {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 
 .statusFilterLabel {

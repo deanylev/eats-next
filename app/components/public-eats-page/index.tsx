@@ -9,7 +9,6 @@ import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
 import {
   byAlpha,
-  categoryFilterSet,
   confettiPieceIndexes,
   defaultRestaurantStatuses,
   getFeelingLuckyCandidateIds,
@@ -33,6 +32,7 @@ import styles from './style.module.scss';
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
+const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 
 const readStoredCompactCards = (): boolean => {
   if (typeof window === 'undefined') {
@@ -43,6 +43,70 @@ const readStoredCompactCards = (): boolean => {
     return window.localStorage.getItem(compactCardsStorageKey) === 'true';
   } catch {
     return false;
+  }
+};
+
+type SavedFilterGroupCategory = Extract<CategoryFilter, 'area' | 'type'>;
+
+type SavedFilterGroup = {
+  id: string;
+  name: string;
+  category: SavedFilterGroupCategory;
+  city: string | null;
+  headings: string[];
+};
+
+const isSavedFilterGroupCategory = (value: string): value is SavedFilterGroupCategory =>
+  value === 'area' || value === 'type';
+
+const getSavedFilterGroupSignature = (headings: string[]): string =>
+  [...new Set(headings.map((heading) => heading.trim()).filter(Boolean))]
+    .sort((headingA, headingB) => byAlpha(headingA, headingB))
+    .join('\n');
+
+const readStoredFilterGroups = (): SavedFilterGroup[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(savedFilterGroupsStorageKey);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((entry): SavedFilterGroup[] => {
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.id !== 'string' ||
+        typeof entry.name !== 'string' ||
+        typeof entry.category !== 'string' ||
+        !isSavedFilterGroupCategory(entry.category) ||
+        (entry.city !== null && typeof entry.city !== 'string') ||
+        !Array.isArray(entry.headings) ||
+        !entry.headings.every((heading: unknown) => typeof heading === 'string')
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          id: entry.id,
+          name: entry.name,
+          category: entry.category,
+          city: entry.city,
+          headings: getSavedFilterGroupSignature(entry.headings).split('\n').filter(Boolean)
+        }
+      ];
+    });
+  } catch {
+    return [];
   }
 };
 
@@ -139,6 +203,7 @@ export function PublicEatsPage({
   const [excluded, setExcluded] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [compactCards, setCompactCards] = useState(false);
+  const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
   const [expandedCompactCardIds, setExpandedCompactCardIds] = useState<Set<string>>(new Set());
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
@@ -192,6 +257,18 @@ export function PublicEatsPage({
       // Ignore storage failures; compact mode still works for the current page session.
     }
   }, [compactCards, hasInitializedFilters]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(savedFilterGroupsStorageKey, JSON.stringify(savedFilterGroups));
+    } catch {
+      // Ignore storage failures; saved filter groups just will not persist.
+    }
+  }, [savedFilterGroups]);
 
   useEffect(() => {
     if (!compactCards) {
@@ -654,6 +731,35 @@ export function PublicEatsPage({
     () => headings.filter((heading) => !excluded.includes(heading)).length,
     [excluded, headings]
   );
+  const activeFilterGroupCategory = category === 'area' || category === 'type' ? category : null;
+  const currentIncludedHeadings = useMemo(
+    () => headings.filter((heading) => !excluded.includes(heading)),
+    [excluded, headings]
+  );
+  const visibleSavedFilterGroups = useMemo(() => {
+    if (!activeFilterGroupCategory) {
+      return [];
+    }
+
+    return savedFilterGroups
+      .filter(
+        (group) =>
+          group.category === activeFilterGroupCategory &&
+          group.city === selectedCity
+      )
+      .sort((groupA, groupB) => byAlpha(groupA.name, groupB.name));
+  }, [activeFilterGroupCategory, savedFilterGroups, selectedCity]);
+  const currentFilterGroupSignature = useMemo(
+    () => getSavedFilterGroupSignature(currentIncludedHeadings),
+    [currentIncludedHeadings]
+  );
+  const matchingSavedFilterGroup = useMemo(
+    () =>
+      visibleSavedFilterGroups.find(
+        (group) => getSavedFilterGroupSignature(group.headings) === currentFilterGroupSignature
+      ) ?? null,
+    [currentFilterGroupSignature, visibleSavedFilterGroups]
+  );
   const filterButtonStateLabel = useMemo(() => {
     if (headings.length === 0 || includedHeadingsCount === headings.length) {
       return 'All';
@@ -661,6 +767,11 @@ export function PublicEatsPage({
 
     return `${includedHeadingsCount} / ${headings.length}`;
   }, [headings.length, includedHeadingsCount]);
+  const canSaveCurrentFilterGroup = activeFilterGroupCategory !== null
+    && headings.length > 0
+    && currentIncludedHeadings.length > 1
+    && currentIncludedHeadings.length < headings.length
+    && matchingSavedFilterGroup === null;
   const noResultsMessage = selectedStatuses.length === 0
     ? 'Select at least one status to show restaurants.'
     : 'No restaurants match these filters.';
@@ -942,6 +1053,70 @@ export function PublicEatsPage({
       behavior: 'smooth'
     });
   };
+  const applySavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
+    const availableIncludedHeadings = headings.filter((heading) => group.headings.includes(heading));
+    preservedIncludedHeadings.current = availableIncludedHeadings;
+    setExcluded(headings.filter((heading) => !availableIncludedHeadings.includes(heading)));
+  }, [headings]);
+  const saveCurrentFilterGroup = useCallback((): void => {
+    if (!canSaveCurrentFilterGroup || !activeFilterGroupCategory) {
+      return;
+    }
+
+    const name = window.prompt(
+      `Save this ${activeFilterGroupCategory === 'area' ? 'area' : 'category'} group as:`
+    )?.trim();
+
+    if (!name) {
+      return;
+    }
+
+    setSavedFilterGroups((current) => {
+      const duplicateCombination = current.find(
+        (group) =>
+          group.category === activeFilterGroupCategory &&
+          group.city === selectedCity &&
+          getSavedFilterGroupSignature(group.headings) === currentFilterGroupSignature
+      );
+
+      if (duplicateCombination) {
+        window.confirm(`This selection already matches the saved group "${duplicateCombination.name}".`);
+        return current;
+      }
+
+      const existingGroup = current.find(
+        (group) =>
+          group.category === activeFilterGroupCategory &&
+          group.city === selectedCity &&
+          group.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0
+      );
+
+      if (existingGroup && !window.confirm(`Replace the saved group "${existingGroup.name}"?`)) {
+        return current;
+      }
+
+      const nextGroup: SavedFilterGroup = {
+        id: existingGroup?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        category: activeFilterGroupCategory,
+        city: selectedCity,
+        headings: currentFilterGroupSignature.split('\n').filter(Boolean)
+      };
+
+      if (!existingGroup) {
+        return [...current, nextGroup];
+      }
+
+      return current.map((group) => (group.id === existingGroup.id ? nextGroup : group));
+    });
+  }, [activeFilterGroupCategory, canSaveCurrentFilterGroup, currentFilterGroupSignature, selectedCity]);
+  const deleteSavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
+    if (!window.confirm(`Delete the saved group "${group.name}"?`)) {
+      return;
+    }
+
+    setSavedFilterGroups((current) => current.filter((entry) => entry.id !== group.id));
+  }, []);
   const editingRestaurant = useMemo(() => {
     if (!editingRestaurantId) {
       return null;
@@ -1088,7 +1263,6 @@ export function PublicEatsPage({
                           ref={filterPopoverPanelRef}
                         >
                           <div className={styles.filterPopoverHeader}>
-                            <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
                             <div className={styles.filterPopoverActions}>
                               <button
                                 type="button"
@@ -1108,8 +1282,43 @@ export function PublicEatsPage({
                               >
                                 Clear All
                               </button>
+                              <button
+                                type="button"
+                                className={styles.saveGroupButton}
+                                disabled={!canSaveCurrentFilterGroup}
+                                onClick={saveCurrentFilterGroup}
+                              >
+                                Save Group
+                              </button>
                             </div>
                           </div>
+                          {visibleSavedFilterGroups.length > 0 ? (
+                            <div className={styles.savedFilterGroupsSection}>
+                              <span className={styles.savedFilterGroupsLabel}>Saved groups</span>
+                              <div className={styles.savedFilterGroupsList}>
+                                {visibleSavedFilterGroups.map((group) => (
+                                  <div key={group.id} className={styles.savedFilterGroupRow}>
+                                    <button
+                                      type="button"
+                                      className={styles.savedFilterGroupButton}
+                                      disabled={matchingSavedFilterGroup?.id === group.id}
+                                      onClick={() => applySavedFilterGroup(group)}
+                                    >
+                                      {group.name}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.savedFilterGroupDelete}
+                                      aria-label={`Delete saved group ${group.name}`}
+                                      onClick={() => deleteSavedFilterGroup(group)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className={`${styles.filtersContainer} ${styles.filterPopoverList}`}>
                             {headings.map((heading) => (
                               <label key={heading}>
