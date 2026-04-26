@@ -199,6 +199,28 @@ export function PublicEatsPage({
     }
   }, [compactCards]);
 
+  const toggleCompactCardExpansion = useCallback((restaurantId: string): void => {
+    setExpandedCompactCardIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(restaurantId)) {
+        next.delete(restaurantId);
+      } else {
+        next.add(restaurantId);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const shouldIgnoreCompactCardToggle = useCallback((target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    return target.closest('a, button, input, select, textarea, form, label') !== null;
+  }, []);
+
   const statusFilteredRestaurants = useMemo(() => {
     const selectedStatusSet = new Set(selectedStatuses);
     return restaurants.filter((restaurant) => selectedStatusSet.has(restaurant.status));
@@ -959,85 +981,89 @@ export function PublicEatsPage({
               isSearchActive ? (grouped.size > 0 ? styles.searchResultsBody : styles.searchEmptyBody) : ''
             }`}
           >
-            {!isSearchActive ? (
-              <div className={styles.sorting}>
-                <div className={`${styles.sortingField} ${styles.cityField}`}>
-                  <label htmlFor="city">City:</label>
-                  <CitySelect
-                    id="city"
-                    groups={filterCityGroups}
-                    value={selectedCity ?? ''}
-                    onChange={handleCityChange}
-                    leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
-                  />
-                </div>
-                <div className={`${styles.sortingField} ${styles.mealField}`}>
-                  <label htmlFor="mealType">Meal Type:</label>
-                  <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
-                    <option value="Any">Any</option>
-                    {[...mealTypeCounts.keys()].map((meal) => (
-                      <option key={meal} value={meal}>
-                        {mealLabel(meal)}
+            <div className={`${styles.sorting} ${isSearchActive ? styles.searchSorting : ''}`}>
+              {!isSearchActive ? (
+                <>
+                  <div className={`${styles.sortingField} ${styles.cityField}`}>
+                    <label htmlFor="city">City:</label>
+                    <CitySelect
+                      id="city"
+                      groups={filterCityGroups}
+                      value={selectedCity ?? ''}
+                      onChange={handleCityChange}
+                      leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
+                    />
+                  </div>
+                  <div className={`${styles.sortingField} ${styles.mealField}`}>
+                    <label htmlFor="mealType">Meal Type:</label>
+                    <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
+                      <option value="Any">Any</option>
+                      {[...mealTypeCounts.keys()].map((meal) => (
+                        <option key={meal} value={meal}>
+                          {mealLabel(meal)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={`${styles.sortingField} ${styles.categoryField}`}>
+                    <label htmlFor="category">Categorise By:</label>
+                    <select
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value as CategoryFilter)}
+                    >
+                      <option value="area" disabled={isAllCitiesSelected}>
+                        Area
                       </option>
-                    ))}
-                  </select>
-                </div>
-                <div className={`${styles.sortingField} ${styles.categoryField}`}>
-                  <label htmlFor="category">Categorise By:</label>
-                  <select
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value as CategoryFilter)}
-                  >
-                    <option value="area" disabled={isAllCitiesSelected}>
-                      Area
-                    </option>
-                    <option value="type">Type of Food</option>
-                    <option value="recentlyAdded">Date Added</option>
-                  </select>
-                </div>
-                <div className={`${styles.sortingField} ${styles.viewModeGroup}`}>
-                  <span className={styles.viewModeLabel}>View:</span>
-                  <label className={styles.compactToggle}>
+                      <option value="type">Type of Food</option>
+                      <option value="recentlyAdded">Date Added</option>
+                    </select>
+                  </div>
+                </>
+              ) : null}
+              <div className={`${styles.sortingField} ${styles.viewModeGroup}`}>
+                <span className={styles.viewModeLabel}>View:</span>
+                <label className={styles.compactToggle}>
+                  <input
+                    type="checkbox"
+                    checked={compactCards}
+                    onChange={(event) => setCompactCards(event.target.checked)}
+                  />
+                  <span>Compact Cards</span>
+                </label>
+              </div>
+              <div className={`${styles.sortingField} ${styles.statusFilterGroup}`}>
+                <span className={styles.statusFilterLabel}>Status:</span>
+                <div className={styles.filtersContainer}>
+                  <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
                     <input
                       type="checkbox"
-                      checked={compactCards}
-                      onChange={(event) => setCompactCards(event.target.checked)}
+                      checked={selectedStatuses.includes('untried')}
+                      disabled={statusCount('untried') === 0}
+                      onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
                     />
-                    <span>Compact Cards</span>
+                    <span>Want to Try ({statusCount('untried')})</span>
+                  </label>
+                  <label className={`${styles.statusFilterChip} ${styles.likedStatusFilterChip}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedStatuses.includes('liked')}
+                      disabled={statusCount('liked') === 0}
+                      onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
+                    />
+                    <span>Recommended ({statusCount('liked')})</span>
+                  </label>
+                  <label className={`${styles.statusFilterChip} ${styles.dislikedStatusFilterChip}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedStatuses.includes('disliked')}
+                      disabled={statusCount('disliked') === 0}
+                      onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
+                    />
+                    <span>Not Recommended ({statusCount('disliked')})</span>
                   </label>
                 </div>
-                <div className={`${styles.sortingField} ${styles.statusFilterGroup}`}>
-                  <span className={styles.statusFilterLabel}>Status:</span>
-                  <div className={styles.filtersContainer}>
-                    <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedStatuses.includes('untried')}
-                        disabled={statusCount('untried') === 0}
-                        onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
-                      />
-                      <span>Want to Try ({statusCount('untried')})</span>
-                    </label>
-                    <label className={`${styles.statusFilterChip} ${styles.likedStatusFilterChip}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedStatuses.includes('liked')}
-                        disabled={statusCount('liked') === 0}
-                        onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
-                      />
-                      <span>Recommended ({statusCount('liked')})</span>
-                    </label>
-                    <label className={`${styles.statusFilterChip} ${styles.dislikedStatusFilterChip}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedStatuses.includes('disliked')}
-                        disabled={statusCount('disliked') === 0}
-                        onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
-                      />
-                      <span>Not Recommended ({statusCount('disliked')})</span>
-                    </label>
-                  </div>
-                </div>
+              </div>
+              {!isSearchActive ? (
                 <div className={styles.filterControls}>
                   {category !== 'recentlyAdded' && headings.length > 1 ? (
                     <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
@@ -1060,125 +1086,140 @@ export function PublicEatsPage({
                           }`}
                           id={filterPopoverId}
                           ref={filterPopoverPanelRef}
-                    >
-                      <div className={styles.filterPopoverHeader}>
-                        <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
-                        <div className={styles.filterPopoverActions}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              preservedIncludedHeadings.current = null;
-                              setExcluded([]);
-                            }}
-                          >
-                            Select All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              preservedIncludedHeadings.current = [];
-                              setExcluded(headings);
-                            }}
-                          >
-                            Clear All
-                          </button>
+                        >
+                          <div className={styles.filterPopoverHeader}>
+                            <h2>Filter {category === 'area' ? 'Areas' : 'Types'}</h2>
+                            <div className={styles.filterPopoverActions}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  preservedIncludedHeadings.current = null;
+                                  setExcluded([]);
+                                }}
+                              >
+                                Select All
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  preservedIncludedHeadings.current = [];
+                                  setExcluded(headings);
+                                }}
+                              >
+                                Clear All
+                              </button>
+                            </div>
+                          </div>
+                          <div className={`${styles.filtersContainer} ${styles.filterPopoverList}`}>
+                            {headings.map((heading) => (
+                              <label key={heading}>
+                                <input
+                                  type="checkbox"
+                                  checked={!excluded.includes(heading)}
+                                  onChange={(event) => {
+                                    setExcluded((current) => {
+                                      let nextExcluded: string[];
+                                      if (event.target.checked) {
+                                        nextExcluded = current.filter((entry) => entry !== heading);
+                                      } else if (current.includes(heading)) {
+                                        nextExcluded = current;
+                                      } else {
+                                        nextExcluded = [...current, heading];
+                                      }
+
+                                      preservedIncludedHeadings.current = getPreservedIncludedHeadings(
+                                        headings,
+                                        nextExcluded
+                                      );
+
+                                      return nextExcluded;
+                                    });
+                                  }}
+                                />
+                                <span>
+                                  {category === 'type'
+                                    ? `${mealFilteredRestaurants
+                                        .flatMap((restaurant) => restaurant.types)
+                                        .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
+                                    : heading}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div className={`${styles.filtersContainer} ${styles.filterPopoverList}`}>
-                        {headings.map((heading) => (
-                          <label key={heading}>
-                            <input
-                              type="checkbox"
-                              checked={!excluded.includes(heading)}
-                              onChange={(event) => {
-                                setExcluded((current) => {
-                                  let nextExcluded: string[];
-                                  if (event.target.checked) {
-                                    nextExcluded = current.filter((entry) => entry !== heading);
-                                  } else if (current.includes(heading)) {
-                                    nextExcluded = current;
-                                  } else {
-                                    nextExcluded = [...current, heading];
-                                  }
-
-                                  preservedIncludedHeadings.current = getPreservedIncludedHeadings(
-                                    headings,
-                                    nextExcluded
-                                  );
-
-                                  return nextExcluded;
-                                });
-                              }}
-                            />
-                            <span>
-                              {category === 'type'
-                                ? `${mealFilteredRestaurants
-                                    .flatMap((restaurant) => restaurant.types)
-                                    .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
-                                : heading}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
+                      ) : null}
                     </div>
+                  ) : null}
+                  {!embedded ? (
+                    <button
+                      type="button"
+                      onClick={handleFeelingLucky}
+                      disabled={disableFeelingLuckyButton}
+                    >
+                      I'm Feeling Lucky
+                    </button>
                   ) : null}
                 </div>
               ) : null}
-              {!embedded ? (
-                <button
-                  type="button"
-                  onClick={handleFeelingLucky}
-                  disabled={disableFeelingLuckyButton}
-                >
-                  I'm Feeling Lucky
-                </button>
-              ) : null}
             </div>
-          </div>
-        ) : null}
-        <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
-          {grouped.size === 0 ? (
-            <div className={styles.noResults}>
-              {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
-            </div>
-          ) : (
-            [...grouped.entries()].map(([heading, places]) => (
-              <Fragment key={heading}>
-                <span className={styles.heading}>
-                  {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                  {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
-                </span>
-                <div>
-                  {places
-                    .slice()
-                    .sort((a, b) => {
-                      if (category === 'recentlyAdded') {
-                        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                      }
+            <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
+              {grouped.size === 0 ? (
+                <div className={styles.noResults}>
+                  {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
+                </div>
+              ) : (
+                [...grouped.entries()].map(([heading, places]) => (
+                  <Fragment key={heading}>
+                    <span className={styles.heading}>
+                      {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
+                      {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
+                    </span>
+                    <div>
+                      {places
+                        .slice()
+                        .sort((a, b) => {
+                          if (category === 'recentlyAdded') {
+                            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                          }
 
-                      return a.name.localeCompare(b.name);
-                    })
-                    .map((place) => {
-                      const compactDetailText = getRestaurantDetailText(place);
-                      const compactDetailId = `compact-detail-${place.id}`;
-                      const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
+                          return a.name.localeCompare(b.name);
+                        })
+                        .map((place) => {
+                          const compactDetailText = getRestaurantDetailText(place);
+                          const compactDetailId = `compact-detail-${place.id}`;
+                          const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
+                          const showCompactCardActions = canEditRestaurants || canDeleteRestaurants;
+                          const canExpandCompactCard = compactCards && (compactDetailText.length > 0 || showCompactCardActions);
 
-                      return (
-                        <div
-                          className={`${styles.placeCard} ${compactCards ? styles.compactPlaceCard : ''} ${
-                            luckyRestaurantId === place.id ? styles.luckyCard : ''
-                          } ${
-                            place.status === 'liked'
-                              ? styles.likedPlaceCard
-                              : place.status === 'disliked'
-                                ? styles.dislikedPlaceCard
-                                : styles.untriedPlaceCard
-                          }`}
-                          key={`${heading}-${place.id}`}
-                          ref={(element) => {
-                            restaurantCardRefs.current[place.id] = element;
-                          }}
-                        >
+                          return (
+                            <div
+                              className={`${styles.placeCard} ${compactCards ? styles.compactPlaceCard : ''} ${
+                                canExpandCompactCard ? styles.compactPlaceCardInteractive : ''
+                              } ${isCompactDetailExpanded ? styles.compactPlaceCardExpanded : ''} ${
+                                luckyRestaurantId === place.id ? styles.luckyCard : ''
+                              } ${
+                                place.status === 'liked'
+                                  ? styles.likedPlaceCard
+                                  : place.status === 'disliked'
+                                    ? styles.dislikedPlaceCard
+                                    : styles.untriedPlaceCard
+                              }`}
+                              key={`${heading}-${place.id}`}
+                              ref={(element) => {
+                                restaurantCardRefs.current[place.id] = element;
+                              }}
+                              onClick={
+                                canExpandCompactCard
+                                  ? (event) => {
+                                      if (shouldIgnoreCompactCardToggle(event.target)) {
+                                        return;
+                                      }
+
+                                      toggleCompactCardExpansion(place.id);
+                                    }
+                                  : undefined
+                              }
+                            >
                         {luckyRestaurantId === place.id ? (
                           <div className={styles.confettiLayer} aria-hidden="true">
                             {confettiPieceIndexes.map((index) => (
@@ -1195,27 +1236,18 @@ export function PublicEatsPage({
                                 : 'Want to Try'}
                           </span>
                         ) : null}
-                        {compactCards && compactDetailText.length > 0 ? (
+                        {canExpandCompactCard ? (
                           <button
                             type="button"
                             className={`${styles.compactDetailsToggle} ${
                               isCompactDetailExpanded ? styles.compactDetailsToggleExpanded : ''
                             }`}
-                            aria-label={isCompactDetailExpanded ? `Hide notes for ${place.name}` : `Show notes for ${place.name}`}
+                            aria-label={isCompactDetailExpanded ? `Hide details for ${place.name}` : `Show details for ${place.name}`}
                             aria-expanded={isCompactDetailExpanded}
                             aria-controls={compactDetailId}
-                            onClick={() => {
-                              setExpandedCompactCardIds((current) => {
-                                const next = new Set(current);
-
-                                if (next.has(place.id)) {
-                                  next.delete(place.id);
-                                } else {
-                                  next.add(place.id);
-                                }
-
-                                return next;
-                              });
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleCompactCardExpansion(place.id);
                             }}
                           />
                         ) : null}
@@ -1286,21 +1318,58 @@ export function PublicEatsPage({
                           )
                         ) : null}
 
-                        {compactCards && compactDetailText.length > 0 ? (
-                          <>
-                            {isCompactDetailExpanded ? (
+                        {compactCards && isCompactDetailExpanded ? (
+                          <div className={styles.compactExpandedContent} id={compactDetailId}>
+                            {place.referredBy.trim().length > 0 ? (
+                              isUrl(place.referredBy) ? (
+                                <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
+                                  Where I Found It
+                                </a>
+                              ) : (
+                                <button
+                                  className={styles.referrer}
+                                  type="button"
+                                  onClick={() => {
+                                    window.confirm(place.referredBy);
+                                  }}
+                                >
+                                  Where I Found It
+                                </button>
+                              )
+                            ) : null}
+                            {compactDetailText.length > 0 ? (
                               <div
                                 className={
                                   place.status === 'disliked'
                                     ? `${styles.compactDetails} ${styles.compactDislikedDetails}`
                                     : styles.compactDetails
                                 }
-                                id={compactDetailId}
                               >
                                 {place.status === 'disliked' ? `Reason: ${compactDetailText}` : compactDetailText}
                               </div>
                             ) : null}
-                          </>
+                            {showCompactCardActions ? (
+                              <div className={`${styles.cardActions} ${styles.compactCardActions}`}>
+                                {canEditRestaurants ? (
+                                  <button
+                                    type="button"
+                                    className={styles.editButton}
+                                    onClick={() => setEditingRestaurantId(place.id)}
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null}
+                                {canDeleteRestaurants ? (
+                                  <DeleteRestaurantForm
+                                    restaurantId={place.id}
+                                    restaurantName={place.name}
+                                    className={styles.deleteForm}
+                                    buttonClassName={styles.deleteButton}
+                                  />
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         ) : null}
 
                         {!compactCards && (canEditRestaurants || canDeleteRestaurants) ? (
@@ -1324,14 +1393,14 @@ export function PublicEatsPage({
                             ) : null}
                           </div>
                         ) : null}
-                        </div>
-                      );
-                    })}
-                </div>
-              </Fragment>
-            ))
-          )}
-        </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </Fragment>
+                ))
+              )}
+            </div>
           </div>
         </>
       ) : null}
@@ -1357,9 +1426,11 @@ export function PublicEatsPage({
               type="button"
               className={`${styles.addFab} ${styles.stackedFab} ${styles.searchFab} ${
                 isSearchPopoverOpen ? styles.searchFabActive : ''
+              } ${isSearchActive ? styles.searchFabHasQuery : ''} ${
+                isSearchPopoverOpen ? styles.searchFabOpen : ''
               }`}
-              aria-label="Search restaurants"
-              title="Search restaurants"
+              aria-label={isSearchActive ? `Search restaurants. Active query: ${searchQuery.trim()}` : 'Search restaurants'}
+              title={isSearchActive ? `Search active: ${searchQuery.trim()}` : 'Search restaurants'}
               aria-expanded={isSearchPopoverOpen}
               aria-controls={searchPopoverId}
               onClick={() => {

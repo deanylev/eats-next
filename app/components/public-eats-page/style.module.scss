@@ -155,6 +155,7 @@
 .embeddedRoot a.referrer,
 .embeddedRoot button.referrer {
   all: unset;
+  align-self: flex-start;
   appearance: none;
   background: transparent;
   border: 0;
@@ -169,6 +170,7 @@
   text-align: left;
   text-decoration: underline;
   -webkit-appearance: none;
+  width: fit-content;
 }
 
 .body {
@@ -264,7 +266,11 @@
 
 .eatsRoot button.searchFab,
 .embeddedRoot button.searchFab {
+  bottom: auto;
   font-size: 0;
+  overflow: visible;
+  position: relative;
+  right: auto;
 }
 
 .eatsRoot button.searchFabActive,
@@ -272,6 +278,34 @@
 .eatsRoot button.searchFab:hover,
 .embeddedRoot button.searchFab:hover {
   background: color-mix(in srgb, var(--theme-secondary) 72%, white 28%);
+}
+
+.eatsRoot button.searchFabHasQuery,
+.embeddedRoot button.searchFabHasQuery {
+  background: color-mix(in srgb, var(--theme-secondary) 76%, white 24%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, white 24%, transparent),
+    0 14px 30px color-mix(in srgb, var(--theme-secondary) 34%, rgba(0, 0, 0, 0.35));
+
+  &::after {
+    background: #fff5df;
+    border: 2px solid color-mix(in srgb, var(--theme-secondary) 78%, white 22%);
+    border-radius: 999px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.26);
+    content: '';
+    height: 12px;
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 12px;
+  }
+}
+
+.eatsRoot button.searchFabOpen,
+.embeddedRoot button.searchFabOpen {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, white 24%, transparent),
+    0 16px 32px color-mix(in srgb, var(--theme-secondary) 38%, rgba(0, 0, 0, 0.38));
 }
 
 .backToTopIcon {
@@ -627,6 +661,10 @@
     padding: 6px 10px;
     width: min(100%, var(--sorting-field-width, 18rem));
   }
+}
+
+.searchSorting {
+  margin-bottom: 4px;
 }
 
 @media only screen and (min-width: 701px) {
@@ -1282,6 +1320,17 @@
           font-size: 10px;
           padding: 3px 6px;
         }
+
+        &.compactPlaceCardInteractive {
+          cursor: pointer;
+        }
+
+        &.compactPlaceCardExpanded {
+          box-shadow:
+            inset 18px 0 0 var(--compact-status-color),
+            0 16px 34px rgba(0, 0, 0, 0.22),
+            inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+        }
       }
 
       &.compactPlaceCard.likedPlaceCard {
@@ -1438,6 +1487,13 @@
   width: 100%;
 }
 
+.compactExpandedContent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
 .compactDislikedDetails {
   color: #ffc2c2;
 }
@@ -1541,6 +1597,11 @@
   button {
     cursor: pointer;
   }
+}
+
+.compactCardActions {
+  margin-top: 4px;
+  width: 100%;
 }
 
 .eatsRoot button.editButton,
