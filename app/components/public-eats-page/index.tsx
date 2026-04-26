@@ -3,7 +3,7 @@
 import Fuse from 'fuse.js';
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { createRestaurantFromRoot, updateRestaurant, updateRestaurantFromRoot } from '@/app/actions';
+import { createRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
@@ -32,6 +32,7 @@ import styles from './style.module.scss';
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
+const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 const minimumUpwardFilterPopoverListHeight = 160;
 const filterPopoverOffset = 20;
@@ -45,6 +46,30 @@ const readStoredCompactCards = (): boolean => {
     return window.localStorage.getItem(compactCardsStorageKey) === 'true';
   } catch {
     return false;
+  }
+};
+
+const hasSeenControlsWalkthrough = (): boolean => {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+
+  try {
+    return window.localStorage.getItem(controlsWalkthroughStorageKey) === 'true';
+  } catch {
+    return true;
+  }
+};
+
+const markControlsWalkthroughSeen = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(controlsWalkthroughStorageKey, 'true');
+  } catch {
+    // Ignore storage failures; the walkthrough can still be dismissed for this session.
   }
 };
 
@@ -135,6 +160,26 @@ type PublicRestaurant = {
   types: RestaurantType[];
 };
 
+type WalkthroughTargetId = 'city' | 'status' | 'filters' | 'compact' | 'search';
+
+type WalkthroughStep = {
+  id: WalkthroughTargetId;
+  title: string;
+  description: string;
+};
+
+type SpotlightRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+type WalkthroughCardPosition = {
+  top: number;
+  left: number;
+};
+
 const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
   if (restaurant.status === 'disliked') {
     return restaurant.dislikedReason?.trim() ?? '';
@@ -150,7 +195,6 @@ type Props = {
   title?: string | null;
   primaryColor?: string | null;
   secondaryColor?: string | null;
-  embedded?: boolean;
   allowRestaurantEditing?: boolean;
   adminTools?: {
     cities: Array<{ id: string; name: string; countryName: string }>;
@@ -177,7 +221,6 @@ export function PublicEatsPage({
   title = `Dean's Favourite Eats`,
   primaryColor = DEFAULT_PRIMARY_COLOR,
   secondaryColor = DEFAULT_SECONDARY_COLOR,
-  embedded = false,
   allowRestaurantEditing = true,
   adminTools,
   createTools,
@@ -207,6 +250,10 @@ export function PublicEatsPage({
   const [compactCards, setCompactCards] = useState(false);
   const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
   const [expandedCompactCardIds, setExpandedCompactCardIds] = useState<Set<string>>(new Set());
+  const [isControlsWalkthroughOpen, setIsControlsWalkthroughOpen] = useState(false);
+  const [controlsWalkthroughStepIndex, setControlsWalkthroughStepIndex] = useState(0);
+  const [controlsWalkthroughSpotlightRect, setControlsWalkthroughSpotlightRect] = useState<SpotlightRect | null>(null);
+  const [controlsWalkthroughCardPosition, setControlsWalkthroughCardPosition] = useState<WalkthroughCardPosition | null>(null);
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
@@ -221,23 +268,60 @@ export function PublicEatsPage({
   const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const luckyCardHasEnteredViewport = useRef<boolean>(false);
+  const cityFieldRef = useRef<HTMLDivElement | null>(null);
+  const compactFieldRef = useRef<HTMLDivElement | null>(null);
+  const statusFieldRef = useRef<HTMLDivElement | null>(null);
+  const filterControlsRef = useRef<HTMLDivElement | null>(null);
+  const searchFabButtonRef = useRef<HTMLButtonElement | null>(null);
   const filterPopoverRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverPanelRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverHeaderRef = useRef<HTMLDivElement | null>(null);
   const savedFilterGroupsSectionRef = useRef<HTMLDivElement | null>(null);
   const filterPopoverListRef = useRef<HTMLDivElement | null>(null);
+  const walkthroughLayoutFrameRef = useRef<number | null>(null);
   const filterPopoverId = useId();
   const searchPopoverRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverId = useId();
+  const filtersReady = hasInitializedFilters;
+
+  const getWalkthroughTargetElement = useCallback((targetId: WalkthroughTargetId): HTMLElement | null => {
+    switch (targetId) {
+      case 'city':
+        return cityFieldRef.current;
+      case 'status':
+        return statusFieldRef.current;
+      case 'filters':
+        return filterControlsRef.current;
+      case 'compact':
+        return compactFieldRef.current;
+      case 'search':
+        return searchFabButtonRef.current;
+      default:
+        return null;
+    }
+  }, []);
+
+  const closeControlsWalkthrough = useCallback((markSeen: boolean): void => {
+    if (markSeen) {
+      markControlsWalkthroughSeen();
+    }
+
+    setIsControlsWalkthroughOpen(false);
+    setControlsWalkthroughStepIndex(0);
+    setControlsWalkthroughSpotlightRect(null);
+    setControlsWalkthroughCardPosition(null);
+  }, []);
+
+  const openControlsWalkthrough = useCallback((): void => {
+    setIsFilterPopoverOpen(false);
+    setIsSearchPopoverOpen(false);
+    setControlsWalkthroughStepIndex(0);
+    setIsControlsWalkthroughOpen(true);
+  }, []);
 
   useEffect(() => {
     setCompactCards(readStoredCompactCards());
-
-    if (embedded) {
-      setHasInitializedFilters(true);
-      return;
-    }
 
     const urlState = readUrlState();
     hasExplicitCityQuery.current = urlState.hasCityQuery;
@@ -251,7 +335,7 @@ export function PublicEatsPage({
     setExcluded(urlState.excluded);
     preservedIncludedHeadings.current = null;
     setHasInitializedFilters(true);
-  }, [embedded]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !hasInitializedFilters) {
@@ -325,6 +409,22 @@ export function PublicEatsPage({
         .map(([country, cityMap]) => [country, new Map([...cityMap.entries()].sort(([a], [b]) => byAlpha(a, b)))])
     );
   }, [restaurants]);
+  const countryNames = useMemo(() => [...citiesByCountry.keys()], [citiesByCountry]);
+  const onlyCountryName = countryNames[0] ?? null;
+  const hasMultipleCountries = countryNames.length > 1;
+  const hasMultipleCities = useMemo(() => {
+    let cityCount = 0;
+
+    for (const cityMap of citiesByCountry.values()) {
+      cityCount += cityMap.size;
+
+      if (cityCount > 1) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [citiesByCountry]);
 
   const isAllCitiesSelected = selectedCity === null;
 
@@ -453,6 +553,209 @@ export function PublicEatsPage({
 
     return headingList.sort((a, b) => byAlpha(a, b));
   }, [category, isAllCitiesSelected, mealFilteredRestaurants, selectedCity]);
+
+  const controlsWalkthroughSteps = useMemo((): WalkthroughStep[] => {
+    const steps: WalkthroughStep[] = [];
+
+    if (hasMultipleCities) {
+      const cityStepDescription =
+        defaultCityName && defaultCityName.trim().length > 0
+          ? hasMultipleCountries
+            ? `I have places listed from cities all around the world - not just ${defaultCityName.trim()}!`
+            : `I have places listed from cities all around ${onlyCountryName ?? 'the country'} - not just ${defaultCityName.trim()}!`
+          : hasMultipleCountries
+            ? 'I have places listed from cities all around the world.'
+            : `I have places listed from cities all around ${onlyCountryName ?? 'the country'}.`;
+
+      steps.push({
+        id: 'city',
+        title: 'Pick a city first',
+        description: cityStepDescription
+      });
+    }
+
+    steps.push({
+      id: 'status',
+      title: 'Filter by status',
+      description: 'Use these to show places I want to try, places I recommend, or places I would skip.'
+    });
+
+    if (category !== 'recentlyAdded' && headings.length > 1) {
+      steps.push({
+        id: 'filters',
+        title: 'Narrow it down',
+        description: 'Filter by area or cuisine here. You can also save a combination if you want to reuse it.'
+      });
+    }
+
+    steps.push({
+      id: 'compact',
+      title: 'Choose your view',
+      description: 'Compact cards shows more places at once. Full cards show the notes and details without extra taps.'
+    });
+
+    steps.push({
+      id: 'search',
+      title: 'Search by name',
+      description: 'If you already have a place in mind, use search to jump straight to it.'
+    });
+
+    return steps;
+  }, [category, defaultCityName, hasMultipleCities, hasMultipleCountries, headings.length, isSearchActive, onlyCountryName]);
+
+  const activeControlsWalkthroughStep = controlsWalkthroughSteps[controlsWalkthroughStepIndex] ?? null;
+
+  useEffect(() => {
+    if (!filtersReady || isControlsWalkthroughOpen || hasSeenControlsWalkthrough()) {
+      return;
+    }
+
+    const openTimer = window.setTimeout(() => {
+      openControlsWalkthrough();
+    }, 500);
+
+    return () => {
+      window.clearTimeout(openTimer);
+    };
+  }, [filtersReady, isControlsWalkthroughOpen, openControlsWalkthrough]);
+
+  useEffect(() => {
+    if (!isControlsWalkthroughOpen || typeof document === 'undefined') {
+      return;
+    }
+
+    const { documentElement, body } = document;
+    const previousHtmlOverflow = documentElement.style.overflow;
+    const previousHtmlOverscrollBehavior = documentElement.style.overscrollBehavior;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
+
+    documentElement.style.overflow = 'hidden';
+    documentElement.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+
+    return () => {
+      documentElement.style.overflow = previousHtmlOverflow;
+      documentElement.style.overscrollBehavior = previousHtmlOverscrollBehavior;
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+    };
+  }, [isControlsWalkthroughOpen]);
+
+  useEffect(() => {
+    if (!isControlsWalkthroughOpen) {
+      return;
+    }
+
+    if (controlsWalkthroughSteps.length === 0) {
+      closeControlsWalkthrough(false);
+      return;
+    }
+
+    if (controlsWalkthroughStepIndex >= controlsWalkthroughSteps.length) {
+      setControlsWalkthroughStepIndex(controlsWalkthroughSteps.length - 1);
+      return;
+    }
+
+    const currentStep = controlsWalkthroughSteps[controlsWalkthroughStepIndex];
+    if (!currentStep) {
+      return;
+    }
+
+    if (!getWalkthroughTargetElement(currentStep.id)) {
+      const fallbackIndex = controlsWalkthroughSteps.findIndex((step) => getWalkthroughTargetElement(step.id));
+
+      if (fallbackIndex === -1) {
+        closeControlsWalkthrough(false);
+      } else if (fallbackIndex !== controlsWalkthroughStepIndex) {
+        setControlsWalkthroughStepIndex(fallbackIndex);
+      }
+    }
+  }, [
+    closeControlsWalkthrough,
+    controlsWalkthroughStepIndex,
+    controlsWalkthroughSteps,
+    getWalkthroughTargetElement,
+    isControlsWalkthroughOpen
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isControlsWalkthroughOpen || !activeControlsWalkthroughStep || typeof window === 'undefined') {
+      return;
+    }
+
+    const target = getWalkthroughTargetElement(activeControlsWalkthroughStep.id);
+    if (!target) {
+      return;
+    }
+
+    const updateWalkthroughLayout = (): void => {
+      const rect = target.getBoundingClientRect();
+      const padding = 10;
+      const spotlightRect = {
+        top: Math.max(8, rect.top - padding),
+        left: Math.max(8, rect.left - padding),
+        width: Math.min(window.innerWidth - 16, rect.width + padding * 2),
+        height: rect.height + padding * 2
+      };
+      const cardWidth = Math.min(320, window.innerWidth - 32);
+      const preferredLeft = rect.left + rect.width / 2 - cardWidth / 2;
+      const left = Math.min(Math.max(16, preferredLeft), Math.max(16, window.innerWidth - cardWidth - 16));
+      const spacing = 18;
+      const estimatedCardHeight = 190;
+      const shouldPlaceBelow = rect.bottom + spacing + estimatedCardHeight <= window.innerHeight - 16 || rect.top < 180;
+      const top = shouldPlaceBelow
+        ? Math.min(window.innerHeight - estimatedCardHeight - 16, rect.bottom + spacing)
+        : Math.max(16, rect.top - estimatedCardHeight - spacing);
+
+      setControlsWalkthroughSpotlightRect(spotlightRect);
+      setControlsWalkthroughCardPosition({ top, left });
+    };
+
+    const scheduleWalkthroughLayoutUpdate = (): void => {
+      if (walkthroughLayoutFrameRef.current !== null) {
+        window.cancelAnimationFrame(walkthroughLayoutFrameRef.current);
+      }
+
+      walkthroughLayoutFrameRef.current = window.requestAnimationFrame(() => {
+        walkthroughLayoutFrameRef.current = null;
+        updateWalkthroughLayout();
+      });
+    };
+
+    const rect = target.getBoundingClientRect();
+    const scrollViewportTop = Math.max(88, window.innerHeight * 0.18);
+    const scrollViewportBottom = window.innerHeight - 24;
+    const shouldResetToTop = activeControlsWalkthroughStep.id === 'search';
+    const needsScroll =
+      shouldResetToTop || rect.top < scrollViewportTop || rect.bottom > scrollViewportBottom;
+
+    setControlsWalkthroughSpotlightRect(null);
+    setControlsWalkthroughCardPosition(null);
+
+    if (needsScroll) {
+      const targetTop = shouldResetToTop ? 0 : window.scrollY + rect.top - scrollViewportTop;
+      window.scrollTo({
+        top: Math.max(0, targetTop),
+        behavior: 'auto'
+      });
+    }
+
+    scheduleWalkthroughLayoutUpdate();
+    window.addEventListener('resize', scheduleWalkthroughLayoutUpdate);
+    window.addEventListener('scroll', scheduleWalkthroughLayoutUpdate, { passive: true });
+
+    return () => {
+      if (walkthroughLayoutFrameRef.current !== null) {
+        window.cancelAnimationFrame(walkthroughLayoutFrameRef.current);
+        walkthroughLayoutFrameRef.current = null;
+      }
+
+      window.removeEventListener('resize', scheduleWalkthroughLayoutUpdate);
+      window.removeEventListener('scroll', scheduleWalkthroughLayoutUpdate);
+    };
+  }, [activeControlsWalkthroughStep, getWalkthroughTargetElement, isControlsWalkthroughOpen]);
 
   useEffect(() => {
     if (!hasInitializedFilters || !selectedCity) {
@@ -638,7 +941,7 @@ export function PublicEatsPage({
   }, [category, headings.length, isFilterPopoverOpen, savedFilterGroups.length, selectedCity]);
 
   useEffect(() => {
-    if (embedded || typeof window === 'undefined' || !hasInitializedFilters) {
+    if (typeof window === 'undefined' || !hasInitializedFilters) {
       return;
     }
 
@@ -689,7 +992,7 @@ export function PublicEatsPage({
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [category, embedded, excluded, hasInitializedFilters, isAllCitiesSelected, searchQuery, selectedCity, selectedMealType, selectedStatuses]);
+  }, [category, excluded, hasInitializedFilters, isAllCitiesSelected, searchQuery, selectedCity, selectedMealType, selectedStatuses]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
@@ -857,7 +1160,7 @@ export function PublicEatsPage({
   }, [luckyRestaurantId]);
 
   useEffect(() => {
-    if (embedded || typeof window === 'undefined') {
+    if (typeof window === 'undefined') {
       setShowBackToTop(false);
       return;
     }
@@ -877,7 +1180,7 @@ export function PublicEatsPage({
     return () => {
       window.removeEventListener('scroll', onScroll);
     };
-  }, [embedded]);
+  }, []);
 
   useEffect(() => {
     if (!rootCreateErrorMessage) {
@@ -1161,19 +1464,19 @@ export function PublicEatsPage({
     return restaurants.find((restaurant) => restaurant.id === editingRestaurantId) ?? null;
   }, [editingRestaurantId, restaurants]);
   const canEditRestaurants = Boolean(adminTools) && allowRestaurantEditing;
-  const canDeleteRestaurants = Boolean(adminTools) && !embedded;
+  const canDeleteRestaurants = Boolean(adminTools);
+  const showWalkthroughDebugTrigger = process.env.NODE_ENV !== 'production';
   const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
-  const filtersReady = embedded || hasInitializedFilters;
 
   return (
-    <div className={embedded ? styles.embeddedRoot : styles.eatsRoot} style={rootStyle}>
+    <div className={styles.eatsRoot} style={rootStyle}>
       <div className={styles.headerCard}>
-        {title || (showAdminButton && !embedded) ? (
+        {title || showAdminButton ? (
           <div className={styles.titleRow}>
             {title ? <div className={styles.title}>{title}</div> : null}
-            {showAdminButton && !embedded ? (
+            {showAdminButton ? (
               <a className={styles.adminLink} href="/admin">
                 Admin
               </a>
@@ -1195,16 +1498,18 @@ export function PublicEatsPage({
             <div className={`${styles.sorting} ${isSearchActive ? styles.searchSorting : ''}`}>
               {!isSearchActive ? (
                 <>
-                  <div className={`${styles.sortingField} ${styles.cityField}`}>
-                    <label htmlFor="city">City:</label>
-                    <CitySelect
-                      id="city"
-                      groups={filterCityGroups}
-                      value={selectedCity ?? ''}
-                      onChange={handleCityChange}
-                      leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
-                    />
-                  </div>
+                  {hasMultipleCities ? (
+                    <div className={`${styles.sortingField} ${styles.cityField}`} ref={cityFieldRef}>
+                      <label htmlFor="city">City:</label>
+                      <CitySelect
+                        id="city"
+                        groups={filterCityGroups}
+                        value={selectedCity ?? ''}
+                        onChange={handleCityChange}
+                        leadingOptions={[{ label: `All Cities (${restaurants.length})`, value: '' }]}
+                      />
+                    </div>
+                  ) : null}
                   <div className={`${styles.sortingField} ${styles.mealField}`}>
                     <label htmlFor="mealType">Meal Type:</label>
                     <select value={selectedMealType} onChange={(event) => setSelectedMealType(event.target.value)}>
@@ -1231,7 +1536,7 @@ export function PublicEatsPage({
                   </div>
                 </>
               ) : null}
-              <div className={`${styles.sortingField} ${styles.viewModeGroup}`}>
+              <div className={`${styles.sortingField} ${styles.viewModeGroup}`} ref={compactFieldRef}>
                 <span className={styles.viewModeLabel}>View:</span>
                 <label className={styles.compactToggle}>
                   <input
@@ -1242,7 +1547,7 @@ export function PublicEatsPage({
                   <span>Compact Cards</span>
                 </label>
               </div>
-              <div className={`${styles.sortingField} ${styles.statusFilterGroup}`}>
+              <div className={`${styles.sortingField} ${styles.statusFilterGroup}`} ref={statusFieldRef}>
                 <span className={styles.statusFilterLabel}>Status:</span>
                 <div className={styles.filtersContainer}>
                   <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
@@ -1275,7 +1580,7 @@ export function PublicEatsPage({
                 </div>
               </div>
               {!isSearchActive ? (
-                <div className={styles.filterControls}>
+                <div className={styles.filterControls} ref={filterControlsRef}>
                   {category !== 'recentlyAdded' && headings.length > 1 ? (
                     <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
                       <button
@@ -1408,13 +1713,20 @@ export function PublicEatsPage({
                       ) : null}
                     </div>
                   ) : null}
-                  {!embedded ? (
+                  <button
+                    type="button"
+                    onClick={handleFeelingLucky}
+                    disabled={disableFeelingLuckyButton}
+                  >
+                    I'm Feeling Lucky
+                  </button>
+                  {showWalkthroughDebugTrigger ? (
                     <button
                       type="button"
-                      onClick={handleFeelingLucky}
-                      disabled={disableFeelingLuckyButton}
+                      className={styles.walkthroughTrigger}
+                      onClick={openControlsWalkthrough}
                     >
-                      I'm Feeling Lucky
+                      [DEV] Show Controls
                     </button>
                   ) : null}
                 </div>
@@ -1662,13 +1974,12 @@ export function PublicEatsPage({
           </div>
         </>
       ) : null}
-      {!embedded ? (
-        <div
-          className={`${styles.floatingActionStack} ${
-            isSearchPopoverOpen ? styles.floatingActionStackRaised : ''
-          }`}
-        >
-          {createTools ? (
+      <div
+        className={`${styles.floatingActionStack} ${
+          isSearchPopoverOpen ? styles.floatingActionStackRaised : ''
+        }`}
+      >
+        {createTools ? (
           <button
             type="button"
             className={`${styles.addFab} ${styles.stackedFab}`}
@@ -1678,51 +1989,117 @@ export function PublicEatsPage({
           >
             +
           </button>
-          ) : null}
-          <div className={styles.floatingPopoverAnchor} ref={searchPopoverRef}>
-            <button
-              type="button"
-              className={`${styles.addFab} ${styles.stackedFab} ${styles.searchFab} ${
-                isSearchPopoverOpen ? styles.searchFabActive : ''
-              } ${isSearchActive ? styles.searchFabHasQuery : ''} ${
-                isSearchPopoverOpen ? styles.searchFabOpen : ''
-              }`}
-              aria-label={isSearchActive ? `Search restaurants. Active query: ${searchQuery.trim()}` : 'Search restaurants'}
-              title={isSearchActive ? `Search active: ${searchQuery.trim()}` : 'Search restaurants'}
-              aria-expanded={isSearchPopoverOpen}
-              aria-controls={searchPopoverId}
-              onClick={() => {
-                setIsFilterPopoverOpen(false);
-                setIsSearchPopoverOpen((current) => !current);
-              }}
+        ) : null}
+        <div className={styles.floatingPopoverAnchor} ref={searchPopoverRef}>
+          <button
+            type="button"
+            className={`${styles.addFab} ${styles.stackedFab} ${styles.searchFab} ${
+              isSearchPopoverOpen ? styles.searchFabActive : ''
+            } ${isSearchActive ? styles.searchFabHasQuery : ''} ${
+              isSearchPopoverOpen ? styles.searchFabOpen : ''
+            }`}
+            ref={searchFabButtonRef}
+            aria-label={isSearchActive ? `Search restaurants. Active query: ${searchQuery.trim()}` : 'Search restaurants'}
+            title={isSearchActive ? `Search active: ${searchQuery.trim()}` : 'Search restaurants'}
+            aria-expanded={isSearchPopoverOpen}
+            aria-controls={searchPopoverId}
+            onClick={() => {
+              setIsFilterPopoverOpen(false);
+              setIsSearchPopoverOpen((current) => !current);
+            }}
+          >
+            <svg className={styles.searchFabIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="M16 16L20 20" />
+            </svg>
+          </button>
+          {isSearchPopoverOpen ? (
+            <div
+              className={`${styles.filterPopover} ${styles.floatingSearchPopover}`}
+              id={searchPopoverId}
             >
-              <svg className={styles.searchFabIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="M16 16L20 20" />
-              </svg>
-            </button>
-            {isSearchPopoverOpen ? (
-              <div
-                className={`${styles.filterPopover} ${styles.floatingSearchPopover}`}
-                id={searchPopoverId}
-              >
-                <div className={styles.searchPopoverBody}>
-                  <label htmlFor="floating-search">Search restaurants</label>
-                  <input
-                    id="floating-search"
-                    ref={searchInputRef}
-                    type="search"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search restaurant names"
-                  />
-                </div>
+              <div className={styles.searchPopoverBody}>
+                <label htmlFor="floating-search">Search restaurants</label>
+                <input
+                  id="floating-search"
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search restaurant names"
+                />
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {isControlsWalkthroughOpen && activeControlsWalkthroughStep && controlsWalkthroughSpotlightRect && controlsWalkthroughCardPosition ? (
+        <div
+          className={styles.controlsWalkthroughOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Controls walkthrough"
+        >
+          <div
+            className={styles.controlsWalkthroughSpotlight}
+            style={
+              {
+                top: `${controlsWalkthroughSpotlightRect.top}px`,
+                left: `${controlsWalkthroughSpotlightRect.left}px`,
+                width: `${controlsWalkthroughSpotlightRect.width}px`,
+                height: `${controlsWalkthroughSpotlightRect.height}px`
+              } as CSSProperties
+            }
+          />
+          <section
+            className={styles.controlsWalkthroughCard}
+            style={
+              {
+                top: `${controlsWalkthroughCardPosition.top}px`,
+                left: `${controlsWalkthroughCardPosition.left}px`
+              } as CSSProperties
+            }
+          >
+            <div className={styles.controlsWalkthroughStepLabel}>
+              Step {controlsWalkthroughStepIndex + 1} of {controlsWalkthroughSteps.length}
+            </div>
+            <h2>{activeControlsWalkthroughStep.title}</h2>
+            <p>{activeControlsWalkthroughStep.description}</p>
+            <div className={styles.controlsWalkthroughActions}>
+              <button
+                type="button"
+                className={styles.controlsWalkthroughGhostButton}
+                onClick={() => closeControlsWalkthrough(true)}
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                className={styles.controlsWalkthroughGhostButton}
+                disabled={controlsWalkthroughStepIndex === 0}
+                onClick={() => setControlsWalkthroughStepIndex((current) => Math.max(0, current - 1))}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className={styles.controlsWalkthroughPrimaryButton}
+                onClick={() => {
+                  if (controlsWalkthroughStepIndex >= controlsWalkthroughSteps.length - 1) {
+                    closeControlsWalkthrough(true);
+                    return;
+                  }
+
+                  setControlsWalkthroughStepIndex((current) => current + 1);
+                }}
+              >
+                {controlsWalkthroughStepIndex >= controlsWalkthroughSteps.length - 1 ? 'Done' : 'Next'}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
-      {createTools && !embedded ? (
+      {createTools ? (
         <>
           {isCreateDialogOpen ? (
             <div className={styles.createDialogOverlay}>
@@ -1769,7 +2146,7 @@ export function PublicEatsPage({
           ) : null}
         </>
       ) : null}
-      {!embedded && showBackToTop ? (
+      {showBackToTop ? (
         <button
           type="button"
           className={`${styles.addFab} ${styles.floatingLeft}`}
@@ -1809,7 +2186,7 @@ export function PublicEatsPage({
               </button>
             </div>
             <form
-              action={embedded ? updateRestaurant : updateRestaurantFromRoot}
+              action={updateRestaurantFromRoot}
               onSubmit={(event) => {
                 const confirmed = window.confirm(`Save changes to "${editingRestaurant.name}"?`);
                 if (!confirmed) {

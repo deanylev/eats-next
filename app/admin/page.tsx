@@ -1,3 +1,4 @@
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
@@ -17,6 +18,7 @@ import {
   updateCountry,
   updateRestaurantType
 } from '@/app/actions';
+import { AdminSubdomainDraftCleanup } from '@/app/components/admin-subdomain-draft-cleanup';
 import { AdminEntityDeleteForm } from '@/app/components/admin-entity-delete-form';
 import { AdminPanelSection } from '@/app/components/admin-panel-section';
 import { ColorField } from '@/app/components/color-field';
@@ -25,9 +27,11 @@ import { ErrorConfirm } from '@/app/components/error-confirm';
 import { PermanentlyDeleteRestaurantForm } from '@/app/components/permanently-delete-restaurant-form';
 import { RestoreRestaurantForm } from '@/app/components/restore-restaurant-form';
 import { SuccessConfirm } from '@/app/components/success-confirm';
+import { ADMIN_SUBDOMAIN_DRAFT_COOKIE, decodeAdminSubdomainDraft } from '@/lib/admin-form-state';
 import { getDb } from '@/lib/db';
 import { flashCookieNames } from '@/lib/flash-cookies';
 import { getAdminSessionForTenant, readFlashMessages, resolveRequestTenant } from '@/lib/request-context';
+import { buildTenantHost, resolvePublicRequestHostWithPort } from '@/lib/tenant';
 import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 
 import styles from './style.module.scss';
@@ -54,6 +58,9 @@ const getRequestedTab = (searchParams?: AdminPageProps['searchParams']): string 
   return Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
 };
 
+const getEditableSubdomainValue = (subdomain: string | null | undefined): string =>
+  String(subdomain ?? '').replace(/^eats-/, '');
+
 export default async function HomePage({ searchParams }: AdminPageProps) {
   try {
     const tenant = await resolveRequestTenant();
@@ -74,6 +81,14 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
       flashCookieNames.adminError,
       flashCookieNames.adminSuccess
     ] as const);
+    const subdomainDraft = decodeAdminSubdomainDraft(cookies().get(ADMIN_SUBDOMAIN_DRAFT_COOKIE)?.value);
+    const headerStore = headers();
+    const requestHostWithPort = resolvePublicRequestHostWithPort(
+      headerStore.get('host'),
+      headerStore.get('x-forwarded-host'),
+      headerStore.get('origin'),
+      headerStore.get('referer')
+    );
     const rootStyle = buildThemeCssVariables(tenant.primaryColor, tenant.secondaryColor, 'tenant') as CSSProperties;
     const activeRestaurantCount = data.restaurants.length;
     const deletedRestaurantCount = data.deletedRestaurants.length;
@@ -219,21 +234,29 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
               <form action={createSubdomainTenant} data-reset-on-success="true">
                 <label>
                   Subdomain
-                  <input name="subdomain" required />
+                  <div className={styles.subdomainField}>
+                    <span className={styles.subdomainPrefix}>eats-</span>
+                    <input
+                      name="subdomain"
+                      required
+                      defaultValue={getEditableSubdomainValue(subdomainDraft?.subdomain)}
+                      placeholder="your-name"
+                    />
+                  </div>
                 </label>
                 <label>
                   Display name
-                  <input name="displayName" required />
+                  <input name="displayName" required defaultValue={subdomainDraft?.displayName ?? ''} />
                 </label>
                 <label>
                   Username
-                  <input name="adminUsername" required />
+                  <input name="adminUsername" required defaultValue={subdomainDraft?.adminUsername ?? ''} />
                 </label>
                 <ColorField
                   label="Primary color"
                   inputId="create-subdomain-primary-color"
                   name="primaryColor"
-                  defaultValue={DEFAULT_PRIMARY_COLOR}
+                  defaultValue={subdomainDraft?.primaryColor || DEFAULT_PRIMARY_COLOR}
                   resetColor={DEFAULT_PRIMARY_COLOR}
                   rowClassName={styles.colorPickerRow}
                 />
@@ -241,7 +264,7 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                   label="Secondary color"
                   inputId="create-subdomain-secondary-color"
                   name="secondaryColor"
-                  defaultValue={DEFAULT_SECONDARY_COLOR}
+                  defaultValue={subdomainDraft?.secondaryColor || DEFAULT_SECONDARY_COLOR}
                   resetColor={DEFAULT_SECONDARY_COLOR}
                   rowClassName={styles.colorPickerRow}
                 />
@@ -301,6 +324,14 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                         </label>
                       </form>
                       <div className={styles.manageActions}>
+                        <a
+                          className={styles.exportLink}
+                          href={`//${buildTenantHost(requestHostWithPort, subdomainTenant.subdomain)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View tenant
+                        </a>
                         <button
                           type="submit"
                           form={`subdomain-form-${subdomainTenant.id}`}
@@ -631,6 +662,7 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
 
           <ErrorConfirm message={flashMessages[flashCookieNames.adminError]} />
           <SuccessConfirm message={flashMessages[flashCookieNames.adminSuccess]} />
+          <AdminSubdomainDraftCleanup enabled={Boolean(subdomainDraft)} />
 
           <section className={styles.tabsShell}>
             <div className={styles.tabsIntro}>

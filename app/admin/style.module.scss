@@ -565,3 +565,40 @@
   display: flex;
   gap: 8px;
 }
+
+.subdomainField {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgba(252, 246, 254, 0.92);
+  border: 1px solid rgba(166, 139, 177, 0.76);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.subdomainPrefix {
+  align-items: center;
+  border-right: 1px solid rgba(166, 139, 177, 0.55);
+  color: rgba(24, 3, 33, 0.82);
+  display: inline-flex;
+  font-size: 16px;
+  font-weight: 600;
+  justify-content: center;
+  line-height: 1;
+  min-height: 100%;
+  padding: 0 14px 0 16px;
+  white-space: nowrap;
+}
+
+.subdomainField input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  min-width: 0;
+  padding-left: 14px !important;
+}

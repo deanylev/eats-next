@@ -614,19 +614,21 @@
   background: var(--theme-secondary-soft-bg);
   border: 1px solid var(--theme-secondary-border);
   border-radius: 8px;
+  box-sizing: border-box;
   color: var(--theme-secondary);
   cursor: pointer;
   display: inline-flex;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   gap: 8px;
-  padding: 8px 12px;
+  min-height: 40px;
+  padding: 6px 12px;
   white-space: nowrap;
 
   > input[type='checkbox'] {
     flex-shrink: 0;
     margin: 0;
-    margin-left: 8px;
+    margin-left: 4px;
   }
 }
 
@@ -640,6 +642,8 @@
 .viewModeLabel {
   color: var(--theme-on-primary-soft);
   font-weight: 600;
+  line-height: 1.2;
+  padding-left: 2px;
   white-space: nowrap;
 }
 
@@ -1374,6 +1378,154 @@
   background: var(--theme-secondary-soft-bg-hover);
 }
 
+.eatsRoot button.walkthroughTrigger,
+.embeddedRoot button.walkthroughTrigger {
+  background: color-mix(in srgb, var(--theme-on-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+  color: var(--theme-on-primary-strong);
+}
+
+.eatsRoot button.walkthroughTrigger:hover,
+.embeddedRoot button.walkthroughTrigger:hover {
+  background: color-mix(in srgb, var(--theme-on-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+}
+
+.controlsWalkthroughOverlay {
+  inset: 0;
+  pointer-events: auto;
+  position: fixed;
+  touch-action: none;
+  z-index: 68;
+}
+
+.controlsWalkthroughSpotlight {
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 48%, white 20%);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 9999px rgba(7, 4, 14, 0.7),
+    0 28px 54px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px color-mix(in srgb, white 12%, transparent);
+  pointer-events: none;
+  position: fixed;
+}
+
+.controlsWalkthroughCard {
+  backdrop-filter: blur(22px) saturate(130%);
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--theme-primary) 84%, rgba(255, 255, 255, 0.12)),
+      color-mix(in srgb, var(--theme-primary) 70%, rgba(0, 0, 0, 0.34))
+    );
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+  border-radius: 18px;
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-sizing: border-box;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 16px 16px 14px;
+  pointer-events: auto;
+  position: fixed;
+  touch-action: auto;
+  width: min(320px, calc(100vw - 32px));
+
+  h2 {
+    color: var(--theme-on-primary-strong);
+    font-size: 20px;
+    line-height: 1.15;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+
+  p {
+    color: var(--theme-on-primary-soft);
+    font-size: 14px;
+    line-height: 1.45;
+    margin: 0;
+    text-wrap: pretty;
+  }
+}
+
+.controlsWalkthroughStepLabel {
+  color: var(--theme-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.controlsWalkthroughActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.eatsRoot button.controlsWalkthroughGhostButton,
+.embeddedRoot button.controlsWalkthroughGhostButton,
+.eatsRoot button.controlsWalkthroughPrimaryButton,
+.embeddedRoot button.controlsWalkthroughPrimaryButton {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  pointer-events: auto;
+  -webkit-appearance: none;
+}
+
+.eatsRoot button.controlsWalkthroughGhostButton,
+.embeddedRoot button.controlsWalkthroughGhostButton {
+  background: color-mix(in srgb, var(--theme-on-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 16%, transparent);
+  color: var(--theme-on-primary-soft);
+}
+
+.eatsRoot button.controlsWalkthroughGhostButton:disabled,
+.embeddedRoot button.controlsWalkthroughGhostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.eatsRoot button.controlsWalkthroughPrimaryButton,
+.embeddedRoot button.controlsWalkthroughPrimaryButton {
+  background: color-mix(in srgb, var(--theme-secondary) 90%, white 10%);
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 82%, white 18%);
+  box-shadow:
+    0 12px 24px color-mix(in srgb, var(--theme-secondary) 24%, rgba(0, 0, 0, 0.3)),
+    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  color: var(--theme-on-secondary);
+}
+
+.eatsRoot button.controlsWalkthroughGhostButton:hover:not(:disabled),
+.embeddedRoot button.controlsWalkthroughGhostButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-on-primary) 11%, transparent);
+}
+
+.eatsRoot button.controlsWalkthroughPrimaryButton:hover,
+.embeddedRoot button.controlsWalkthroughPrimaryButton:hover {
+  background: color-mix(in srgb, var(--theme-secondary) 84%, white 16%);
+}
+
+.eatsRoot button.controlsWalkthroughGhostButton:active:not(:disabled),
+.embeddedRoot button.controlsWalkthroughGhostButton:active:not(:disabled),
+.eatsRoot button.controlsWalkthroughPrimaryButton:active,
+.embeddedRoot button.controlsWalkthroughPrimaryButton:active {
+  transform: scale(0.96);
+}
+
 @media only screen and (max-width: 700px) {
   .sorting {
     gap: 12px;
@@ -1422,6 +1574,26 @@
     line-height: 1.15;
     max-width: 100%;
     padding: 6px 6px;
+  }
+
+  .controlsWalkthroughCard {
+    padding: 14px 14px 12px;
+
+    h2 {
+      font-size: 18px;
+    }
+  }
+
+  .controlsWalkthroughActions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .eatsRoot button.controlsWalkthroughGhostButton,
+  .embeddedRoot button.controlsWalkthroughGhostButton,
+  .eatsRoot button.controlsWalkthroughPrimaryButton,
+  .embeddedRoot button.controlsWalkthroughPrimaryButton {
+    flex: 1 1 0;
   }
 }
 

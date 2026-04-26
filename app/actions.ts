@@ -37,6 +37,11 @@ import {
   parseImportExportPayload,
   type ImportExportPayload
 } from '@/lib/data-transfer';
+import {
+  ADMIN_SUBDOMAIN_DRAFT_COOKIE,
+  buildAdminSubdomainDraft,
+  encodeAdminSubdomainDraft
+} from '@/lib/admin-form-state';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
@@ -155,6 +160,22 @@ const setAdminSuccess = (message: string): void => setFlashCookieServer(ADMIN_SU
 const setRootSuccess = (name: FlashCookieName, message: string): void => setFlashCookieServer(name, message, '/');
 const clearRootFlash = (name: FlashCookieName): void => clearFlashCookieServer(name, '/');
 const setRootError = (name: FlashCookieName, message: string): void => setFlashCookieServer(name, message, '/');
+const setAdminSubdomainDraft = (formData: FormData): void => {
+  cookies().set(ADMIN_SUBDOMAIN_DRAFT_COOKIE, encodeAdminSubdomainDraft(buildAdminSubdomainDraft(formData)), {
+    httpOnly: false,
+    maxAge: 5 * 60,
+    path: '/admin',
+    sameSite: 'lax'
+  });
+};
+const clearAdminSubdomainDraft = (): void => {
+  cookies().set(ADMIN_SUBDOMAIN_DRAFT_COOKIE, '', {
+    httpOnly: false,
+    maxAge: 0,
+    path: '/admin',
+    sameSite: 'lax'
+  });
+};
 
 const bounce = (errorMessage: string): never => {
   setFlashCookieServer(ADMIN_ERROR_COOKIE, errorMessage, '/admin');
@@ -497,6 +518,15 @@ const getClientIp = (): string => {
 const isValidTenantSubdomain = (value: string): boolean =>
   /^eats-[a-z0-9](?:[a-z0-9-]{1,55}[a-z0-9])?$/.test(value);
 
+const normalizeTenantSubdomain = (value: FormDataEntryValue | null): string => {
+  const trimmed = String(value ?? '').trim().toLowerCase();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.startsWith('eats-') ? trimmed : `eats-${trimmed}`;
+};
+
 const isIpBlocked = (ip: string, now: number): boolean => {
   const record = loginAttemptsByIp.get(ip);
   if (!record) {
@@ -602,10 +632,10 @@ export const logoutAdmin = async (): Promise<void> => {
 };
 
 export const createSubdomainTenant = async (formData: FormData): Promise<void> => {
-  return runAdminAction(async () => {
+  try {
     await requireRootAdminSession();
     const db = getDb();
-    const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
+    const subdomain = normalizeTenantSubdomain(formData.get('subdomain'));
     const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
       requirePassword: true
     });
@@ -625,15 +655,27 @@ export const createSubdomainTenant = async (formData: FormData): Promise<void> =
       adminPasswordHash: hashTenantPassword(adminPassword),
       isRoot: false
     });
-  }, { successMessage: 'Subdomain tenant created.' });
+
+    clearAdminSubdomainDraft();
+    setAdminSuccess('Subdomain tenant created.');
+    redirect('/admin?tab=subdomains');
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    setAdminSubdomainDraft(formData);
+    setFlashCookieServer(ADMIN_ERROR_COOKIE, getUserErrorText(error), '/admin');
+    redirect('/admin?tab=subdomains');
+  }
 };
 
 export const updateSubdomainTenant = async (formData: FormData): Promise<void> => {
-  return runAdminAction(async () => {
+  try {
     await requireRootAdminSession();
     const db = getDb();
     const tenantId = parseUuid(formData.get('tenantId'), 'Invalid tenant id.');
-    const subdomain = String(formData.get('subdomain') ?? '').trim().toLowerCase();
+    const subdomain = normalizeTenantSubdomain(formData.get('subdomain'));
     const { adminPassword, adminUsername, displayName, primaryColor, secondaryColor } = parseTenantSettings(formData, {
       requirePassword: false
     });
@@ -662,7 +704,17 @@ export const updateSubdomainTenant = async (formData: FormData): Promise<void> =
         ...(adminPassword.trim().length > 0 ? { adminPasswordHash: hashTenantPassword(adminPassword) } : {})
       })
       .where(and(eq(tenants.id, tenantId), eq(tenants.isRoot, false)));
-  }, { successMessage: 'Subdomain tenant updated.' });
+
+    setAdminSuccess('Subdomain tenant updated.');
+    redirect('/admin?tab=subdomains');
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    setFlashCookieServer(ADMIN_ERROR_COOKIE, getUserErrorText(error), '/admin');
+    redirect('/admin?tab=subdomains');
+  }
 };
 
 export const deleteSubdomainTenant = async (formData: FormData): Promise<void> => {

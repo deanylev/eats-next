@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { clearAdminSubdomainDraftClient } from '@/lib/admin-form-state';
 import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
 
 type ErrorConfirmProps = {
@@ -14,6 +15,7 @@ export function ErrorConfirm({ message }: ErrorConfirmProps) {
     }
 
     window.confirm(message);
+    clearAdminSubdomainDraftClient();
     clearFlashCookieClient(flashCookieNames.adminError, '/admin');
   }, [message]);
 
