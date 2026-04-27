@@ -91,6 +91,9 @@ const getSavedFilterGroupSignature = (headings: string[]): string =>
     .sort((headingA, headingB) => byAlpha(headingA, headingB))
     .join('\n');
 
+const getCityGroupingHeading = (restaurant: Pick<PublicRestaurant, 'cityName' | 'countryName'>): string =>
+  `${restaurant.cityName}, ${restaurant.countryName}`;
+
 const readStoredFilterGroups = (): SavedFilterGroup[] => {
   if (typeof window === 'undefined') {
     return [];
@@ -330,7 +333,7 @@ export function PublicEatsPage({
     setSelectedStatuses(urlState.statuses);
     setSelectedCity(urlState.city === allCitiesUrlValue ? null : urlState.city);
     setSelectedMealType(urlState.mealType);
-    setCategory(urlState.city === allCitiesUrlValue && urlState.category === 'area' ? 'type' : urlState.category);
+    setCategory(urlState.category);
     setSearchQuery(urlState.search);
     setExcluded(urlState.excluded);
     preservedIncludedHeadings.current = null;
@@ -427,6 +430,10 @@ export function PublicEatsPage({
   }, [citiesByCountry]);
 
   const isAllCitiesSelected = selectedCity === null;
+  const isCityGrouping = category === 'area' && isAllCitiesSelected;
+  const categoryOptionAreaLabel = isAllCitiesSelected ? 'City' : 'Area';
+  const filterEntityLabelPlural = isCityGrouping ? 'Cities' : 'Areas';
+  const savedGroupCategoryLabel = isCityGrouping ? 'city' : 'area';
 
   useEffect(() => {
     if (!hasInitializedFilters) {
@@ -526,8 +533,8 @@ export function PublicEatsPage({
 
     for (const restaurant of mealFilteredRestaurants) {
       if (category === 'area') {
-        if (restaurant.areas.length === 0) {
-          values.add(selectedCity ?? restaurant.cityName);
+        if (isAllCitiesSelected || restaurant.areas.length === 0) {
+          values.add(isAllCitiesSelected ? getCityGroupingHeading(restaurant) : (selectedCity ?? restaurant.cityName));
         } else {
           for (const area of restaurant.areas) {
             values.add(area);
@@ -1011,7 +1018,11 @@ export function PublicEatsPage({
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
       if (category === 'area') {
-        headingValues.push(...(restaurant.areas.length > 0 ? restaurant.areas : [selectedCity ?? restaurant.cityName]));
+        headingValues.push(
+          ...(isAllCitiesSelected || restaurant.areas.length === 0
+            ? [isAllCitiesSelected ? getCityGroupingHeading(restaurant) : (selectedCity ?? restaurant.cityName)]
+            : restaurant.areas)
+        );
       }
 
       if (category === 'type') {
@@ -1358,13 +1369,10 @@ export function PublicEatsPage({
     const nextCity = city || null;
 
     setSelectedCity(nextCity);
-    if (nextCity === null && category === 'area') {
-      setCategory('type');
-    }
     setSelectedStatuses(getDefaultStatusesForCity(nextCity));
     statusFilterSnapshot.current = null;
     preservedIncludedHeadings.current = null;
-  }, [category, getDefaultStatusesForCity]);
+  }, [getDefaultStatusesForCity]);
   const handleFeelingLucky = (): void => {
     if (luckyCandidateIds.length === 0) {
       return;
@@ -1403,7 +1411,7 @@ export function PublicEatsPage({
     }
 
     const name = window.prompt(
-      `Save this ${activeFilterGroupCategory === 'area' ? 'area' : 'category'} group as:`
+      `Save this ${activeFilterGroupCategory === 'area' ? savedGroupCategoryLabel : 'category'} group as:`
     )?.trim();
 
     if (!name) {
@@ -1448,7 +1456,7 @@ export function PublicEatsPage({
 
       return current.map((group) => (group.id === existingGroup.id ? nextGroup : group));
     });
-  }, [activeFilterGroupCategory, canSaveCurrentFilterGroup, currentFilterGroupSignature, selectedCity]);
+  }, [activeFilterGroupCategory, canSaveCurrentFilterGroup, currentFilterGroupSignature, savedGroupCategoryLabel, selectedCity]);
   const deleteSavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
     if (!window.confirm(`Delete the saved group "${group.name}"?`)) {
       return;
@@ -1527,8 +1535,8 @@ export function PublicEatsPage({
                       value={category}
                       onChange={(event) => setCategory(event.target.value as CategoryFilter)}
                     >
-                      <option value="area" disabled={isAllCitiesSelected}>
-                        Area
+                      <option value="area">
+                        {categoryOptionAreaLabel}
                       </option>
                       <option value="type">Type of Food</option>
                       <option value="recentlyAdded">Date Added</option>
@@ -1593,7 +1601,7 @@ export function PublicEatsPage({
                           setIsFilterPopoverOpen((current) => !current);
                         }}
                       >
-                        {category === 'area' ? 'Filter Areas' : 'Filter Types'} ({filterButtonStateLabel})
+                        {category === 'area' ? `Filter ${filterEntityLabelPlural}` : 'Filter Types'} ({filterButtonStateLabel})
                       </button>
                       {isFilterPopoverOpen ? (
                         <div
@@ -1841,7 +1849,7 @@ export function PublicEatsPage({
                             {place.name}
                           </a>
                         </span>
-                        {isAllCitiesSelected ? (
+                        {isAllCitiesSelected && !isCityGrouping ? (
                           <span className={styles.cardCity}>
                             {place.cityName}, {place.countryName}
                           </span>
