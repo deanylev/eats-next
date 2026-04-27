@@ -196,7 +196,8 @@ type DraggedBoardCard = {
 const unassignedAreaLaneId = '__unassigned-area__';
 const unassignedAreaLaneLabel = 'No Area';
 const silentBoardMoveErrorMessages = new Set([
-  'A disliked reason is required to move a restaurant to Not Recommended.'
+  'A disliked reason is required to move a restaurant to Not Recommended.',
+  'Notes are required.'
 ]);
 
 const getBoardCategory = (category: CategoryFilter, isAllCitiesSelected: boolean): BoardCategory | null => {
@@ -326,7 +327,13 @@ type RestaurantCardRenderOptions = {
 };
 
 type BoardMoveResolution = {
-  dislikedReason: string | null;
+  status: 'disliked';
+  dislikedReason: string;
+  notes?: never;
+} | {
+  status: 'liked' | 'untried';
+  dislikedReason?: never;
+  notes: string;
 };
 
 const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
@@ -1790,16 +1797,23 @@ export function PublicEatsPage({
     setBoardDropTarget(null);
   }, []);
   const resolveBoardMove = useCallback(
-    (restaurant: PublicRestaurant, target: BoardDropTarget): BoardMoveResolution => {
-      if (target.status !== 'disliked') {
+    (restaurant: PublicRestaurant, { status }: BoardDropTarget): BoardMoveResolution => {
+      if (status !== 'disliked') {
+        const newNotes = window.prompt('New notes:', restaurant.notes)?.trim() ?? '';
+        if (newNotes.length === 0) {
+          throw new Error('Notes are required.');
+        }
+
         return {
-          dislikedReason: null
+          status,
+          notes: newNotes
         };
       }
 
       const existingReason = restaurant.dislikedReason?.trim() ?? '';
       if (existingReason.length > 0) {
         return {
+          status,
           dislikedReason: existingReason
         };
       }
@@ -1810,6 +1824,7 @@ export function PublicEatsPage({
       }
 
       return {
+        status,
         dislikedReason: promptedReason
       };
     },
@@ -1831,7 +1846,12 @@ export function PublicEatsPage({
           ...restaurant,
           cityId: targetCity.id,
           cityName: targetCity.name,
-          dislikedReason: move.dislikedReason,
+          ...move.dislikedReason && {
+            dislikedReason: move.dislikedReason,
+          },
+          ...move.notes && {
+            notes: move.notes,
+          },
           countryName: targetCity.countryName,
           status: target.status
         };
@@ -1845,7 +1865,12 @@ export function PublicEatsPage({
         return {
           ...restaurant,
           areas: nextAreas,
-          dislikedReason: move.dislikedReason,
+          ...move.dislikedReason && {
+            dislikedReason: move.dislikedReason,
+          },
+          ...move.notes && {
+            notes: move.notes,
+          },
           status: target.status
         };
       }
@@ -1857,7 +1882,12 @@ export function PublicEatsPage({
 
       return {
         ...restaurant,
-        dislikedReason: move.dislikedReason,
+        ...move.dislikedReason && {
+          dislikedReason: move.dislikedReason,
+        },
+        ...move.notes && {
+          notes: move.notes,
+        },
         status: target.status,
         types: [targetType, ...restaurant.types.filter((type, index) => index !== 0 && type.id !== targetType.id)]
       };
