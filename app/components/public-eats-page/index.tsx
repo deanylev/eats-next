@@ -1,9 +1,9 @@
 'use client';
 
 import Fuse from 'fuse.js';
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
-import { createRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
+import type { CSSProperties, DragEvent } from 'react';
+import { createRestaurantFromRoot, moveRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
@@ -32,6 +32,7 @@ import styles from './style.module.scss';
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
+const viewModeStorageKey = 'publicEatsViewMode';
 const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 const minimumUpwardFilterPopoverListHeight = 160;
@@ -46,6 +47,18 @@ const readStoredCompactCards = (): boolean => {
     return window.localStorage.getItem(compactCardsStorageKey) === 'true';
   } catch {
     return false;
+  }
+};
+
+const readStoredViewMode = (): ViewMode => {
+  if (typeof window === 'undefined') {
+    return 'list';
+  }
+
+  try {
+    return window.localStorage.getItem(viewModeStorageKey) === 'kanban' ? 'kanban' : 'list';
+  } catch {
+    return 'list';
   }
 };
 
@@ -163,6 +176,125 @@ type PublicRestaurant = {
   types: RestaurantType[];
 };
 
+type ViewMode = 'list' | 'kanban';
+type BoardCategory = 'city' | 'area' | 'type';
+type BoardLane = {
+  boardCategory: BoardCategory;
+  id: string;
+  label: string;
+};
+type BoardDropTarget = {
+  laneId: string;
+  status: RestaurantStatusFilter;
+};
+type DraggedBoardCard = {
+  restaurantId: string;
+  sourceLaneId: string;
+  sourceStatus: RestaurantStatusFilter;
+};
+
+const unassignedAreaLaneId = '__unassigned-area__';
+const unassignedAreaLaneLabel = 'No Area';
+const silentBoardMoveErrorMessages = new Set([
+  'A disliked reason is required to move a restaurant to Not Recommended.'
+]);
+
+const getBoardCategory = (category: CategoryFilter, isAllCitiesSelected: boolean): BoardCategory | null => {
+  if (category === 'type') {
+    return 'type';
+  }
+
+  if (category === 'area') {
+    return isAllCitiesSelected ? 'city' : 'area';
+  }
+
+  return null;
+};
+
+const getPrimaryArea = (restaurant: PublicRestaurant): string | null => restaurant.areas[0]?.trim() ?? null;
+
+const getPrimaryType = (restaurant: PublicRestaurant): RestaurantType | null => restaurant.types[0] ?? null;
+
+const getRestaurantTypeSummary = (restaurant: PublicRestaurant): string =>
+  restaurant.types.map((type) => `${type.emoji} ${type.name}`).join(', ');
+
+const buildBoardLanes = (
+  boardCategory: BoardCategory,
+  restaurants: PublicRestaurant[]
+): BoardLane[] => {
+  if (boardCategory === 'city') {
+    const lanes = new Map<string, BoardLane>();
+
+    for (const restaurant of restaurants) {
+      lanes.set(restaurant.cityId, {
+        boardCategory,
+        id: restaurant.cityId,
+        label: restaurant.cityName
+      });
+    }
+
+    return [...lanes.values()].sort((laneA, laneB) => byAlpha(laneA.label, laneB.label));
+  }
+
+  if (boardCategory === 'area') {
+    const lanes = new Map<string, BoardLane>();
+    let hasUnassignedLane = false;
+
+    for (const restaurant of restaurants) {
+      const primaryArea = getPrimaryArea(restaurant);
+      if (!primaryArea) {
+        hasUnassignedLane = true;
+        continue;
+      }
+
+      lanes.set(primaryArea, {
+        boardCategory,
+        id: primaryArea,
+        label: primaryArea
+      });
+    }
+
+    const ordered = [...lanes.values()].sort((laneA, laneB) => byAlpha(laneA.label, laneB.label));
+    if (hasUnassignedLane) {
+      ordered.unshift({
+        boardCategory,
+        id: unassignedAreaLaneId,
+        label: unassignedAreaLaneLabel
+      });
+    }
+
+    return ordered;
+  }
+
+  const lanes = new Map<string, BoardLane>();
+  for (const restaurant of restaurants) {
+    const primaryType = getPrimaryType(restaurant);
+    if (!primaryType) {
+      continue;
+    }
+
+    lanes.set(primaryType.id, {
+      boardCategory,
+      id: primaryType.id,
+      label: `${primaryType.emoji} ${primaryType.name}`
+    });
+  }
+
+  return [...lanes.values()].sort((laneA, laneB) => byAlpha(laneA.label, laneB.label));
+};
+
+const getRestaurantBoardLaneId = (restaurant: PublicRestaurant, boardCategory: BoardCategory): string => {
+  if (boardCategory === 'city') {
+    return restaurant.cityId;
+  }
+
+  if (boardCategory === 'area') {
+    return getPrimaryArea(restaurant) ?? unassignedAreaLaneId;
+  }
+
+  return getPrimaryType(restaurant)?.id ?? '';
+};
+
 type WalkthroughTargetId = 'city' | 'status' | 'filters' | 'compact' | 'search';
 
 type WalkthroughStep = {
@@ -181,6 +313,20 @@ type SpotlightRect = {
 type WalkthroughCardPosition = {
   top: number;
   left: number;
+};
+
+type RestaurantCardRenderOptions = {
+  draggable?: boolean;
+  extraClassName?: string;
+  keyPrefix: string;
+  onDragEnd?: () => void;
+  onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
+  showCity: boolean;
+  summaryText: string;
+};
+
+type BoardMoveResolution = {
+  dislikedReason: string | null;
 };
 
 const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
@@ -218,7 +364,7 @@ type Props = {
 };
 
 export function PublicEatsPage({
-  restaurants,
+  restaurants: initialRestaurants,
   defaultCityName = null,
   showAdminButton = false,
   title = `Dean's Favourite Eats`,
@@ -235,12 +381,19 @@ export function PublicEatsPage({
   rootDeleteErrorMessage = null,
   openEditRestaurantId
 }: Props) {
+  const [restaurants, setRestaurants] = useState(initialRestaurants);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [boardErrorMessage, setBoardErrorMessage] = useState<string | null>(null);
+  const [draggedBoardCard, setDraggedBoardCard] = useState<DraggedBoardCard | null>(null);
+  const [boardDropTarget, setBoardDropTarget] = useState<BoardDropTarget | null>(null);
+  const [isMovingBoardCard, startMovingBoardCardTransition] = useTransition();
   const triedCount = restaurants.filter((restaurant) => restaurant.status === 'liked').length;
   const untriedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
   const [hasInitializedFilters, setHasInitializedFilters] = useState(false);
   const skipNextExcludeReset = useRef(false);
   const skipNextExcludePrune = useRef(false);
   const hasExplicitCityQuery = useRef(false);
+  const listStatusSelectionBeforeKanban = useRef<RestaurantStatusFilter[] | null>(null);
   const preservedIncludedHeadings = useRef<string[] | null>(null);
   const statusFilterSnapshot = useRef<{ preservedIncludedHeadings: string[] | null } | null>(null);
 
@@ -251,6 +404,7 @@ export function PublicEatsPage({
   const [excluded, setExcluded] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [compactCards, setCompactCards] = useState(false);
+  const [collapsedKanbanLaneIds, setCollapsedKanbanLaneIds] = useState<Set<string>>(new Set());
   const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
   const [expandedCompactCardIds, setExpandedCompactCardIds] = useState<Set<string>>(new Set());
   const [isControlsWalkthroughOpen, setIsControlsWalkthroughOpen] = useState(false);
@@ -287,6 +441,10 @@ export function PublicEatsPage({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverId = useId();
   const filtersReady = hasInitializedFilters;
+
+  useEffect(() => {
+    setRestaurants(initialRestaurants);
+  }, [initialRestaurants]);
 
   const getWalkthroughTargetElement = useCallback((targetId: WalkthroughTargetId): HTMLElement | null => {
     switch (targetId) {
@@ -325,6 +483,7 @@ export function PublicEatsPage({
 
   useEffect(() => {
     setCompactCards(readStoredCompactCards());
+    setViewMode(readStoredViewMode());
 
     const urlState = readUrlState();
     hasExplicitCityQuery.current = urlState.hasCityQuery;
@@ -353,6 +512,18 @@ export function PublicEatsPage({
   }, [compactCards, hasInitializedFilters]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !hasInitializedFilters) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(viewModeStorageKey, viewMode);
+    } catch {
+      // Ignore storage failures; view mode still works for the current page session.
+    }
+  }, [hasInitializedFilters, viewMode]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -378,6 +549,20 @@ export function PublicEatsPage({
         next.delete(restaurantId);
       } else {
         next.add(restaurantId);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const toggleKanbanLaneCollapse = useCallback((laneId: string): void => {
+    setCollapsedKanbanLaneIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(laneId)) {
+        next.delete(laneId);
+      } else {
+        next.add(laneId);
       }
 
       return next;
@@ -598,7 +783,7 @@ export function PublicEatsPage({
     steps.push({
       id: 'compact',
       title: 'Choose your view',
-      description: 'Compact cards shows more places at once. Full cards show the notes and details without extra taps.'
+      description: 'Switch between list and kanban here. Compact cards also shows more places at once when you want a denser view.'
     });
 
     steps.push({
@@ -1050,6 +1235,127 @@ export function PublicEatsPage({
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
   }, [category, excluded, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
+  const boardCategory = useMemo(() => getBoardCategory(category, isAllCitiesSelected), [category, isAllCitiesSelected]);
+  const boardRestaurants = useMemo(() => {
+    if (isSearchActive) {
+      return searchedRestaurants.filter((restaurant) => selectedStatuses.includes(restaurant.status));
+    }
+
+    if (!boardCategory) {
+      const visibleIds = new Set<string>();
+      for (const places of grouped.values()) {
+        for (const place of places) {
+          visibleIds.add(place.id);
+        }
+      }
+
+      return mealFilteredRestaurants.filter((restaurant) => visibleIds.has(restaurant.id));
+    }
+
+    return mealFilteredRestaurants.filter((restaurant) => {
+      if (boardCategory === 'city') {
+        return !excluded.includes(getCityGroupingHeading(restaurant));
+      }
+
+      if (boardCategory === 'area') {
+        const primaryArea = getPrimaryArea(restaurant);
+        return primaryArea === null || !excluded.includes(primaryArea);
+      }
+
+      const primaryType = getPrimaryType(restaurant);
+      return primaryType !== null && !excluded.includes(primaryType.name);
+    });
+  }, [boardCategory, excluded, grouped, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedStatuses]);
+  const boardLanes = useMemo(
+    () => (boardCategory ? buildBoardLanes(boardCategory, boardRestaurants) : []),
+    [boardCategory, boardRestaurants]
+  );
+  const visibleBoardStatuses = useMemo(
+    () => restaurantStatusChoices.filter((status) => selectedStatuses.includes(status)),
+    [selectedStatuses]
+  );
+  const boardGrouped = useMemo(() => {
+    if (!boardCategory) {
+      return new Map<string, Map<RestaurantStatusFilter, PublicRestaurant[]>>();
+    }
+
+    const map = new Map<string, Map<RestaurantStatusFilter, PublicRestaurant[]>>();
+    for (const lane of boardLanes) {
+      const laneStatuses = new Map<RestaurantStatusFilter, PublicRestaurant[]>();
+      for (const status of restaurantStatusChoices) {
+        laneStatuses.set(status, []);
+      }
+      map.set(lane.id, laneStatuses);
+    }
+
+    for (const restaurant of boardRestaurants) {
+      const laneId = getRestaurantBoardLaneId(restaurant, boardCategory);
+      if (!laneId) {
+        continue;
+      }
+
+      const lane = map.get(laneId);
+      if (!lane) {
+        continue;
+      }
+
+      const current = lane.get(restaurant.status) ?? [];
+      current.push(restaurant);
+      lane.set(restaurant.status, current);
+    }
+
+    return map;
+  }, [boardCategory, boardLanes, boardRestaurants]);
+  const effectiveViewMode: ViewMode = viewMode === 'kanban' && boardCategory !== null ? 'kanban' : 'list';
+  const kanbanGridStyle = useMemo((): CSSProperties => {
+    const columnCount = Math.max(visibleBoardStatuses.length, 1);
+    const minColumnWidth = 252;
+    const minGridWidth = columnCount * minColumnWidth;
+
+    return {
+      gridTemplateColumns: `repeat(${columnCount}, minmax(240px, 1fr))`,
+      width: `max(100%, ${minGridWidth}px)`
+    };
+  }, [visibleBoardStatuses.length]);
+
+  useEffect(() => {
+    setCollapsedKanbanLaneIds((current) => {
+      const visibleLaneIds = new Set(boardLanes.map((lane) => lane.id));
+      let hasChanged = false;
+      const next = new Set<string>();
+
+      for (const laneId of current) {
+        if (visibleLaneIds.has(laneId)) {
+          next.add(laneId);
+        } else {
+          hasChanged = true;
+        }
+      }
+
+      return hasChanged ? next : current;
+    });
+  }, [boardLanes]);
+
+  useEffect(() => {
+    const areAllStatusesSelected = restaurantStatusChoices.every((status) => selectedStatuses.includes(status));
+
+    if (effectiveViewMode === 'kanban') {
+      if (listStatusSelectionBeforeKanban.current === null) {
+        listStatusSelectionBeforeKanban.current = selectedStatuses;
+      }
+
+      if (!areAllStatusesSelected) {
+        setSelectedStatuses([...restaurantStatusChoices]);
+      }
+      return;
+    }
+
+    if (listStatusSelectionBeforeKanban.current !== null) {
+      const previousStatuses = listStatusSelectionBeforeKanban.current;
+      listStatusSelectionBeforeKanban.current = null;
+      setSelectedStatuses(previousStatuses);
+    }
+  }, [effectiveViewMode, selectedStatuses]);
   const visibleRestaurantIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -1344,6 +1650,10 @@ export function PublicEatsPage({
     return undefined;
   }, [selectedStatuses]);
   const toggleSelectedStatus = (status: RestaurantStatusFilter, checked: boolean): void => {
+    if (effectiveViewMode === 'kanban') {
+      return;
+    }
+
     statusFilterSnapshot.current =
       category !== 'recentlyAdded'
         ? {
@@ -1472,11 +1782,394 @@ export function PublicEatsPage({
     return restaurants.find((restaurant) => restaurant.id === editingRestaurantId) ?? null;
   }, [editingRestaurantId, restaurants]);
   const canEditRestaurants = Boolean(adminTools) && allowRestaurantEditing;
+  const canMoveRestaurantsInBoard = canEditRestaurants && boardCategory !== null && !isSearchActive;
   const canDeleteRestaurants = Boolean(adminTools);
+
+  const clearBoardDragState = useCallback((): void => {
+    setDraggedBoardCard(null);
+    setBoardDropTarget(null);
+  }, []);
+  const resolveBoardMove = useCallback(
+    (restaurant: PublicRestaurant, target: BoardDropTarget): BoardMoveResolution => {
+      if (target.status !== 'disliked') {
+        return {
+          dislikedReason: null
+        };
+      }
+
+      const existingReason = restaurant.dislikedReason?.trim() ?? '';
+      if (existingReason.length > 0) {
+        return {
+          dislikedReason: existingReason
+        };
+      }
+
+      const promptedReason = window.prompt(`Why is "${restaurant.name}" not recommended?`)?.trim() ?? '';
+      if (promptedReason.length === 0) {
+        throw new Error('A disliked reason is required to move a restaurant to Not Recommended.');
+      }
+
+      return {
+        dislikedReason: promptedReason
+      };
+    },
+    []
+  );
+  const buildMovedRestaurant = useCallback(
+    (restaurant: PublicRestaurant, target: BoardDropTarget, move: BoardMoveResolution): PublicRestaurant => {
+      if (!boardCategory) {
+        return restaurant;
+      }
+
+      if (boardCategory === 'city') {
+        const targetCity = adminTools?.cities.find((city) => city.id === target.laneId);
+        if (!targetCity) {
+          return restaurant;
+        }
+
+        return {
+          ...restaurant,
+          cityId: targetCity.id,
+          cityName: targetCity.name,
+          dislikedReason: move.dislikedReason,
+          countryName: targetCity.countryName,
+          status: target.status
+        };
+      }
+
+      if (boardCategory === 'area') {
+        const nextAreas = target.laneId === unassignedAreaLaneId
+          ? restaurant.areas.filter((_, index) => index !== 0)
+          : [target.laneId, ...restaurant.areas.filter((area, index) => index !== 0 && area !== target.laneId)];
+
+        return {
+          ...restaurant,
+          areas: nextAreas,
+          dislikedReason: move.dislikedReason,
+          status: target.status
+        };
+      }
+
+      const targetType = adminTools?.types.find((type) => type.id === target.laneId);
+      if (!targetType) {
+        return restaurant;
+      }
+
+      return {
+        ...restaurant,
+        dislikedReason: move.dislikedReason,
+        status: target.status,
+        types: [targetType, ...restaurant.types.filter((type, index) => index !== 0 && type.id !== targetType.id)]
+      };
+    },
+    [adminTools, boardCategory]
+  );
+  const persistBoardMove = useCallback(
+    async (restaurant: PublicRestaurant, target: BoardDropTarget, move: BoardMoveResolution): Promise<void> => {
+      if (!boardCategory) {
+        return;
+      }
+
+      const formData = new FormData();
+      formData.set('restaurantId', restaurant.id);
+      formData.set('status', target.status);
+      formData.set('boardCategory', boardCategory);
+      if (move.dislikedReason?.trim().length) {
+        formData.set('dislikedReason', move.dislikedReason.trim());
+      }
+
+      if (boardCategory === 'city') {
+        formData.set('targetCityId', target.laneId);
+      } else if (boardCategory === 'area') {
+        formData.set('targetArea', target.laneId === unassignedAreaLaneId ? '' : target.laneId);
+      } else {
+        formData.set('targetTypeId', target.laneId);
+      }
+
+      const result = await moveRestaurantFromRoot(formData);
+      if (!result.success) {
+        throw new Error(result.errorMessage ?? 'Could not move restaurant.');
+      }
+    },
+    [boardCategory]
+  );
+  const handleBoardDrop = useCallback(
+    (target: BoardDropTarget): void => {
+      if (!draggedBoardCard || !canMoveRestaurantsInBoard) {
+        return;
+      }
+
+      const restaurant = restaurants.find((entry) => entry.id === draggedBoardCard.restaurantId);
+      if (!restaurant) {
+        clearBoardDragState();
+        return;
+      }
+
+      if (draggedBoardCard.sourceLaneId === target.laneId && draggedBoardCard.sourceStatus === target.status) {
+        clearBoardDragState();
+        return;
+      }
+
+      const previousRestaurants = restaurants;
+      let move: BoardMoveResolution;
+      try {
+        move = resolveBoardMove(restaurant, target);
+      } catch (error) {
+        clearBoardDragState();
+        if (error instanceof Error && !silentBoardMoveErrorMessages.has(error.message)) {
+          setBoardErrorMessage(error.message);
+        }
+        return;
+      }
+
+      const optimisticRestaurant = buildMovedRestaurant(restaurant, target, move);
+
+      setBoardErrorMessage(null);
+      setRestaurants((current) =>
+        current.map((entry) => (entry.id === restaurant.id ? optimisticRestaurant : entry))
+      );
+      clearBoardDragState();
+
+      startMovingBoardCardTransition(() => {
+        void persistBoardMove(restaurant, target, move).catch((error: unknown) => {
+          setRestaurants(previousRestaurants);
+          if (error instanceof Error && silentBoardMoveErrorMessages.has(error.message)) {
+            return;
+          }
+
+          setBoardErrorMessage(error instanceof Error ? error.message : 'Could not move restaurant.');
+        });
+      });
+    },
+    [
+      buildMovedRestaurant,
+      canMoveRestaurantsInBoard,
+      clearBoardDragState,
+      draggedBoardCard,
+      persistBoardMove,
+      resolveBoardMove,
+      restaurants
+    ]
+  );
   const showWalkthroughDebugTrigger = process.env.NODE_ENV !== 'production';
   const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
+  const renderRestaurantCard = useCallback(
+    (place: PublicRestaurant, options: RestaurantCardRenderOptions) => {
+      const compactDetailText = getRestaurantDetailText(place);
+      const compactDetailId = `compact-detail-${options.keyPrefix}-${place.id}`;
+      const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
+      const showCompactCardActions = canEditRestaurants || canDeleteRestaurants;
+      const canExpandCompactCard = compactCards && (compactDetailText.length > 0 || showCompactCardActions);
+
+      return (
+        <div
+          className={`${styles.placeCard} ${compactCards ? styles.compactPlaceCard : ''} ${
+            canExpandCompactCard ? styles.compactPlaceCardInteractive : ''
+          } ${isCompactDetailExpanded ? styles.compactPlaceCardExpanded : ''} ${
+            luckyRestaurantId === place.id ? styles.luckyCard : ''
+          } ${options.extraClassName ?? ''} ${
+            place.status === 'liked'
+              ? styles.likedPlaceCard
+              : place.status === 'disliked'
+                ? styles.dislikedPlaceCard
+                : styles.untriedPlaceCard
+          }`}
+          draggable={options.draggable}
+          key={`${options.keyPrefix}-${place.id}`}
+          ref={(element) => {
+            restaurantCardRefs.current[place.id] = element;
+          }}
+          onClick={
+            canExpandCompactCard
+              ? (event) => {
+                  if (shouldIgnoreCompactCardToggle(event.target)) {
+                    return;
+                  }
+
+                  toggleCompactCardExpansion(place.id);
+                }
+              : undefined
+          }
+          onDragEnd={options.onDragEnd}
+          onDragStart={options.onDragStart}
+        >
+          {luckyRestaurantId === place.id ? (
+            <div className={styles.confettiLayer} aria-hidden="true">
+              {confettiPieceIndexes.map((index) => (
+                <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
+              ))}
+            </div>
+          ) : null}
+          {compactCards ? (
+            <span className={styles.compactStatusLabel}>
+              {place.status === 'liked'
+                ? 'Recommended'
+                : place.status === 'disliked'
+                  ? 'Not Recommended'
+                  : 'Want to Try'}
+            </span>
+          ) : null}
+          {canExpandCompactCard ? (
+            <button
+              type="button"
+              className={`${styles.compactDetailsToggle} ${
+                isCompactDetailExpanded ? styles.compactDetailsToggleExpanded : ''
+              }`}
+              aria-label={isCompactDetailExpanded ? `Hide details for ${place.name}` : `Show details for ${place.name}`}
+              aria-expanded={isCompactDetailExpanded}
+              aria-controls={compactDetailId}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleCompactCardExpansion(place.id);
+              }}
+            />
+          ) : null}
+          {!compactCards && place.status === 'untried' ? (
+            <div className={styles.untriedBadgeRow}>
+              <span className={styles.untriedBadge}>Want to Try</span>
+            </div>
+          ) : null}
+          {!compactCards && place.status === 'liked' ? (
+            <div className={styles.untriedBadgeRow}>
+              <span className={styles.likedBadge}>Recommended</span>
+            </div>
+          ) : null}
+          {!compactCards && place.status === 'disliked' ? (
+            <div className={styles.untriedBadgeRow}>
+              <span className={styles.dislikedBadge}>Not Recommended</span>
+            </div>
+          ) : null}
+          <span>
+            <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
+              {place.name}
+            </a>
+          </span>
+          {options.showCity ? (
+            <span className={styles.cardCity}>
+              {place.cityName}, {place.countryName}
+            </span>
+          ) : null}
+
+          {!compactCards && place.referredBy.trim().length > 0 ? (
+            isUrl(place.referredBy) ? (
+              <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
+                Where I Found It
+              </a>
+            ) : (
+              <button
+                className={styles.referrer}
+                type="button"
+                onClick={() => {
+                  window.confirm(place.referredBy);
+                }}
+              >
+                Where I Found It
+              </button>
+            )
+          ) : null}
+
+          <span className={styles.areaOrType}>{options.summaryText}</span>
+
+          {!compactCards ? (
+            place.status === 'disliked' ? (
+              place.dislikedReason ? (
+                <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
+              ) : null
+            ) : (
+              <div className={styles.notes}>{place.notes}</div>
+            )
+          ) : null}
+
+          {compactCards && isCompactDetailExpanded ? (
+            <div className={styles.compactExpandedContent} id={compactDetailId}>
+              {place.referredBy.trim().length > 0 ? (
+                isUrl(place.referredBy) ? (
+                  <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
+                    Where I Found It
+                  </a>
+                ) : (
+                  <button
+                    className={styles.referrer}
+                    type="button"
+                    onClick={() => {
+                      window.confirm(place.referredBy);
+                    }}
+                  >
+                    Where I Found It
+                  </button>
+                )
+              ) : null}
+              {compactDetailText.length > 0 ? (
+                <div
+                  className={
+                    place.status === 'disliked'
+                      ? `${styles.compactDetails} ${styles.compactDislikedDetails}`
+                      : styles.compactDetails
+                  }
+                >
+                  {place.status === 'disliked' ? `Reason: ${compactDetailText}` : compactDetailText}
+                </div>
+              ) : null}
+              {showCompactCardActions ? (
+                <div className={`${styles.cardActions} ${styles.compactCardActions}`}>
+                  {canEditRestaurants ? (
+                    <button
+                      type="button"
+                      className={styles.editButton}
+                      onClick={() => setEditingRestaurantId(place.id)}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {canDeleteRestaurants ? (
+                    <DeleteRestaurantForm
+                      restaurantId={place.id}
+                      restaurantName={place.name}
+                      className={styles.deleteForm}
+                      buttonClassName={styles.deleteButton}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!compactCards && (canEditRestaurants || canDeleteRestaurants) ? (
+            <div className={`${styles.cardActions} ${options.draggable ? styles.boardCardActions : ''}`}>
+              {canEditRestaurants ? (
+                <button
+                  type="button"
+                  className={styles.editButton}
+                  onClick={() => setEditingRestaurantId(place.id)}
+                >
+                  Edit
+                </button>
+              ) : null}
+              {canDeleteRestaurants ? (
+                <DeleteRestaurantForm
+                  restaurantId={place.id}
+                  restaurantName={place.name}
+                  className={styles.deleteForm}
+                  buttonClassName={styles.deleteButton}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      );
+    },
+    [
+      canDeleteRestaurants,
+      canEditRestaurants,
+      compactCards,
+      expandedCompactCardIds,
+      luckyRestaurantId,
+      shouldIgnoreCompactCardToggle,
+      toggleCompactCardExpansion
+    ]
+  );
 
   return (
     <div className={styles.eatsRoot} style={rootStyle}>
@@ -1530,7 +2223,7 @@ export function PublicEatsPage({
                     </select>
                   </div>
                   <div className={`${styles.sortingField} ${styles.categoryField}`}>
-                    <label htmlFor="category">Categorise By:</label>
+                    <label htmlFor="category">{effectiveViewMode === 'kanban' ? 'Group By:' : 'Categorise By:'}</label>
                     <select
                       value={category}
                       onChange={(event) => setCategory(event.target.value as CategoryFilter)}
@@ -1539,21 +2232,38 @@ export function PublicEatsPage({
                         {categoryOptionAreaLabel}
                       </option>
                       <option value="type">Type of Food</option>
-                      <option value="recentlyAdded">Date Added</option>
+                      {effectiveViewMode === 'list' ? <option value="recentlyAdded">Date Added</option> : null}
                     </select>
                   </div>
                 </>
               ) : null}
-              <div className={`${styles.sortingField} ${styles.viewModeGroup}`} ref={compactFieldRef}>
-                <span className={styles.viewModeLabel}>View:</span>
-                <label className={styles.compactToggle}>
-                  <input
-                    type="checkbox"
-                    checked={compactCards}
-                    onChange={(event) => setCompactCards(event.target.checked)}
-                  />
-                  <span>Compact Cards</span>
-                </label>
+              <div
+                className={`${styles.sortingField} ${styles.viewModeGroup} ${
+                  isSearchActive ? styles.viewModeGroupSearchOnly : ''
+                }`}
+                ref={compactFieldRef}
+              >
+                {!isSearchActive ? <label htmlFor="viewMode">View:</label> : null}
+                <div className={styles.viewModeControls}>
+                  {!isSearchActive ? (
+                    <select
+                      id="viewMode"
+                      value={effectiveViewMode}
+                      onChange={(event) => setViewMode(event.target.value as ViewMode)}
+                    >
+                      <option value="list">List</option>
+                      {boardCategory !== null ? <option value="kanban">Kanban</option> : null}
+                    </select>
+                  ) : null}
+                  <label className={styles.compactToggle}>
+                    <input
+                      type="checkbox"
+                      checked={compactCards}
+                      onChange={(event) => setCompactCards(event.target.checked)}
+                    />
+                    <span>Compact Cards</span>
+                  </label>
+                </div>
               </div>
               <div className={`${styles.sortingField} ${styles.statusFilterGroup}`} ref={statusFieldRef}>
                 <span className={styles.statusFilterLabel}>Status:</span>
@@ -1561,8 +2271,8 @@ export function PublicEatsPage({
                   <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
                     <input
                       type="checkbox"
-                      checked={selectedStatuses.includes('untried')}
-                      disabled={statusCount('untried') === 0}
+                      checked={effectiveViewMode === 'kanban' || selectedStatuses.includes('untried')}
+                      disabled={effectiveViewMode === 'kanban' || statusCount('untried') === 0}
                       onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
                     />
                     <span>Want to Try ({statusCount('untried')})</span>
@@ -1570,8 +2280,8 @@ export function PublicEatsPage({
                   <label className={`${styles.statusFilterChip} ${styles.likedStatusFilterChip}`}>
                     <input
                       type="checkbox"
-                      checked={selectedStatuses.includes('liked')}
-                      disabled={statusCount('liked') === 0}
+                      checked={effectiveViewMode === 'kanban' || selectedStatuses.includes('liked')}
+                      disabled={effectiveViewMode === 'kanban' || statusCount('liked') === 0}
                       onChange={(event) => toggleSelectedStatus('liked', event.target.checked)}
                     />
                     <span>Recommended ({statusCount('liked')})</span>
@@ -1579,8 +2289,8 @@ export function PublicEatsPage({
                   <label className={`${styles.statusFilterChip} ${styles.dislikedStatusFilterChip}`}>
                     <input
                       type="checkbox"
-                      checked={selectedStatuses.includes('disliked')}
-                      disabled={statusCount('disliked') === 0}
+                      checked={effectiveViewMode === 'kanban' || selectedStatuses.includes('disliked')}
+                      disabled={effectiveViewMode === 'kanban' || statusCount('disliked') === 0}
                       onChange={(event) => toggleSelectedStatus('disliked', event.target.checked)}
                     />
                     <span>Not Recommended ({statusCount('disliked')})</span>
@@ -1740,245 +2450,187 @@ export function PublicEatsPage({
                 </div>
               ) : null}
             </div>
-            <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
-              {grouped.size === 0 ? (
-                <div className={styles.noResults}>
-                  {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
-                </div>
-              ) : (
-                [...grouped.entries()].map(([heading, places]) => (
-                  <Fragment key={heading}>
-                    <span className={styles.heading}>
-                      {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                      {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
-                    </span>
-                    <div>
-                      {places
-                        .slice()
-                        .sort((a, b) => {
-                          if (category === 'recentlyAdded') {
-                            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                          }
-
-                          return a.name.localeCompare(b.name);
-                        })
-                        .map((place) => {
-                          const compactDetailText = getRestaurantDetailText(place);
-                          const compactDetailId = `compact-detail-${place.id}`;
-                          const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
-                          const showCompactCardActions = canEditRestaurants || canDeleteRestaurants;
-                          const canExpandCompactCard = compactCards && (compactDetailText.length > 0 || showCompactCardActions);
-
-                          return (
-                            <div
-                              className={`${styles.placeCard} ${compactCards ? styles.compactPlaceCard : ''} ${
-                                canExpandCompactCard ? styles.compactPlaceCardInteractive : ''
-                              } ${isCompactDetailExpanded ? styles.compactPlaceCardExpanded : ''} ${
-                                luckyRestaurantId === place.id ? styles.luckyCard : ''
-                              } ${
-                                place.status === 'liked'
-                                  ? styles.likedPlaceCard
-                                  : place.status === 'disliked'
-                                    ? styles.dislikedPlaceCard
-                                    : styles.untriedPlaceCard
-                              }`}
-                              key={`${heading}-${place.id}`}
-                              ref={(element) => {
-                                restaurantCardRefs.current[place.id] = element;
-                              }}
-                              onClick={
-                                canExpandCompactCard
-                                  ? (event) => {
-                                      if (shouldIgnoreCompactCardToggle(event.target)) {
-                                        return;
-                                      }
-
-                                      toggleCompactCardExpansion(place.id);
-                                    }
-                                  : undefined
-                              }
-                            >
-                        {luckyRestaurantId === place.id ? (
-                          <div className={styles.confettiLayer} aria-hidden="true">
-                            {confettiPieceIndexes.map((index) => (
-                              <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
-                            ))}
-                          </div>
-                        ) : null}
-                        {compactCards ? (
-                          <span className={styles.compactStatusLabel}>
-                            {place.status === 'liked'
-                              ? 'Recommended'
-                              : place.status === 'disliked'
-                                ? 'Not Recommended'
-                                : 'Want to Try'}
-                          </span>
-                        ) : null}
-                        {canExpandCompactCard ? (
+            {boardErrorMessage ? <div className={styles.boardError}>{boardErrorMessage}</div> : null}
+            {effectiveViewMode === 'kanban' && boardCategory !== null && !isSearchActive ? (
+              <div className={styles.kanbanBoard}>
+                {boardLanes.length === 0 ? (
+                  <div className={styles.noResults}>{noResultsMessage}</div>
+                ) : (
+                  <>
+                    {boardLanes.map((lane) => (
+                      <div
+                        className={styles.kanbanLaneGroup}
+                        key={lane.id}
+                      >
+                        <div className={styles.kanbanLaneHeading}>
                           <button
                             type="button"
-                            className={`${styles.compactDetailsToggle} ${
-                              isCompactDetailExpanded ? styles.compactDetailsToggleExpanded : ''
+                            className={`${styles.kanbanLaneToggle} ${
+                              collapsedKanbanLaneIds.has(lane.id) ? '' : styles.kanbanLaneToggleExpanded
                             }`}
-                            aria-label={isCompactDetailExpanded ? `Hide details for ${place.name}` : `Show details for ${place.name}`}
-                            aria-expanded={isCompactDetailExpanded}
-                            aria-controls={compactDetailId}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleCompactCardExpansion(place.id);
+                            aria-expanded={!collapsedKanbanLaneIds.has(lane.id)}
+                            aria-controls={`kanban-lane-${lane.id}`}
+                            onClick={() => {
+                              toggleKanbanLaneCollapse(lane.id);
                             }}
-                          />
-                        ) : null}
-                        {!compactCards && place.status === 'untried' ? (
-                          <div className={styles.untriedBadgeRow}>
-                            <span className={styles.untriedBadge}>Want to Try</span>
-                          </div>
-                        ) : null}
-                        {!compactCards && place.status === 'liked' ? (
-                          <div className={styles.untriedBadgeRow}>
-                            <span className={styles.likedBadge}>Recommended</span>
-                          </div>
-                        ) : null}
-                        {!compactCards && place.status === 'disliked' ? (
-                          <div className={styles.untriedBadgeRow}>
-                            <span className={styles.dislikedBadge}>Not Recommended</span>
-                          </div>
-                        ) : null}
-                        <span>
-                          <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
-                            {place.name}
-                          </a>
-                        </span>
-                        {isAllCitiesSelected && !isCityGrouping ? (
-                          <span className={styles.cardCity}>
-                            {place.cityName}, {place.countryName}
+                          >
+                            {lane.label}
+                          </button>
+                          <span className={styles.kanbanLaneCount}>
+                            {visibleBoardStatuses.reduce(
+                              (count, status) => count + (boardGrouped.get(lane.id)?.get(status)?.length ?? 0),
+                              0
+                            )}{' '}
+                            restaurants
                           </span>
-                        ) : null}
+                        </div>
+                        {collapsedKanbanLaneIds.has(lane.id) ? null : (
+                          <div className={styles.kanbanLaneBody}>
+                            <div className={styles.kanbanLaneScroll} id={`kanban-lane-${lane.id}`}>
+                              <div className={styles.kanbanLaneRow} style={kanbanGridStyle}>
+                                {visibleBoardStatuses.map((status) => {
+                                  const isActiveDropTarget =
+                                    boardDropTarget?.laneId === lane.id && boardDropTarget.status === status;
+                                  const places = boardGrouped.get(lane.id)?.get(status) ?? [];
+                                  const laneCount = places.length;
 
-                        {!compactCards && place.referredBy.trim().length > 0 ? (
-                          isUrl(place.referredBy) ? (
-                            <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
-                              Where I Found It
-                            </a>
-                          ) : (
-                            <button
-                              className={styles.referrer}
-                              type="button"
-                              onClick={() => {
-                                window.confirm(place.referredBy);
-                              }}
-                            >
-                              Where I Found It
-                            </button>
-                          )
-                        ) : null}
+                                  return (
+                                    <div
+                                      className={`${styles.kanbanCell} ${
+                                        isActiveDropTarget ? styles.kanbanCellActive : ''
+                                      }`}
+                                      key={`${lane.id}-${status}`}
+                                      onDragOver={(event) => {
+                                        if (!canMoveRestaurantsInBoard) {
+                                          return;
+                                        }
 
-                        <span className={styles.areaOrType}>
-                          {category === 'type' && !searchQuery
-                            ? place.areas.join(', ')
-                            : (category === 'recentlyAdded' || searchQuery)
-                              ? `${place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}${
-                                place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
-                              }`
-                              : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}
-                          {selectedMealType === 'Any' && !compactCards
-                            ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
-                            : ''}
-                        </span>
+                                        event.preventDefault();
+                                        if (
+                                          boardDropTarget?.laneId !== lane.id ||
+                                          boardDropTarget.status !== status
+                                        ) {
+                                          setBoardDropTarget({
+                                            laneId: lane.id,
+                                            status
+                                          });
+                                        }
+                                      }}
+                                      onDragLeave={() => {
+                                        if (boardDropTarget?.laneId === lane.id && boardDropTarget.status === status) {
+                                          setBoardDropTarget(null);
+                                        }
+                                      }}
+                                      onDrop={(event) => {
+                                        event.preventDefault();
+                                        handleBoardDrop({
+                                          laneId: lane.id,
+                                          status
+                                        });
+                                      }}
+                                    >
+                                      <div className={styles.kanbanColumnHeading}>
+                                        <span className={styles.kanbanColumnHeadingLabel}>
+                                          {status === 'liked'
+                                            ? 'Recommended'
+                                            : status === 'disliked'
+                                              ? 'Not Recommended'
+                                              : 'Want to Try'}
+                                        </span>{' '}
+                                        <span className={styles.kanbanColumnHeadingCount}>{laneCount}</span>
+                                      </div>
+                                      {places
+                                        .slice()
+                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                        .map((place) =>
+                                          renderRestaurantCard(place, {
+                                            draggable: canMoveRestaurantsInBoard,
+                                            extraClassName: `${styles.boardPlaceCard} ${
+                                              draggedBoardCard?.restaurantId === place.id ? styles.boardPlaceCardDragging : ''
+                                            }`,
+                                            keyPrefix: `board-${lane.id}-${status}`,
+                                            onDragEnd: clearBoardDragState,
+                                            onDragStart: (event) => {
+                                              if (!canMoveRestaurantsInBoard) {
+                                                return;
+                                              }
 
-                        {!compactCards ? (
-                          place.status === 'disliked' ? (
-                            place.dislikedReason ? (
-                              <div className={styles.dislikedReason}>Reason: {place.dislikedReason}</div>
-                            ) : null
-                          ) : (
-                            <div className={styles.notes}>{place.notes}</div>
-                          )
-                        ) : null}
-
-                        {compactCards && isCompactDetailExpanded ? (
-                          <div className={styles.compactExpandedContent} id={compactDetailId}>
-                            {place.referredBy.trim().length > 0 ? (
-                              isUrl(place.referredBy) ? (
-                                <a className={styles.referrer} href={place.referredBy} target="_blank" rel="noreferrer">
-                                  Where I Found It
-                                </a>
-                              ) : (
-                                <button
-                                  className={styles.referrer}
-                                  type="button"
-                                  onClick={() => {
-                                    window.confirm(place.referredBy);
-                                  }}
-                                >
-                                  Where I Found It
-                                </button>
-                              )
-                            ) : null}
-                            {compactDetailText.length > 0 ? (
-                              <div
-                                className={
-                                  place.status === 'disliked'
-                                    ? `${styles.compactDetails} ${styles.compactDislikedDetails}`
-                                    : styles.compactDetails
-                                }
-                              >
-                                {place.status === 'disliked' ? `Reason: ${compactDetailText}` : compactDetailText}
+                                              event.dataTransfer.effectAllowed = 'move';
+                                              setBoardErrorMessage(null);
+                                              setDraggedBoardCard({
+                                                restaurantId: place.id,
+                                                sourceLaneId: lane.id,
+                                                sourceStatus: status
+                                              });
+                                            },
+                                            showCity: isAllCitiesSelected && boardCategory !== 'city',
+                                            summaryText:
+                                              boardCategory === 'type'
+                                                ? place.areas.join(', ')
+                                                : getRestaurantTypeSummary(place)
+                                          })
+                                        )}
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ) : null}
-                            {showCompactCardActions ? (
-                              <div className={`${styles.cardActions} ${styles.compactCardActions}`}>
-                                {canEditRestaurants ? (
-                                  <button
-                                    type="button"
-                                    className={styles.editButton}
-                                    onClick={() => setEditingRestaurantId(place.id)}
-                                  >
-                                    Edit
-                                  </button>
-                                ) : null}
-                                {canDeleteRestaurants ? (
-                                  <DeleteRestaurantForm
-                                    restaurantId={place.id}
-                                    restaurantName={place.name}
-                                    className={styles.deleteForm}
-                                    buttonClassName={styles.deleteButton}
-                                  />
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        {!compactCards && (canEditRestaurants || canDeleteRestaurants) ? (
-                          <div className={styles.cardActions}>
-                            {canEditRestaurants ? (
-                              <button
-                                type="button"
-                                className={styles.editButton}
-                                onClick={() => setEditingRestaurantId(place.id)}
-                              >
-                                Edit
-                              </button>
-                            ) : null}
-                            {canDeleteRestaurants ? (
-                              <DeleteRestaurantForm
-                                restaurantId={place.id}
-                                restaurantName={place.name}
-                                className={styles.deleteForm}
-                                buttonClassName={styles.deleteButton}
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
                             </div>
-                          );
-                        })}
-                    </div>
-                  </Fragment>
-                ))
-              )}
-            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {isMovingBoardCard ? <div className={styles.boardSavingState}>Saving board move…</div> : null}
+              </div>
+            ) : (
+              <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
+                {grouped.size === 0 ? (
+                  <div className={styles.noResults}>
+                    {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
+                  </div>
+                ) : (
+                  [...grouped.entries()].map(([heading, places]) => (
+                    <Fragment key={heading}>
+                      <span className={styles.heading}>
+                        {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
+                        {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
+                      </span>
+                      <div>
+                        {places
+                          .slice()
+                          .sort((a, b) => {
+                            if (category === 'recentlyAdded') {
+                              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                            }
+
+                            return a.name.localeCompare(b.name);
+                          })
+                          .map((place) =>
+                            renderRestaurantCard(place, {
+                              keyPrefix: heading,
+                              showCity: isAllCitiesSelected && !isCityGrouping,
+                              summaryText: `${
+                                category === 'type' && !searchQuery
+                                  ? place.areas.join(', ')
+                                  : (category === 'recentlyAdded' || searchQuery)
+                                    ? `${place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')}${
+                                        place.areas.length > 0 ? ` • ${place.areas.join(', ')}` : ''
+                                      }`
+                                    : place.types.map((type) => `${type.emoji} ${type.name}`).join(', ')
+                              }${
+                                selectedMealType === 'Any' && !compactCards
+                                  ? ` (${place.mealTypes.map((meal) => mealLabel(meal)).join(', ')})`
+                                  : ''
+                              }`
+                            })
+                          )}
+                      </div>
+                    </Fragment>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </>
       ) : null}

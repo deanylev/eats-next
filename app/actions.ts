@@ -21,6 +21,7 @@ import {
   createRestaurantTypeRecord,
   deleteCityRecord,
   deleteCountryRecord,
+  moveRestaurantRecord,
   deleteRestaurantTypeRecord,
   restoreRestaurantRecord,
   permanentlyDeleteRestaurantRecord,
@@ -341,6 +342,50 @@ const parseRestaurantInput = (formData: FormData) =>
     status: formData.get('status'),
     dislikedReason: formData.get('dislikedReason') ?? undefined
   });
+
+const parseBoardMoveInput = (formData: FormData) => {
+  const boardCategory = String(formData.get('boardCategory') ?? '').trim();
+  const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+  const statusValue = String(formData.get('status') ?? '').trim();
+  const dislikedReason = String(formData.get('dislikedReason') ?? '').trim();
+
+  if (statusValue !== 'untried' && statusValue !== 'liked' && statusValue !== 'disliked') {
+    throw userFacingError('Invalid restaurant status.');
+  }
+
+  if (boardCategory === 'city') {
+    return {
+      boardCategory,
+      dislikedReason,
+      restaurantId,
+      status: statusValue,
+      targetCityId: parseUuid(formData.get('targetCityId'), 'Invalid city id.')
+    } as const;
+  }
+
+  if (boardCategory === 'area') {
+    const rawArea = String(formData.get('targetArea') ?? '').trim();
+    return {
+      boardCategory,
+      dislikedReason,
+      restaurantId,
+      status: statusValue,
+      targetArea: rawArea.length > 0 ? rawArea : null
+    } as const;
+  }
+
+  if (boardCategory === 'type') {
+    return {
+      boardCategory,
+      dislikedReason,
+      restaurantId,
+      status: statusValue,
+      targetTypeId: parseUuid(formData.get('targetTypeId'), 'Invalid restaurant type id.')
+    } as const;
+  }
+
+  throw userFacingError('Invalid board category.');
+};
 
 type ParsedTenantSettings = {
   displayName: string;
@@ -975,6 +1020,28 @@ export const updateRestaurantFromRoot = async (formData: FormData): Promise<void
   );
 };
 
+export const moveRestaurantFromRoot = async (
+  formData: FormData
+): Promise<{ errorMessage: string | null; success: boolean }> => {
+  try {
+    const { tenant } = await requireAdminSession();
+    await moveRestaurantRecord(getDb(), tenant.id, parseBoardMoveInput(formData));
+    return {
+      errorMessage: null,
+      success: true
+    };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    return {
+      errorMessage: getUserErrorText(error),
+      success: false
+    };
+  }
+};
+
 export const deleteRestaurant = async (formData: FormData): Promise<void> => {
   return runRootAction(
     async () => {
@@ -1063,7 +1130,8 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
             where ${restaurants.id} = ${restaurantAreas.restaurantId}
               and ${restaurants.tenantId} = ${tenantId}
           )`
-        ),
+        )
+        .orderBy(asc(restaurantAreas.createdAt), asc(restaurantAreas.area)),
       db
         .select()
         .from(restaurantMeals)
@@ -1084,6 +1152,7 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
         .from(restaurantToTypes)
         .innerJoin(restaurantTypes, eq(restaurantToTypes.restaurantTypeId, restaurantTypes.id))
         .where(eq(restaurantTypes.tenantId, tenantId))
+        .orderBy(asc(restaurantToTypes.createdAt), asc(restaurantTypes.name))
     ]);
 
   const areasByRestaurant = new Map<string, string[]>();

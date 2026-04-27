@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { getDb } from '@/lib/db';
 import {
@@ -9,7 +9,8 @@ import {
   restaurantMeals,
   restaurants,
   restaurantToTypes,
-  restaurantTypes
+  restaurantTypes,
+  type RestaurantStatus
 } from '@/lib/schema';
 import {
   cityInputSchema,
@@ -26,6 +27,28 @@ export type CityInput = z.infer<typeof cityInputSchema> & {
 };
 export type RestaurantTypeInput = z.infer<typeof restaurantTypeInputSchema>;
 export type RestaurantInput = z.infer<typeof restaurantInputSchema>;
+export type RestaurantBoardMoveInput =
+  | {
+      boardCategory: 'city';
+      dislikedReason?: string;
+      restaurantId: string;
+      status: RestaurantStatus;
+      targetCityId: string;
+    }
+  | {
+      boardCategory: 'area';
+      dislikedReason?: string;
+      restaurantId: string;
+      status: RestaurantStatus;
+      targetArea: string | null;
+    }
+  | {
+      boardCategory: 'type';
+      dislikedReason?: string;
+      restaurantId: string;
+      status: RestaurantStatus;
+      targetTypeId: string;
+    };
 
 const fail = (message: string): never => {
   throw new Error(message);
@@ -282,6 +305,26 @@ const validateRestaurantRefs = async (db: Db, tenantId: string, input: Restauran
   }
 };
 
+const getRestaurantAreaValues = async (db: Db, restaurantId: string): Promise<string[]> => {
+  const rows = await db
+    .select({ area: restaurantAreas.area })
+    .from(restaurantAreas)
+    .where(eq(restaurantAreas.restaurantId, restaurantId))
+    .orderBy(asc(restaurantAreas.createdAt), asc(restaurantAreas.area));
+
+  return rows.map((row) => row.area);
+};
+
+const getRestaurantTypeIds = async (db: Db, restaurantId: string): Promise<string[]> => {
+  const rows = await db
+    .select({ typeId: restaurantToTypes.restaurantTypeId })
+    .from(restaurantToTypes)
+    .where(eq(restaurantToTypes.restaurantId, restaurantId))
+    .orderBy(asc(restaurantToTypes.createdAt), asc(restaurantToTypes.restaurantTypeId));
+
+  return rows.map((row) => row.typeId);
+};
+
 export const createRestaurantRecord = async (db: Db, tenantId: string, input: RestaurantInput): Promise<string> => {
   await validateRestaurantRefs(db, tenantId, input);
 
@@ -433,6 +476,123 @@ export const updateRestaurantRecord = async (
   });
 
   return restaurantId;
+};
+
+export const moveRestaurantRecord = async (
+  db: Db,
+  tenantId: string,
+  input: RestaurantBoardMoveInput
+): Promise<void> => {
+  const foundRestaurant = await db.query.restaurants.findFirst({
+    where: and(eq(restaurants.id, input.restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt))
+  });
+  if (!foundRestaurant) {
+    fail('Restaurant not found.');
+    return;
+  }
+
+  let nextCityId = foundRestaurant.cityId;
+  let nextAreas = await getRestaurantAreaValues(db, input.restaurantId);
+  let nextTypeIds = await getRestaurantTypeIds(db, input.restaurantId);
+
+  if (nextTypeIds.length === 0) {
+    fail('Restaurant must have at least one type.');
+  }
+
+  if (input.boardCategory === 'city') {
+    const foundCity = await db.query.cities.findFirst({
+      where: and(eq(cities.id, input.targetCityId), eq(cities.tenantId, tenantId))
+    });
+    if (!foundCity) {
+      fail('City not found.');
+    }
+
+    nextCityId = input.targetCityId;
+  }
+
+  if (input.boardCategory === 'area') {
+    const normalizedArea = input.targetArea?.trim() ?? null;
+    const remainingAreas = nextAreas.filter((_, index) => index !== 0);
+    nextAreas = normalizedArea
+      ? [normalizedArea, ...remainingAreas.filter((area) => area !== normalizedArea)]
+      : remainingAreas;
+  }
+
+  if (input.boardCategory === 'type') {
+    const foundType = await db.query.restaurantTypes.findFirst({
+      where: and(eq(restaurantTypes.id, input.targetTypeId), eq(restaurantTypes.tenantId, tenantId))
+    });
+    if (!foundType) {
+      fail('Restaurant type not found.');
+    }
+
+    const remainingTypeIds = nextTypeIds.filter((_, index) => index !== 0);
+    nextTypeIds = [input.targetTypeId, ...remainingTypeIds.filter((typeId) => typeId !== input.targetTypeId)];
+  }
+
+  const nextDislikedReason =
+    input.status === 'disliked'
+      ? input.dislikedReason?.trim() || foundRestaurant.dislikedReason?.trim() || null
+      : null;
+  if (input.status === 'disliked' && !nextDislikedReason) {
+    fail('Disliked reason is required when moving a restaurant to Not Recommended.');
+  }
+
+  const duplicateRestaurant = await db.query.restaurants.findFirst({
+    where: and(
+      ne(restaurants.id, input.restaurantId),
+      eq(restaurants.cityId, nextCityId),
+      eq(restaurants.tenantId, tenantId),
+      isNull(restaurants.deletedAt),
+      sql`lower(${restaurants.name}) = lower(${foundRestaurant.name})`
+    )
+  });
+  if (duplicateRestaurant) {
+    fail('A restaurant with this name already exists in this city.');
+  }
+
+  const nextTriedAt =
+    input.status === 'untried'
+      ? null
+      : foundRestaurant.status === 'untried'
+        ? new Date()
+        : foundRestaurant.triedAt ?? new Date();
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(restaurants)
+      .set({
+        cityId: nextCityId,
+        status: input.status,
+        triedAt: nextTriedAt,
+        dislikedReason: nextDislikedReason
+      })
+      .where(and(eq(restaurants.id, input.restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
+
+    if (input.boardCategory === 'area') {
+      await tx.delete(restaurantAreas).where(eq(restaurantAreas.restaurantId, input.restaurantId));
+
+      if (nextAreas.length > 0) {
+        await tx.insert(restaurantAreas).values(
+          nextAreas.map((area) => ({
+            id: randomUUID(),
+            restaurantId: input.restaurantId,
+            area
+          }))
+        );
+      }
+    }
+
+    if (input.boardCategory === 'type') {
+      await tx.delete(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, input.restaurantId));
+      await tx.insert(restaurantToTypes).values(
+        nextTypeIds.map((restaurantTypeId) => ({
+          restaurantId: input.restaurantId,
+          restaurantTypeId
+        }))
+      );
+    }
+  });
 };
 
 export const softDeleteRestaurantRecord = async (db: Db, tenantId: string, restaurantId: string): Promise<void> => {

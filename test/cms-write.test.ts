@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import {
   createCityRecord,
   createCountryRecord,
@@ -10,6 +10,7 @@ import {
   createRestaurantTypeRecord,
   deleteCityRecord,
   deleteCountryRecord,
+  moveRestaurantRecord,
   deleteRestaurantTypeRecord,
   restoreRestaurantRecord,
   softDeleteRestaurantRecord,
@@ -271,9 +272,17 @@ dbTest('createRestaurantRecord inserts restaurant areas, meals, and type links',
     const savedRestaurant = await db.query.restaurants.findFirst({
       where: eq(restaurants.id, restaurantId)
     });
-    const savedAreas = await db.select().from(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
+    const savedAreas = await db
+      .select()
+      .from(restaurantAreas)
+      .where(eq(restaurantAreas.restaurantId, restaurantId))
+      .orderBy(asc(restaurantAreas.createdAt), asc(restaurantAreas.area));
     const savedMeals = await db.select().from(restaurantMeals).where(eq(restaurantMeals.restaurantId, restaurantId));
-    const savedTypes = await db.select().from(restaurantToTypes).where(eq(restaurantToTypes.restaurantId, restaurantId));
+    const savedTypes = await db
+      .select()
+      .from(restaurantToTypes)
+      .where(eq(restaurantToTypes.restaurantId, restaurantId))
+      .orderBy(asc(restaurantToTypes.createdAt), asc(restaurantToTypes.restaurantTypeId));
 
     assert.equal(savedRestaurant?.name, 'Kelso');
     assert.equal(savedRestaurant?.triedAt, null);
@@ -421,6 +430,126 @@ dbTest('updateRestaurantRecord sets dislikedReason and preserves triedAt when mo
 
     assert.equal(dislikedRestaurant?.dislikedReason, 'Too salty');
     assert.equal(dislikedRestaurant?.triedAt?.toISOString(), initiallyLiked?.triedAt?.toISOString());
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('moveRestaurantRecord updates status and primary area while preserving secondary areas', async () => {
+  const { db, cleanup, tenantId, cityId, typeId } = await createTenantFixture();
+
+  try {
+    const restaurantId = await createRestaurantRecord(
+      db,
+      tenantId,
+      buildRestaurantInput({
+        areas: ['CBD', 'Fitzroy'],
+        cityId,
+        typeIds: [typeId],
+        url: 'https://kelso.example.com/'
+      })
+    );
+
+    await moveRestaurantRecord(db, tenantId, {
+      boardCategory: 'area',
+      restaurantId,
+      status: 'liked',
+      targetArea: 'Carlton'
+    });
+
+    const savedRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.id, restaurantId)
+    });
+    const savedAreas = await db.select().from(restaurantAreas).where(eq(restaurantAreas.restaurantId, restaurantId));
+
+    assert.equal(savedRestaurant?.status, 'liked');
+    assert.notEqual(savedRestaurant?.triedAt, null);
+    assert.deepEqual(savedAreas.map((entry) => entry.area), ['Carlton', 'Fitzroy']);
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('moveRestaurantRecord updates primary type while preserving secondary types', async () => {
+  const { db, cleanup } = await createTestDb();
+  const tenantId = randomUUID();
+  const countryId = randomUUID();
+  const cityId = randomUUID();
+  const firstTypeId = randomUUID();
+  const secondTypeId = randomUUID();
+  const thirdTypeId = randomUUID();
+
+  try {
+    await db.insert(tenants).values({ id: tenantId, displayName: 'Dean', isRoot: false });
+    await db.insert(countries).values({ id: countryId, tenantId, name: 'Australia' });
+    await db.insert(cities).values({ id: cityId, tenantId, countryId, name: 'Melbourne', isDefault: true });
+    await db.insert(restaurantTypes).values([
+      { id: firstTypeId, tenantId, name: 'Sandwiches', emoji: '🥪' },
+      { id: secondTypeId, tenantId, name: 'Burgers', emoji: '🍔' },
+      { id: thirdTypeId, tenantId, name: 'Ramen', emoji: '🍜' }
+    ]);
+
+    const restaurantId = await createRestaurantRecord(
+      db,
+      tenantId,
+      buildRestaurantInput({
+        areas: ['CBD', 'Fitzroy'],
+        cityId,
+        typeIds: [firstTypeId, secondTypeId],
+        url: 'https://kelso.example.com/'
+      })
+    );
+    const originalTypes = await db
+      .select()
+      .from(restaurantToTypes)
+      .where(eq(restaurantToTypes.restaurantId, restaurantId))
+      .orderBy(asc(restaurantToTypes.createdAt), asc(restaurantToTypes.restaurantTypeId));
+
+    await moveRestaurantRecord(db, tenantId, {
+      boardCategory: 'type',
+      restaurantId,
+      status: 'liked',
+      targetTypeId: thirdTypeId
+    });
+
+    const savedTypes = await db
+      .select()
+      .from(restaurantToTypes)
+      .where(eq(restaurantToTypes.restaurantId, restaurantId))
+      .orderBy(asc(restaurantToTypes.createdAt), asc(restaurantToTypes.restaurantTypeId));
+    assert.equal(savedTypes.length, 2);
+    assert.deepEqual(
+      [...savedTypes.map((entry) => entry.restaurantTypeId)].sort(),
+      [thirdTypeId, originalTypes[1]?.restaurantTypeId].sort()
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('moveRestaurantRecord requires a disliked reason when moving to disliked', async () => {
+  const { db, cleanup, tenantId, cityId, typeId } = await createTenantFixture();
+
+  try {
+    const restaurantId = await createRestaurantRecord(
+      db,
+      tenantId,
+      buildRestaurantInput({
+        cityId,
+        typeIds: [typeId]
+      })
+    );
+
+    await assert.rejects(
+      () =>
+        moveRestaurantRecord(db, tenantId, {
+          boardCategory: 'area',
+          restaurantId,
+          status: 'disliked',
+          targetArea: 'CBD'
+        }),
+      /Disliked reason is required/
+    );
   } finally {
     await cleanup();
   }

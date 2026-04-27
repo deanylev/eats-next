@@ -186,7 +186,7 @@
 }
 
 .searchResultsBody {
-  padding-top: 4px;
+  padding-top: 16px;
 }
 
 .searchEmptyBody {
@@ -622,13 +622,14 @@
   font-weight: 700;
   gap: 8px;
   min-height: 40px;
+  justify-content: center;
   padding: 6px 12px;
   white-space: nowrap;
+  width: 100%;
 
   > input[type='checkbox'] {
     flex-shrink: 0;
     margin: 0;
-    margin-left: 4px;
   }
 }
 
@@ -639,12 +640,15 @@
   gap: 8px;
 }
 
-.viewModeLabel {
-  color: var(--theme-on-primary-soft);
-  font-weight: 600;
-  line-height: 1.2;
-  padding-left: 2px;
-  white-space: nowrap;
+.viewModeControls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.viewModeGroupSearchOnly {
+  justify-content: flex-start;
 }
 
 .sorting {
@@ -752,7 +756,7 @@
   }
 
   .viewModeGroup {
-    --sorting-field-width: 10.5rem;
+    --sorting-field-width: 12rem;
   }
 }
 
@@ -1551,6 +1555,10 @@
     --sorting-field-width: 10rem;
   }
 
+  .viewModeGroup {
+    --sorting-field-width: 11.5rem;
+  }
+
   .statusFilterGroup,
   .filterControls {
     grid-column: 1 / -1;
@@ -1900,6 +1908,350 @@
   width: 100%;
 }
 
+.boardError {
+  backdrop-filter: blur(10px);
+  background: rgba(169, 31, 31, 0.22);
+  border: 1px solid rgba(226, 95, 95, 0.56);
+  border-radius: 12px;
+  color: #ffd6d6;
+  margin-top: 8px;
+  padding: 12px 14px;
+}
+
+.kanbanBoard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding-bottom: 6px;
+  width: 100%;
+}
+
+.kanbanLaneRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+}
+
+.kanbanLaneScroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 2px;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kanbanColumnHeading {
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 16px 16px 0 0;
+  color: var(--theme-on-primary-soft);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: -12px -12px 0;
+  padding: 12px 12px 10px;
+  text-transform: uppercase;
+}
+
+.kanbanColumnHeadingLabel {
+  color: inherit;
+}
+
+.kanbanColumnHeadingCount {
+  color: var(--theme-on-primary-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kanbanLaneGroup {
+  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--theme-on-primary) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 12%, transparent);
+  border-radius: 18px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 100%;
+  min-width: 0;
+  padding: 14px;
+  width: 100%;
+}
+
+.kanbanLaneHeading {
+  align-items: center;
+  color: var(--theme-secondary);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 0;
+  padding: 2px;
+}
+
+.kanbanLaneBody {
+  margin-top: 10px;
+}
+
+.eatsRoot button.kanbanLaneToggle,
+.embeddedRoot button.kanbanLaneToggle {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 1 1 auto;
+  font: inherit;
+  gap: 10px;
+  min-width: 0;
+  -webkit-appearance: none;
+}
+
+.eatsRoot button.kanbanLaneToggle::before,
+.embeddedRoot button.kanbanLaneToggle::before {
+  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  content: '';
+  flex: 0 0 auto;
+  height: 7px;
+  transform: translateY(-1px) rotate(-45deg);
+  width: 7px;
+}
+
+.eatsRoot button.kanbanLaneToggleExpanded::before,
+.embeddedRoot button.kanbanLaneToggleExpanded::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.eatsRoot button.kanbanLaneToggle:hover,
+.embeddedRoot button.kanbanLaneToggle:hover,
+.eatsRoot button.kanbanLaneToggle:focus-visible,
+.embeddedRoot button.kanbanLaneToggle:focus-visible {
+  color: var(--theme-on-primary-strong);
+}
+
+.kanbanLaneCount {
+  color: var(--theme-on-primary-muted);
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kanbanCell {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+  overflow: hidden;
+  padding: 12px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.kanbanCellActive {
+  background: color-mix(in srgb, var(--theme-secondary) 10%, rgba(0, 0, 0, 0.15));
+  border-color: color-mix(in srgb, var(--theme-secondary) 38%, rgba(0, 0, 0, 0.18));
+  transform: translateY(-1px);
+}
+
+.boardPlaceCard {
+  backdrop-filter: blur(14px);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--theme-on-primary) 10%, transparent),
+    color-mix(in srgb, var(--theme-on-primary) 4%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 16%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+  box-sizing: border-box;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 16px;
+  position: relative;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.boardPlaceCard:hover {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--theme-on-primary) 15%, transparent),
+    color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--theme-on-primary) 26%, transparent);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+  transform: translateY(-1px);
+}
+
+.boardPlaceCard.compactPlaceCard {
+  gap: 4px;
+  padding: 10px 12px 10px 28px;
+
+  .subHeading {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .cardCity,
+  .areaOrType {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .boardCardStatus {
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .cardActions {
+    margin-top: 4px;
+    padding-top: 6px;
+  }
+}
+
+.boardPlaceCard.compactPlaceCard.likedPlaceCard {
+  --compact-status-color: rgba(81, 208, 132, 0.58);
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, #51d084 15%, transparent),
+      color-mix(in srgb, var(--theme-on-primary) 4%, transparent)
+  );
+  box-shadow:
+    inset 18px 0 0 var(--compact-status-color),
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+  &:hover {
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, #51d084 20%, transparent),
+        color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+      );
+    box-shadow:
+      inset 18px 0 0 color-mix(in srgb, #51d084 72%, transparent),
+      0 14px 30px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+  }
+}
+
+.boardPlaceCard.compactPlaceCard.untriedPlaceCard {
+  --compact-status-color: color-mix(in srgb, var(--theme-secondary) 62%, transparent);
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--theme-secondary) 15%, transparent),
+      color-mix(in srgb, var(--theme-on-primary) 4%, transparent)
+  );
+  box-shadow:
+    inset 18px 0 0 var(--compact-status-color),
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+  &:hover {
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--theme-secondary) 20%, transparent),
+        color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+      );
+    box-shadow:
+      inset 18px 0 0 color-mix(in srgb, var(--theme-secondary) 72%, transparent),
+      0 14px 30px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+  }
+}
+
+.boardPlaceCard.compactPlaceCard.dislikedPlaceCard {
+  --compact-status-color: rgba(227, 94, 94, 0.6);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(194, 53, 53, 0.14),
+      color-mix(in srgb, var(--theme-on-primary) 4%, transparent)
+  );
+  box-shadow:
+    inset 18px 0 0 var(--compact-status-color),
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+
+  &:hover {
+    background:
+      linear-gradient(
+        160deg,
+        rgba(194, 53, 53, 0.2),
+        color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+      );
+    box-shadow:
+      inset 18px 0 0 rgba(227, 94, 94, 0.78),
+      0 14px 30px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+  }
+}
+
+.boardPlaceCardDragging {
+  cursor: grabbing;
+  opacity: 0.45;
+}
+
+.boardCardHeader {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.boardCardStatus {
+  color: var(--theme-on-primary-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.boardCardActions {
+  margin-top: auto;
+}
+
+.boardSavingState {
+  color: var(--theme-on-primary-muted);
+  font-size: 13px;
+  padding-left: 2px;
+}
+
 .confettiLayer {
   inset: 0;
   overflow: hidden;
@@ -1968,6 +2320,18 @@
     max-width: 100%;
     min-width: 0;
     width: 100%;
+  }
+
+  .kanbanHeaderRow,
+  .kanbanLaneRow {
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(210px, 1fr));
+  }
+
+  .kanbanLaneHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 }
 
