@@ -394,6 +394,17 @@
     box-sizing: border-box;
   }
 
+  input:not([type='checkbox']):not([type='radio']):disabled,
+  textarea:disabled,
+  select:disabled {
+    background: rgba(252, 246, 254, 0.68);
+    border-color: rgba(166, 139, 177, 0.52);
+    color: rgba(24, 3, 33, 0.58);
+    cursor: not-allowed;
+    opacity: 1;
+    -webkit-text-fill-color: rgba(24, 3, 33, 0.58);
+  }
+
   fieldset {
     border: 1px solid color-mix(in srgb, var(--theme-on-primary) 30%, transparent);
     border-radius: 8px;
@@ -1942,18 +1953,28 @@
 }
 
 .kanbanColumnHeading {
+  align-items: center;
   box-sizing: border-box;
   background: transparent;
   border: 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 16px 16px 0 0;
   color: var(--theme-on-primary-soft);
+  display: flex;
   font-size: 13px;
   font-weight: 700;
+  justify-content: space-between;
   letter-spacing: 0.04em;
   margin: -12px -12px 0;
   padding: 12px 12px 10px;
   text-transform: uppercase;
+}
+
+.kanbanColumnHeadingContent {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
 }
 
 .kanbanColumnHeadingLabel {
@@ -1963,6 +1984,47 @@
 .kanbanColumnHeadingCount {
   color: var(--theme-on-primary-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.eatsRoot button.kanbanColumnAddButton,
+.embeddedRoot button.kanbanColumnAddButton {
+  all: unset;
+  align-items: center;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+  border-radius: 999px;
+  box-sizing: border-box;
+  color: var(--theme-on-primary-soft);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 24px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+  -webkit-appearance: none;
+}
+
+.eatsRoot button.kanbanColumnAddButton:hover,
+.embeddedRoot button.kanbanColumnAddButton:hover,
+.eatsRoot button.kanbanColumnAddButton:focus-visible,
+.embeddedRoot button.kanbanColumnAddButton:focus-visible {
+  background: color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+  color: var(--theme-on-primary-strong);
+}
+
+.eatsRoot button.kanbanColumnAddButton:active,
+.embeddedRoot button.kanbanColumnAddButton:active {
+  transform: scale(0.96);
 }
 
 .kanbanLaneGroup {

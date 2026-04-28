@@ -6,7 +6,7 @@ import type { CSSProperties, DragEvent } from 'react';
 import { createRestaurantFromRoot, moveRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
-import { RestaurantFormFields } from '@/app/components/restaurant-form-fields';
+import { RestaurantFormFields, type RestaurantFormDefaults } from '@/app/components/restaurant-form-fields';
 import {
   byAlpha,
   confettiPieceIndexes,
@@ -336,6 +336,15 @@ type BoardMoveResolution = {
   notes: string;
 };
 
+type BoardCreatePreset = {
+  defaults: RestaurantFormDefaults;
+  lockedFields: {
+    areas?: boolean;
+    city?: boolean;
+    status?: boolean;
+  };
+};
+
 const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
   if (restaurant.status === 'disliked') {
     return restaurant.dislikedReason?.trim() ?? '';
@@ -412,6 +421,7 @@ export function PublicEatsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [compactCards, setCompactCards] = useState(false);
   const [collapsedKanbanLaneIds, setCollapsedKanbanLaneIds] = useState<Set<string>>(new Set());
+  const [boardCreatePreset, setBoardCreatePreset] = useState<BoardCreatePreset | null>(null);
   const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
   const [expandedCompactCardIds, setExpandedCompactCardIds] = useState<Set<string>>(new Set());
   const [isControlsWalkthroughOpen, setIsControlsWalkthroughOpen] = useState(false);
@@ -1018,6 +1028,7 @@ export function PublicEatsPage({
     }
 
     setCreateDialogHasUnsavedChanges(false);
+    setBoardCreatePreset(null);
     setIsCreateDialogOpen(false);
   }, [createDialogHasUnsavedChanges]);
 
@@ -1523,6 +1534,7 @@ export function PublicEatsPage({
 
     clearFlashCookieClient(flashCookieNames.rootCreateSuccess, '/');
     setCreateDialogHasUnsavedChanges(false);
+    setBoardCreatePreset(null);
     setIsCreateDialogOpen(false);
   }, [rootCreateSuccessMessage]);
 
@@ -1656,6 +1668,41 @@ export function PublicEatsPage({
 
     return undefined;
   }, [selectedStatuses]);
+  const openBoardCreateDialog = useCallback(
+    (lane: BoardLane, status: RestaurantStatusFilter): void => {
+      if (!createTools) {
+        return;
+      }
+
+      const defaults: RestaurantFormDefaults = {
+        mealTypes: createDefaultMealTypes,
+        status
+      };
+      const lockedFields: BoardCreatePreset['lockedFields'] = {
+        status: true
+      };
+
+      if (boardCategory === 'city') {
+        defaults.cityId = lane.id;
+        lockedFields.city = true;
+      } else if (createDefaultCityId) {
+        defaults.cityId = createDefaultCityId;
+        lockedFields.city = true;
+      }
+
+      if (boardCategory === 'area') {
+        defaults.areas = lane.id === unassignedAreaLaneId ? [] : [lane.id];
+        lockedFields.areas = true;
+      }
+
+      setBoardCreatePreset({
+        defaults,
+        lockedFields
+      });
+      setIsCreateDialogOpen(true);
+    },
+    [boardCategory, createDefaultCityId, createDefaultMealTypes, createTools]
+  );
   const toggleSelectedStatus = (status: RestaurantStatusFilter, checked: boolean): void => {
     if (effectiveViewMode === 'kanban') {
       return;
@@ -2560,14 +2607,35 @@ export function PublicEatsPage({
                                       }}
                                     >
                                       <div className={styles.kanbanColumnHeading}>
-                                        <span className={styles.kanbanColumnHeadingLabel}>
-                                          {status === 'liked'
-                                            ? 'Recommended'
-                                            : status === 'disliked'
-                                              ? 'Not Recommended'
-                                              : 'Want to Try'}
-                                        </span>{' '}
-                                        <span className={styles.kanbanColumnHeadingCount}>{laneCount}</span>
+                                        <div className={styles.kanbanColumnHeadingContent}>
+                                          <span className={styles.kanbanColumnHeadingLabel}>
+                                            {status === 'liked'
+                                              ? 'Recommended'
+                                              : status === 'disliked'
+                                                ? 'Not Recommended'
+                                                : 'Want to Try'}
+                                          </span>{' '}
+                                          <span className={styles.kanbanColumnHeadingCount}>{laneCount}</span>
+                                        </div>
+                                        {createTools ? (
+                                          <button
+                                            type="button"
+                                            className={styles.kanbanColumnAddButton}
+                                            aria-label={`Add restaurant to ${lane.label} ${
+                                              status === 'liked'
+                                                ? 'Recommended'
+                                                : status === 'disliked'
+                                                  ? 'Not Recommended'
+                                                  : 'Want to Try'
+                                            }`}
+                                            title="Add restaurant"
+                                            onClick={() => {
+                                              openBoardCreateDialog(lane, status);
+                                            }}
+                                          >
+                                            +
+                                          </button>
+                                        ) : null}
                                       </div>
                                       {places
                                         .slice()
@@ -2675,7 +2743,10 @@ export function PublicEatsPage({
             className={`${styles.addFab} ${styles.stackedFab}`}
             aria-label="Add restaurant"
             title="Add restaurant"
-            onClick={() => setIsCreateDialogOpen(true)}
+            onClick={() => {
+              setBoardCreatePreset(null);
+              setIsCreateDialogOpen(true);
+            }}
           >
             +
           </button>
@@ -2823,10 +2894,12 @@ export function PublicEatsPage({
                     submitLabel="Create restaurant"
                     disableSubmit={createTools.cities.length === 0}
                     defaults={{
-                      cityId: createDefaultCityId,
-                      mealTypes: createDefaultMealTypes,
-                      status: createDefaultStatus
+                      cityId: boardCreatePreset?.defaults.cityId ?? createDefaultCityId,
+                      areas: boardCreatePreset?.defaults.areas,
+                      mealTypes: boardCreatePreset?.defaults.mealTypes ?? createDefaultMealTypes,
+                      status: boardCreatePreset?.defaults.status ?? createDefaultStatus
                     }}
+                    lockedFields={boardCreatePreset?.lockedFields}
                     onDirtyChange={setCreateDialogHasUnsavedChanges}
                     showDevelopmentPopulateButton={process.env.NODE_ENV !== 'production'}
                   />

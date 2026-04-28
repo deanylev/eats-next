@@ -20,7 +20,7 @@ const statusLabel: Record<RestaurantStatus, string> = {
   disliked: 'Not Recommended'
 };
 
-type RestaurantFormDefaults = {
+export type RestaurantFormDefaults = {
   cityId?: string;
   areas?: string[];
   mealTypes?: string[];
@@ -33,12 +33,19 @@ type RestaurantFormDefaults = {
   dislikedReason?: string | null;
 };
 
+type RestaurantFormLockedFields = {
+  areas?: boolean;
+  city?: boolean;
+  status?: boolean;
+};
+
 type RestaurantFormFieldsProps = {
   cities: Array<{ id: string; name: string; countryName: string }>;
   types: Array<{ id: string; name: string; emoji: string }>;
   areaSuggestionsByCity?: Record<string, string[]>;
   disableAreasUntilCitySelected?: boolean;
   defaults?: RestaurantFormDefaults;
+  lockedFields?: RestaurantFormLockedFields;
   onDirtyChange?: (isDirty: boolean) => void;
   submitLabel: string;
   disableSubmit?: boolean;
@@ -65,6 +72,7 @@ export function RestaurantFormFields({
   areaSuggestionsByCity,
   disableAreasUntilCitySelected = false,
   defaults,
+  lockedFields,
   onDirtyChange,
   submitLabel,
   disableSubmit = false,
@@ -335,9 +343,10 @@ export function RestaurantFormFields({
     <>
       <label>
         City
+        {lockedFields?.city ? <input type="hidden" name="cityId" value={selectedCityId} /> : null}
         <CitySelect
           id={`${keyPrefix}-city`}
-          name="cityId"
+          name={lockedFields?.city ? undefined : 'cityId'}
           required={true}
           groups={cityGroups}
           value={selectedCityId}
@@ -345,22 +354,28 @@ export function RestaurantFormFields({
             setSelectedCityId(value);
             setShowAreaSuggestions(true);
           }}
+          disabled={lockedFields?.city}
         />
       </label>
 
       <label>
         Areas (optional; one per line)
+        {lockedFields?.areas ? <input type="hidden" name="areas" value={areasValue} /> : null}
         <textarea
           ref={areasRef}
-          name="areas"
+          name={lockedFields?.areas ? undefined : 'areas'}
           rows={4}
           value={areasValue}
           onChange={(event) => {
             setAreasValue(event.target.value);
             setShowAreaSuggestions(true);
           }}
-          disabled={disableAreasUntilCitySelected && selectedCityId.length === 0}
-          placeholder={disableAreasUntilCitySelected && selectedCityId.length === 0 ? 'Select a city first' : ''}
+          disabled={lockedFields?.areas || (disableAreasUntilCitySelected && selectedCityId.length === 0)}
+          placeholder={
+            disableAreasUntilCitySelected && selectedCityId.length === 0
+              ? 'Select a city first'
+              : ''
+          }
           aria-describedby={`${keyPrefix}-areas-help`}
         />
       </label>
@@ -486,11 +501,13 @@ export function RestaurantFormFields({
 
       <label>
         Status
+        {lockedFields?.status ? <input type="hidden" name="status" value={status} /> : null}
         <select
-          name="status"
+          name={lockedFields?.status ? undefined : 'status'}
           required
           value={status}
           onChange={(event) => setStatus(event.target.value as RestaurantStatus)}
+          disabled={lockedFields?.status}
         >
           {statusChoices.map((status) => (
             <option key={`${keyPrefix}-status-${status}`} value={status}>
