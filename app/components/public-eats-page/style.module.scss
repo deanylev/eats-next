@@ -12,6 +12,13 @@
   --theme-secondary-border: color-mix(in srgb, var(--theme-secondary) 74%, black 26%);
   --theme-secondary-soft-bg: color-mix(in srgb, var(--theme-secondary) 20%, transparent);
   --theme-secondary-soft-bg-hover: color-mix(in srgb, var(--theme-secondary) 26%, transparent);
+  --theme-secondary-glass-bg: color-mix(in srgb, var(--theme-secondary) 76%, white 24%);
+  --theme-secondary-glass-bg-hover: color-mix(in srgb, var(--theme-secondary) 82%, white 18%);
+  --theme-secondary-glass-border: color-mix(in srgb, var(--theme-on-secondary) 18%, transparent);
+  --theme-secondary-glass-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 26%, transparent),
+    0 10px 24px color-mix(in srgb, var(--theme-secondary) 24%, transparent),
+    0 2px 6px color-mix(in srgb, black 10%, transparent);
   @include glass.themed-shell(var(--theme-primary), var(--theme-secondary), var(--theme-on-primary));
   background: var(--theme-primary);
   overflow-x: hidden;
@@ -89,9 +96,12 @@
 }
 
 .adminLink {
-  @include glass.action-button(var(--theme-secondary), var(--theme-on-secondary));
   align-self: flex-start;
+  backdrop-filter: blur(10px) saturate(140%);
+  background: var(--theme-secondary-glass-bg);
+  border: 1px solid var(--theme-secondary-glass-border);
   border-radius: 8px;
+  box-shadow: var(--theme-secondary-glass-shadow);
   color: var(--theme-on-secondary);
   display: inline-flex;
   font-size: 15px;
@@ -113,7 +123,7 @@
 }
 
 .adminLink:hover {
-  transform: translateY(-1px);
+  background: var(--theme-secondary-glass-bg-hover);
 }
 
 .countSummary {
@@ -224,11 +234,12 @@
   all: unset;
   align-items: center;
   appearance: none;
-  background: var(--theme-secondary);
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 78%, white 22%);
+  backdrop-filter: blur(10px) saturate(140%);
+  background: var(--theme-secondary-glass-bg);
+  border: 1px solid var(--theme-secondary-glass-border);
   border-radius: 50%;
   bottom: 22px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--theme-secondary-glass-shadow);
   color: var(--theme-on-secondary);
   cursor: pointer;
   display: inline-flex;
@@ -249,7 +260,7 @@
 
 .eatsRoot button.addFab:hover,
 .embeddedRoot button.addFab:hover {
-  background: color-mix(in srgb, var(--theme-secondary) 82%, white 18%);
+  background: var(--theme-secondary-glass-bg-hover);
 }
 
 .eatsRoot button.floatingLeft,
@@ -277,14 +288,15 @@
 .embeddedRoot button.searchFabActive,
 .eatsRoot button.searchFab:hover,
 .embeddedRoot button.searchFab:hover {
-  background: color-mix(in srgb, var(--theme-secondary) 72%, white 28%);
+  background: var(--theme-secondary-glass-bg-hover);
 }
 
 .eatsRoot button.searchFabHasQuery,
 .embeddedRoot button.searchFabHasQuery {
-  background: color-mix(in srgb, var(--theme-secondary) 76%, white 24%);
+  background: var(--theme-secondary-glass-bg);
   box-shadow:
     0 0 0 1px color-mix(in srgb, white 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 26%, transparent),
     0 14px 30px color-mix(in srgb, var(--theme-secondary) 34%, rgba(0, 0, 0, 0.35));
 
   &::after {
@@ -305,6 +317,7 @@
 .embeddedRoot button.searchFabOpen {
   box-shadow:
     0 0 0 1px color-mix(in srgb, white 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 26%, transparent),
     0 16px 32px color-mix(in srgb, var(--theme-secondary) 38%, rgba(0, 0, 0, 0.38));
 }
 
@@ -463,9 +476,11 @@
   }
 
   :global(.area-picker-row) > :global(.secondary-action-button) {
-    background: var(--theme-secondary-soft-bg);
-    border: 1px solid var(--theme-secondary-border);
-    color: var(--theme-secondary);
+    backdrop-filter: blur(10px) saturate(140%);
+    background: var(--theme-secondary-glass-bg);
+    border: 1px solid var(--theme-secondary-glass-border);
+    box-shadow: var(--theme-secondary-glass-shadow);
+    color: var(--theme-on-secondary);
     justify-content: center;
     width: 100%;
   }
@@ -478,15 +493,12 @@
 
   :global(.area-pill) {
     align-items: center;
-    background: color-mix(in srgb, var(--theme-secondary) 76%, white 24%);
+    background: var(--theme-secondary-glass-bg);
     backdrop-filter: blur(10px) saturate(140%);
-    border: 1px solid color-mix(in srgb, var(--theme-on-secondary) 18%, transparent);
+    border: 1px solid var(--theme-secondary-glass-border);
     border-radius: 999px;
     color: var(--theme-on-secondary);
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 26%, transparent),
-      0 10px 24px color-mix(in srgb, var(--theme-secondary) 24%, transparent),
-      0 2px 6px color-mix(in srgb, black 10%, transparent);
+    box-shadow: var(--theme-secondary-glass-shadow);
     display: inline-flex;
     gap: 8px;
     max-width: 100%;
@@ -548,10 +560,12 @@
   }
 
   :global(.inline-type-create-button) {
-    background: var(--theme-secondary-soft-bg);
-    border: 1px solid var(--theme-secondary-border);
+    backdrop-filter: blur(10px) saturate(140%);
+    background: var(--theme-secondary-glass-bg);
+    border: 1px solid var(--theme-secondary-glass-border);
     border-radius: 8px;
-    color: var(--theme-secondary);
+    box-shadow: var(--theme-secondary-glass-shadow);
+    color: var(--theme-on-secondary);
     cursor: pointer;
     font-family: inherit;
     font-size: 15px;
@@ -593,9 +607,11 @@
   }
 
   button[type='submit'] {
-    background: color-mix(in srgb, var(--theme-secondary) 90%, white 10%);
-    border: 1px solid color-mix(in srgb, var(--theme-secondary) 82%, white 18%);
+    backdrop-filter: blur(10px) saturate(140%);
+    background: var(--theme-secondary-glass-bg);
+    border: 1px solid var(--theme-secondary-glass-border);
     border-radius: 8px;
+    box-shadow: var(--theme-secondary-glass-shadow);
     color: var(--theme-on-secondary);
     cursor: pointer;
     font-family: inherit;
@@ -604,6 +620,12 @@
     padding: 8px 10px;
     width: fit-content;
     max-width: 100%;
+  }
+
+  :global(.area-picker-row) > :global(.secondary-action-button):hover:not(:disabled),
+  :global(.inline-type-create-button:hover:not(:disabled)),
+  button[type='submit']:hover:not(:disabled) {
+    background: var(--theme-secondary-glass-bg-hover);
   }
 }
 
@@ -1597,11 +1619,13 @@
 
 .eatsRoot button.controlsWalkthroughPrimaryButton,
 .embeddedRoot button.controlsWalkthroughPrimaryButton {
-  background: color-mix(in srgb, var(--theme-secondary) 90%, white 10%);
-  border: 1px solid color-mix(in srgb, var(--theme-secondary) 82%, white 18%);
+  backdrop-filter: blur(10px) saturate(140%);
+  background: var(--theme-secondary-glass-bg);
+  border: 1px solid var(--theme-secondary-glass-border);
   box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 26%, transparent),
     0 12px 24px color-mix(in srgb, var(--theme-secondary) 24%, rgba(0, 0, 0, 0.3)),
-    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+    0 2px 6px color-mix(in srgb, black 10%, transparent);
   color: var(--theme-on-secondary);
 }
 
@@ -1612,7 +1636,7 @@
 
 .eatsRoot button.controlsWalkthroughPrimaryButton:hover,
 .embeddedRoot button.controlsWalkthroughPrimaryButton:hover {
-  background: color-mix(in srgb, var(--theme-secondary) 84%, white 16%);
+  background: var(--theme-secondary-glass-bg-hover);
 }
 
 .eatsRoot button.controlsWalkthroughGhostButton:active:not(:disabled),
