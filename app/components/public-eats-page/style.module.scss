@@ -640,11 +640,11 @@
   }
 
   :global(.location-toggle-button) {
-    background: linear-gradient(180deg, #ffd85f 0%, #f4bf29 100%);
+    background: var(--theme-secondary-glass-bg);
     border: 1px solid color-mix(in srgb, #7a5900 32%, transparent);
-    border-radius: 999px;
+    border-radius: 8px;
     box-shadow: 0 10px 24px rgba(122, 89, 0, 0.18);
-    color: #4f3500;
+    color: var(--theme-on-secondary);
     cursor: pointer;
     font-family: inherit;
     font-size: 14px;
