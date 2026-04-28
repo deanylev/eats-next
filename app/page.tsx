@@ -4,6 +4,7 @@ import { PublicEatsPage } from '@/app/components/public-eats-page';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { flashCookieNames } from '@/lib/flash-cookies';
 import { getAdminSessionForTenant, readFlashMessages, resolveRequestTenant } from '@/lib/request-context';
+import { isTenantResolutionError } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,11 @@ export default async function RootPage({ searchParams }: RootPageProps) {
         openEditRestaurantId={searchParams?.openEditRestaurant}
       />
     );
-  } catch {
-    notFound();
+  } catch (error) {
+    if (isTenantResolutionError(error)) {
+      notFound();
+    }
+
+    throw error;
   }
 }

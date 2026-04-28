@@ -1,6 +1,6 @@
 'use client';
 
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
@@ -87,9 +87,10 @@ export function RestaurantFormFields({
     ) ?? []) as MealType[]
   );
   const [selectedCityId, setSelectedCityId] = useState<string>(defaults?.cityId ?? '');
-  const [areasValue, setAreasValue] = useState<string>(defaults?.areas?.join('\n') ?? '');
+  const [selectedAreas, setSelectedAreas] = useState<string[]>(defaults?.areas ?? []);
+  const [selectedExistingArea, setSelectedExistingArea] = useState<string>('');
+  const [newAreaValue, setNewAreaValue] = useState<string>('');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
-  const [showAreaSuggestions, setShowAreaSuggestions] = useState<boolean>(true);
   const [newTypeName, setNewTypeName] = useState<string>('');
   const [newTypeEmoji, setNewTypeEmoji] = useState<string>('');
   const [isCreatingType, setIsCreatingType] = useState<boolean>(false);
@@ -98,7 +99,6 @@ export function RestaurantFormFields({
   const [referredByValue, setReferredByValue] = useState<string>(defaults?.referredBy ?? '');
   const [urlValue, setUrlValue] = useState<string>(defaults?.url ?? '');
   const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
-  const areasRef = useRef<HTMLTextAreaElement | null>(null);
   const cityGroups = useMemo(
     () =>
       buildCitySelectGroups(
@@ -114,42 +114,27 @@ export function RestaurantFormFields({
     () => areaSuggestionsByCity?.[selectedCityId] ?? [],
     [areaSuggestionsByCity, selectedCityId]
   );
-  const typedAreas = useMemo(() => {
-    return new Set(
-      areasValue
-        .split('\n')
-        .map((entry) => entry.trim().toLowerCase())
-        .filter((entry) => entry.length > 0)
-    );
-  }, [areasValue]);
-  const currentAreaDraft = useMemo(() => {
-    if (!areasValue) {
-      return '';
-    }
-
-    const selectionStart = areasRef.current?.selectionStart ?? areasValue.length;
-    const textBeforeCursor = areasValue.slice(0, selectionStart);
-    const draft = textBeforeCursor.split('\n').at(-1);
-    return draft?.trim().toLowerCase() ?? '';
-  }, [areasValue]);
-  const filteredAreaSuggestions = useMemo(() => {
+  const lockedAreaLookup = useMemo(
+    () =>
+      new Set(
+        (lockedFields?.areas ? defaults?.areas ?? [] : [])
+          .map((area) => area.trim().toLowerCase())
+          .filter((area) => area.length > 0)
+      ),
+    [defaults?.areas, lockedFields?.areas]
+  );
+  const selectedAreaLookup = useMemo(
+    () => new Set(selectedAreas.map((area) => area.trim().toLowerCase()).filter((area) => area.length > 0)),
+    [selectedAreas]
+  );
+  const availableAreaOptions = useMemo(() => {
     if (!selectedCityId) {
       return [];
     }
 
-    return areaSuggestionsForCity
-      .filter((area) => {
-        const normalizedArea = area.trim().toLowerCase();
-        if (normalizedArea.length === 0 || typedAreas.has(normalizedArea)) {
-          return false;
-        }
-        if (currentAreaDraft.length === 0) {
-          return true;
-        }
-        return normalizedArea.startsWith(currentAreaDraft);
-      })
-      .slice(0, 8);
-  }, [areaSuggestionsForCity, currentAreaDraft, selectedCityId, typedAreas]);
+    return areaSuggestionsForCity.filter((area) => !selectedAreaLookup.has(area.trim().toLowerCase()));
+  }, [areaSuggestionsForCity, selectedAreaLookup, selectedCityId]);
+  const areasValue = useMemo(() => selectedAreas.join('\n'), [selectedAreas]);
   const normalizedNewTypeName = newTypeName.trim().toLowerCase();
   const isDuplicateNewTypeName =
     normalizedNewTypeName.length > 0 &&
@@ -198,6 +183,16 @@ export function RestaurantFormFields({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (selectedExistingArea.length === 0) {
+      return;
+    }
+
+    if (!availableAreaOptions.includes(selectedExistingArea)) {
+      setSelectedExistingArea('');
+    }
+  }, [availableAreaOptions, selectedExistingArea]);
 
   const toggleMealType = (mealType: MealType, checked: boolean): void => {
     setSelectedMealTypes((current) => {
@@ -293,27 +288,46 @@ export function RestaurantFormFields({
     void handleCreateType();
   };
 
-  const handleAreaSuggestionClick = (area: string): void => {
-    const textarea = areasRef.current;
-    const text = textarea?.value ?? areasValue;
-    const cursorPosition = textarea?.selectionStart ?? text.length;
-    const currentLineStart = text.lastIndexOf('\n', Math.max(cursorPosition - 1, 0)) + 1;
-    const currentLineEndRaw = text.indexOf('\n', cursorPosition);
-    const currentLineEnd = currentLineEndRaw === -1 ? text.length : currentLineEndRaw;
-    const nextValue = `${text.slice(0, currentLineStart)}${area}${text.slice(currentLineEnd)}`;
-    const nextCursorPosition = currentLineStart + area.length;
+  const addArea = (value: string): void => {
+    const trimmedValue = value.trim();
+    const normalizedValue = trimmedValue.toLowerCase();
 
-    setShowAreaSuggestions(false);
-    setAreasValue(nextValue);
+    if (trimmedValue.length === 0 || selectedAreaLookup.has(normalizedValue)) {
+      return;
+    }
 
-    requestAnimationFrame(() => {
-      if (!areasRef.current) {
-        return;
-      }
+    setSelectedAreas((current) => [...current, trimmedValue]);
+  };
 
-      areasRef.current.focus();
-      areasRef.current.setSelectionRange(nextCursorPosition, nextCursorPosition);
-    });
+  const removeArea = (value: string): void => {
+    if (lockedAreaLookup.has(value.trim().toLowerCase())) {
+      return;
+    }
+
+    setSelectedAreas((current) => current.filter((area) => area !== value));
+  };
+
+  const handleAddExistingArea = (): void => {
+    if (selectedExistingArea.length === 0) {
+      return;
+    }
+
+    addArea(selectedExistingArea);
+    setSelectedExistingArea('');
+  };
+
+  const handleAddNewArea = (): void => {
+    addArea(newAreaValue);
+    setNewAreaValue('');
+  };
+
+  const handleNewAreaKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    handleAddNewArea();
   };
 
   const handlePopulateFakeValues = (): void => {
@@ -327,7 +341,7 @@ export function RestaurantFormFields({
       .padStart(5, '0');
 
     setSelectedCityId(fakeCityId);
-    setAreasValue(populatedAreas.join('\n'));
+    setSelectedAreas(populatedAreas);
     setSelectedMealTypes(['lunch', 'dinner']);
     setNameValue(`Test Restaurant ${fakeSuffix}`);
     setNotesValue('Development-only seeded restaurant notes.');
@@ -336,7 +350,8 @@ export function RestaurantFormFields({
     setUrlValue(`https://example.com/restaurants/test-${fakeSuffix}/`);
     setStatus('untried');
     setDislikedReasonValue('');
-    setShowAreaSuggestions(false);
+    setSelectedExistingArea('');
+    setNewAreaValue('');
   };
 
   return (
@@ -352,56 +367,99 @@ export function RestaurantFormFields({
           value={selectedCityId}
           onChange={(value) => {
             setSelectedCityId(value);
-            setShowAreaSuggestions(true);
+            setSelectedExistingArea('');
           }}
           disabled={lockedFields?.city}
         />
       </label>
 
-      <label>
-        Areas (optional; one per line)
-        {lockedFields?.areas ? <input type="hidden" name="areas" value={areasValue} /> : null}
-        <textarea
-          ref={areasRef}
-          name={lockedFields?.areas ? undefined : 'areas'}
-          rows={4}
-          value={areasValue}
-          onChange={(event) => {
-            setAreasValue(event.target.value);
-            setShowAreaSuggestions(true);
-          }}
-          disabled={lockedFields?.areas || (disableAreasUntilCitySelected && selectedCityId.length === 0)}
-          placeholder={
-            disableAreasUntilCitySelected && selectedCityId.length === 0
-              ? 'Select a city first'
-              : ''
-          }
-          aria-describedby={`${keyPrefix}-areas-help`}
-        />
-      </label>
+      <div className="field-group">
+        <div className="field-group-label">Areas (optional)</div>
+        <input type="hidden" name="areas" value={areasValue} />
+        <div className="area-picker" aria-describedby={`${keyPrefix}-areas-help`}>
+          {selectedAreas.length > 0 ? (
+            <div className="area-pill-list">
+              {selectedAreas.map((area) => (
+                  <span key={`${keyPrefix}-selected-area-${area}`} className="area-pill">
+                    <span>{area}</span>
+                    {!lockedAreaLookup.has(area.trim().toLowerCase()) ? (
+                      <button type="button" className="area-pill-remove" onClick={() => removeArea(area)} aria-label={`Remove ${area}`}>
+                        ×
+                      </button>
+                    ) : null}
+                  </span>
+                ))}
+              </div>
+          ) : (
+            <div className="area-picker-empty">
+              {disableAreasUntilCitySelected && selectedCityId.length === 0
+                ? 'Select a city first to choose or add areas.'
+                : 'No areas selected yet'}
+            </div>
+          )}
+          {(!lockedFields?.areas || lockedAreaLookup.size > 0) ? (
+            <>
+              <div className="area-picker-row">
+                <select
+                  value={selectedExistingArea}
+                  onChange={(event) => setSelectedExistingArea(event.target.value)}
+                  disabled={
+                    (disableAreasUntilCitySelected && selectedCityId.length === 0) ||
+                    availableAreaOptions.length === 0
+                  }
+                >
+                  <option value="">
+                    {!selectedCityId && disableAreasUntilCitySelected
+                      ? 'Select a city first'
+                      : availableAreaOptions.length === 0
+                        ? 'No saved areas available'
+                        : 'Choose an existing area'}
+                  </option>
+                  {availableAreaOptions.map((area) => (
+                    <option key={`${keyPrefix}-area-option-${area}`} value={area}>
+                      {area}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="secondary-action-button"
+                  onClick={handleAddExistingArea}
+                  disabled={selectedExistingArea.length === 0}
+                >
+                  Add area
+                </button>
+              </div>
+              <div className="area-picker-row">
+                <input
+                  type="text"
+                  value={newAreaValue}
+                  onChange={(event) => setNewAreaValue(event.target.value)}
+                  onKeyDown={handleNewAreaKeyDown}
+                  disabled={disableAreasUntilCitySelected && selectedCityId.length === 0}
+                  placeholder={
+                    disableAreasUntilCitySelected && selectedCityId.length === 0
+                      ? 'Select a city first'
+                      : 'Add a new area'}
+                />
+                <button
+                  type="button"
+                  className="secondary-action-button"
+                  onClick={handleAddNewArea}
+                  disabled={
+                    (disableAreasUntilCitySelected && selectedCityId.length === 0) || newAreaValue.trim().length === 0
+                  }
+                >
+                  Add new
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
       <small id={`${keyPrefix}-areas-help`}>
         If fewer than 2 areas are entered, URL must be Google Maps. If 2+ areas, URL must not be Google Maps.
       </small>
-      {showAreaSuggestions &&
-      selectedCityId &&
-      currentAreaDraft.length > 0 &&
-      filteredAreaSuggestions.length > 0 ? (
-        <div className="area-autosuggest">
-          <span>Suggestions:</span>
-          <div className="inline-options">
-            {filteredAreaSuggestions.map((area) => (
-              <button
-                type="button"
-                key={`${keyPrefix}-area-suggestion-${area}`}
-                className="area-suggestion"
-                onClick={() => handleAreaSuggestionClick(area)}
-              >
-                {area}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <fieldset>
         <legend>Meal Types (pick 1 to 4)</legend>
