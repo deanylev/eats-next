@@ -2863,7 +2863,7 @@ export function PublicEatsPage({
       {createTools ? (
         <>
           {isCreateDialogOpen ? (
-            <div className={styles.createDialogOverlay}>
+            <div className={styles.createDialogOverlay} onClick={closeCreateDialog}>
               <section
                 className={styles.createDialog}
                 role="dialog"
@@ -2929,7 +2929,7 @@ export function PublicEatsPage({
         </button>
       ) : null}
       {canEditRestaurants && adminTools && editingRestaurant ? (
-        <div className={styles.createDialogOverlay}>
+        <div className={styles.createDialogOverlay} onClick={closeEditRestaurantDialog}>
           <section
             className={styles.createDialog}
             role="dialog"
