@@ -568,16 +568,18 @@ export function RestaurantFormFields({
           disabled={lockedFields?.city}
         />
       </label>
-      <div className="inline-location-toggle">
-        <button
-          type="button"
-          className="location-toggle-button"
-          aria-expanded={isLocationCreatorOpen}
-          onClick={() => setIsLocationCreatorOpen((current) => !current)}
-        >
-          {isLocationCreatorOpen ? 'Hide' : 'Add new country or city'}
-        </button>
-      </div>
+      {!lockedFields?.city && (
+        <div className="inline-location-toggle">
+          <button
+            type="button"
+            className="location-toggle-button"
+            aria-expanded={isLocationCreatorOpen}
+            onClick={() => setIsLocationCreatorOpen((current) => !current)}
+          >
+            {isLocationCreatorOpen ? 'Hide' : 'Add new country or city'}
+          </button>
+        </div>
+      )}
       {isLocationCreatorOpen ? (
         <div className="inline-type-creator">
           <div className="inline-location-creator-row">
