@@ -1907,13 +1907,9 @@ export function PublicEatsPage({
           ...restaurant,
           cityId: targetCity.id,
           cityName: targetCity.name,
-          ...move.dislikedReason && {
-            dislikedReason: move.dislikedReason,
-          },
-          ...move.notes && {
-            notes: move.notes,
-          },
           countryName: targetCity.countryName,
+          dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
+          notes: move.status === 'disliked' ? restaurant.notes : move.notes,
           status: target.status
         };
       }
@@ -1926,12 +1922,8 @@ export function PublicEatsPage({
         return {
           ...restaurant,
           areas: nextAreas,
-          ...move.dislikedReason && {
-            dislikedReason: move.dislikedReason,
-          },
-          ...move.notes && {
-            notes: move.notes,
-          },
+          dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
+          notes: move.status === 'disliked' ? restaurant.notes : move.notes,
           status: target.status
         };
       }
@@ -1943,12 +1935,8 @@ export function PublicEatsPage({
 
       return {
         ...restaurant,
-        ...move.dislikedReason && {
-          dislikedReason: move.dislikedReason,
-        },
-        ...move.notes && {
-          notes: move.notes,
-        },
+        dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
+        notes: move.status === 'disliked' ? restaurant.notes : move.notes,
         status: target.status,
         types: [targetType, ...restaurant.types.filter((type, index) => index !== 0 && type.id !== targetType.id)]
       };
@@ -1967,6 +1955,9 @@ export function PublicEatsPage({
       formData.set('boardCategory', boardCategory);
       if (move.dislikedReason?.trim().length) {
         formData.set('dislikedReason', move.dislikedReason.trim());
+      }
+      if (move.notes?.trim().length) {
+        formData.set('notes', move.notes.trim());
       }
 
       if (boardCategory === 'city') {

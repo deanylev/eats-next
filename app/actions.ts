@@ -349,6 +349,7 @@ const parseBoardMoveInput = (formData: FormData) => {
   const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
   const statusValue = String(formData.get('status') ?? '').trim();
   const dislikedReason = String(formData.get('dislikedReason') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
 
   if (statusValue !== 'untried' && statusValue !== 'liked' && statusValue !== 'disliked') {
     throw userFacingError('Invalid restaurant status.');
@@ -358,6 +359,7 @@ const parseBoardMoveInput = (formData: FormData) => {
     return {
       boardCategory,
       dislikedReason,
+      notes,
       restaurantId,
       status: statusValue,
       targetCityId: parseUuid(formData.get('targetCityId'), 'Invalid city id.')
@@ -369,6 +371,7 @@ const parseBoardMoveInput = (formData: FormData) => {
     return {
       boardCategory,
       dislikedReason,
+      notes,
       restaurantId,
       status: statusValue,
       targetArea: rawArea.length > 0 ? rawArea : null
@@ -379,6 +382,7 @@ const parseBoardMoveInput = (formData: FormData) => {
     return {
       boardCategory,
       dislikedReason,
+      notes,
       restaurantId,
       status: statusValue,
       targetTypeId: parseUuid(formData.get('targetTypeId'), 'Invalid restaurant type id.')

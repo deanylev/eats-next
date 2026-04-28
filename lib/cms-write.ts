@@ -31,6 +31,7 @@ export type RestaurantBoardMoveInput =
   | {
       boardCategory: 'city';
       dislikedReason?: string;
+      notes?: string;
       restaurantId: string;
       status: RestaurantStatus;
       targetCityId: string;
@@ -38,6 +39,7 @@ export type RestaurantBoardMoveInput =
   | {
       boardCategory: 'area';
       dislikedReason?: string;
+      notes?: string;
       restaurantId: string;
       status: RestaurantStatus;
       targetArea: string | null;
@@ -45,6 +47,7 @@ export type RestaurantBoardMoveInput =
   | {
       boardCategory: 'type';
       dislikedReason?: string;
+      notes?: string;
       restaurantId: string;
       status: RestaurantStatus;
       targetTypeId: string;
@@ -648,6 +651,10 @@ export const moveRestaurantRecord = async (
     input.status === 'disliked'
       ? input.dislikedReason?.trim() || foundRestaurant.dislikedReason?.trim() || null
       : null;
+  const nextNotes =
+    input.status === 'disliked'
+      ? foundRestaurant.notes
+      : input.notes?.trim() || foundRestaurant.notes;
   if (input.status === 'disliked' && !nextDislikedReason) {
     fail('Disliked reason is required when moving a restaurant to Not Recommended.');
   }
@@ -679,6 +686,7 @@ export const moveRestaurantRecord = async (
         cityId: nextCityId,
         status: input.status,
         triedAt: nextTriedAt,
+        notes: nextNotes,
         dislikedReason: nextDislikedReason
       })
       .where(and(eq(restaurants.id, input.restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));

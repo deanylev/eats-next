@@ -605,6 +605,42 @@ dbTest('moveRestaurantRecord requires a disliked reason when moving to disliked'
   }
 });
 
+dbTest('moveRestaurantRecord updates notes and clears dislikedReason when moving from disliked to liked', async () => {
+  const { db, cleanup, tenantId, cityId, typeId } = await createTenantFixture();
+
+  try {
+    const restaurantId = await createRestaurantRecord(
+      db,
+      tenantId,
+      buildRestaurantInput({
+        cityId,
+        dislikedReason: 'Too salty',
+        notes: 'Old notes',
+        status: 'disliked',
+        typeIds: [typeId]
+      })
+    );
+
+    await moveRestaurantRecord(db, tenantId, {
+      boardCategory: 'area',
+      notes: 'New notes',
+      restaurantId,
+      status: 'liked',
+      targetArea: 'CBD'
+    });
+
+    const savedRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.id, restaurantId)
+    });
+
+    assert.equal(savedRestaurant?.status, 'liked');
+    assert.equal(savedRestaurant?.notes, 'New notes');
+    assert.equal(savedRestaurant?.dislikedReason, null);
+  } finally {
+    await cleanup();
+  }
+});
+
 dbTest('softDeleteRestaurantRecord allows recreating the same restaurant name and restoreRestaurantRecord revives it', async () => {
   const { db, cleanup } = await createTestDb();
   const tenantId = randomUUID();
