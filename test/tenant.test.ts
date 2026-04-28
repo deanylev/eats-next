@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  TenantResolutionError,
   buildTenantHost,
+  isTenantResolutionError,
   normalizeHost,
   parseHostForTenant,
   resolvePublicRequestHostWithPort,
@@ -111,4 +113,14 @@ test('buildTenantHost ignores ports embedded in ROOT_DOMAIN', () => {
       process.env.ROOT_DOMAIN = previousRootDomain;
     }
   }
+});
+
+test('isTenantResolutionError only matches tenant resolution failures', () => {
+  const error = new Error('Something else broke.');
+
+  assert.equal(isTenantResolutionError(error), false);
+  assert.equal(
+    isTenantResolutionError(new TenantResolutionError('unknown_subdomain', 'Unknown tenant subdomain.')),
+    true
+  );
 });

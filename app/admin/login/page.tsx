@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { loginAdmin } from '@/app/actions';
 import { getAdminSessionForTenant, resolveRequestTenant } from '@/lib/request-context';
+import { isTenantResolutionError } from '@/lib/tenant';
 import { buildThemeCssVariables } from '@/lib/theme';
 
 import styles from './style.module.scss';
@@ -52,7 +53,11 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
         </main>
       </div>
     );
-  } catch {
-    notFound();
+  } catch (error) {
+    if (isTenantResolutionError(error)) {
+      notFound();
+    }
+
+    throw error;
   }
 }

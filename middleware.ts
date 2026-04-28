@@ -28,10 +28,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === '/admin/login') {
-    if (session && sessionMatchesHost) {
-      return redirectToPath(request, '/admin');
-    }
-
     return NextResponse.next();
   }
 

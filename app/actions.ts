@@ -59,6 +59,7 @@ import {
 } from '@/lib/schema';
 import {
   buildTenantHost,
+  isTenantResolutionError,
   normalizeHost,
   parseHostForTenant,
   resolvePublicRequestHostWithPort,
@@ -620,7 +621,11 @@ export const loginAdmin = async (formData: FormData): Promise<void> => {
   let tenant: ResolvedTenant;
   try {
     tenant = await resolveTenantFromHost(db, host);
-  } catch {
+  } catch (error) {
+    if (!isTenantResolutionError(error)) {
+      throw error;
+    }
+
     redirect('/admin/login?error=invalid');
   }
   const expectedUsername = process.env.ADMIN_USERNAME;

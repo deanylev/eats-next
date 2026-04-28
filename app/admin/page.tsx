@@ -31,7 +31,7 @@ import { ADMIN_SUBDOMAIN_DRAFT_COOKIE, decodeAdminSubdomainDraft } from '@/lib/a
 import { getDb } from '@/lib/db';
 import { flashCookieNames } from '@/lib/flash-cookies';
 import { getAdminSessionForTenant, readFlashMessages, resolveRequestTenant } from '@/lib/request-context';
-import { buildTenantHost, resolvePublicRequestHostWithPort } from '@/lib/tenant';
+import { buildTenantHost, isTenantResolutionError, resolvePublicRequestHostWithPort } from '@/lib/tenant';
 import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 
 import styles from './style.module.scss';
@@ -693,7 +693,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
         </main>
       </div>
     );
-  } catch {
-    notFound();
+  } catch (error) {
+    if (isTenantResolutionError(error)) {
+      notFound();
+    }
+
+    throw error;
   }
 }

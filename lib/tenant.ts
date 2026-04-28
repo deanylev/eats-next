@@ -16,6 +16,21 @@ export type ResolvedTenant = {
   secondaryColor: string;
 };
 
+export type TenantResolutionErrorCode = 'invalid_subdomain' | 'unknown_subdomain';
+
+export class TenantResolutionError extends Error {
+  code: TenantResolutionErrorCode;
+
+  constructor(code: TenantResolutionErrorCode, message: string) {
+    super(message);
+    this.name = 'TenantResolutionError';
+    this.code = code;
+  }
+}
+
+export const isTenantResolutionError = (error: unknown): error is TenantResolutionError =>
+  error instanceof TenantResolutionError;
+
 export const getRootDomain = (): string => {
   const configured = normalizeHost(process.env.ROOT_DOMAIN ?? '');
   if (process.env.NODE_ENV === 'production' && !configured) {
@@ -279,7 +294,7 @@ export const resolveTenantFromHost = async (db: TenantDb, host: string): Promise
   }
 
   if (!parsed.subdomain) {
-    throw new Error('Invalid tenant subdomain.');
+    throw new TenantResolutionError('invalid_subdomain', 'Invalid tenant subdomain.');
   }
 
   const tenant = await db.query.tenants.findFirst({
@@ -287,7 +302,7 @@ export const resolveTenantFromHost = async (db: TenantDb, host: string): Promise
   });
 
   if (!tenant) {
-    throw new Error('Unknown tenant subdomain.');
+    throw new TenantResolutionError('unknown_subdomain', 'Unknown tenant subdomain.');
   }
 
   return {
