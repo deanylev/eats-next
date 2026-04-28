@@ -38,8 +38,10 @@ export default async function RootPage({ searchParams }: RootPageProps) {
         secondaryColor={tenant.secondaryColor}
         defaultCityName={data.defaultCityName}
         showAdminButton={hasSession}
-        adminTools={hasSession ? { cities: data.cities, types: data.types, areaSuggestionsByCity } : undefined}
-        createTools={hasSession ? { cities: data.cities, types: data.types } : undefined}
+        adminTools={
+          hasSession ? { countries: data.countries, cities: data.cities, types: data.types, areaSuggestionsByCity } : undefined
+        }
+        createTools={hasSession ? { countries: data.countries, cities: data.cities, types: data.types } : undefined}
         rootCreateErrorMessage={flashMessages[flashCookieNames.rootCreateError]}
         rootCreateSuccessMessage={flashMessages[flashCookieNames.rootCreateSuccess]}
         openCreateDialogByDefault={

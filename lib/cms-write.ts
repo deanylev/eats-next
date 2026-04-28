@@ -72,6 +72,52 @@ export const createCountryRecord = async (db: Db, tenantId: string, input: Count
   });
 };
 
+export const createOrGetCountryRecord = async (
+  db: Db,
+  tenantId: string,
+  input: CountryInput
+): Promise<{ created: boolean; id: string; name: string }> => {
+  const existingCountry = await db.query.countries.findFirst({
+    where: and(eq(countries.tenantId, tenantId), sql`lower(${countries.name}) = lower(${input.name})`)
+  });
+  if (existingCountry) {
+    return {
+      created: false,
+      id: existingCountry.id,
+      name: existingCountry.name
+    };
+  }
+
+  const countryId = randomUUID();
+
+  try {
+    await db.insert(countries).values({
+      id: countryId,
+      tenantId,
+      name: input.name
+    });
+  } catch (error) {
+    const duplicateCountry = await db.query.countries.findFirst({
+      where: and(eq(countries.tenantId, tenantId), sql`lower(${countries.name}) = lower(${input.name})`)
+    });
+    if (duplicateCountry) {
+      return {
+        created: false,
+        id: duplicateCountry.id,
+        name: duplicateCountry.name
+      };
+    }
+
+    throw error;
+  }
+
+  return {
+    created: true,
+    id: countryId,
+    name: input.name
+  };
+};
+
 export const updateCountryRecord = async (
   db: Db,
   tenantId: string,
@@ -120,6 +166,74 @@ export const createCityRecord = async (db: Db, tenantId: string, input: CityInpu
       isDefault: input.setAsDefault
     });
   });
+};
+
+export const createOrGetCityRecord = async (
+  db: Db,
+  tenantId: string,
+  input: z.infer<typeof cityInputSchema>
+): Promise<{ countryId: string; countryName: string; created: boolean; id: string; name: string }> => {
+  await ensureCountryBelongsToTenant(db, tenantId, input.countryId);
+
+  const foundCountry = await db.query.countries.findFirst({
+    where: and(eq(countries.id, input.countryId), eq(countries.tenantId, tenantId))
+  }) ?? fail('Country not found.');
+
+  const existingCity = await db.query.cities.findFirst({
+    where: and(
+      eq(cities.tenantId, tenantId),
+      eq(cities.countryId, input.countryId),
+      sql`lower(${cities.name}) = lower(${input.name})`
+    )
+  });
+  if (existingCity) {
+    return {
+      countryId: foundCountry.id,
+      countryName: foundCountry.name,
+      created: false,
+      id: existingCity.id,
+      name: existingCity.name
+    };
+  }
+
+  const cityId = randomUUID();
+
+  try {
+    await db.insert(cities).values({
+      id: cityId,
+      tenantId,
+      name: input.name,
+      countryId: input.countryId,
+      isDefault: false
+    });
+  } catch (error) {
+    const duplicateCity = await db.query.cities.findFirst({
+      where: and(
+        eq(cities.tenantId, tenantId),
+        eq(cities.countryId, input.countryId),
+        sql`lower(${cities.name}) = lower(${input.name})`
+      )
+    });
+    if (duplicateCity) {
+      return {
+        countryId: foundCountry.id,
+        countryName: foundCountry.name,
+        created: false,
+        id: duplicateCity.id,
+        name: duplicateCity.name
+      };
+    }
+
+    throw error;
+  }
+
+  return {
+    countryId: foundCountry.id,
+    countryName: foundCountry.name,
+    created: true,
+    id: cityId,
+    name: input.name
+  };
 };
 
 export const updateCityRecord = async (

@@ -362,12 +362,14 @@ type Props = {
   secondaryColor?: string | null;
   allowRestaurantEditing?: boolean;
   adminTools?: {
-    cities: Array<{ id: string; name: string; countryName: string }>;
+    countries: Array<{ id: string; name: string }>;
+    cities: Array<{ id: string; name: string; countryId: string; countryName: string }>;
     types: Array<{ id: string; name: string; emoji: string }>;
     areaSuggestionsByCity?: Record<string, string[]>;
   };
   createTools?: {
-    cities: Array<{ id: string; name: string; countryName: string }>;
+    countries: Array<{ id: string; name: string }>;
+    cities: Array<{ id: string; name: string; countryId: string; countryName: string }>;
     types: Array<{ id: string; name: string; emoji: string }>;
   };
   rootCreateErrorMessage?: string | null;
@@ -2886,6 +2888,7 @@ export function PublicEatsPage({
                   action={createRestaurantFromRoot}
                 >
                   <RestaurantFormFields
+                    countries={createTools.countries}
                     cities={createTools.cities}
                     types={createTools.types}
                     areaSuggestionsByCity={areaSuggestionsByCity}
@@ -2962,6 +2965,7 @@ export function PublicEatsPage({
             >
               <input type="hidden" name="restaurantId" value={editingRestaurant.id} />
               <RestaurantFormFields
+                countries={adminTools.countries}
                 cities={adminTools.cities}
                 types={adminTools.types}
                 areaSuggestionsByCity={areaSuggestionsByCity}

@@ -5,6 +5,8 @@ import { asc, eq } from 'drizzle-orm';
 import {
   createCityRecord,
   createCountryRecord,
+  createOrGetCityRecord,
+  createOrGetCountryRecord,
   createRestaurantRecord,
   createOrGetRestaurantTypeRecord,
   createRestaurantTypeRecord,
@@ -113,6 +115,28 @@ dbTest('deleteCountryRecord removes a country when it belongs to the current ten
       where: eq(countries.id, countryId)
     });
     assert.equal(savedCountry, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('createOrGetCountryRecord reuses an existing country case-insensitively', async () => {
+  const { db, cleanup } = await createTestDb();
+  const tenantId = randomUUID();
+
+  try {
+    await db.insert(tenants).values({ id: tenantId, displayName: 'Dean', isRoot: false });
+
+    const firstResult = await createOrGetCountryRecord(db, tenantId, { name: 'Japan' });
+    const secondResult = await createOrGetCountryRecord(db, tenantId, { name: 'jApAn' });
+
+    const savedCountries = await db.select().from(countries).where(eq(countries.tenantId, tenantId));
+
+    assert.equal(firstResult.created, true);
+    assert.equal(secondResult.created, false);
+    assert.equal(secondResult.id, firstResult.id);
+    assert.equal(secondResult.name, 'Japan');
+    assert.equal(savedCountries.length, 1);
   } finally {
     await cleanup();
   }
@@ -239,6 +263,32 @@ dbTest('updateCityRecord can promote an existing city to default', async () => {
 
     assert.equal(melbourne?.isDefault, false);
     assert.equal(sydney?.isDefault, true);
+  } finally {
+    await cleanup();
+  }
+});
+
+dbTest('createOrGetCityRecord reuses an existing city case-insensitively within the same country', async () => {
+  const { db, cleanup } = await createTestDb();
+  const tenantId = randomUUID();
+  const countryId = randomUUID();
+
+  try {
+    await db.insert(tenants).values({ id: tenantId, displayName: 'Dean', isRoot: false });
+    await db.insert(countries).values({ id: countryId, tenantId, name: 'Japan' });
+
+    const firstResult = await createOrGetCityRecord(db, tenantId, { countryId, name: 'Tokyo' });
+    const secondResult = await createOrGetCityRecord(db, tenantId, { countryId, name: 'tOkYo' });
+
+    const savedCities = await db.select().from(cities).where(eq(cities.tenantId, tenantId));
+
+    assert.equal(firstResult.created, true);
+    assert.equal(secondResult.created, false);
+    assert.equal(secondResult.id, firstResult.id);
+    assert.equal(secondResult.name, 'Tokyo');
+    assert.equal(secondResult.countryId, countryId);
+    assert.equal(secondResult.countryName, 'Japan');
+    assert.equal(savedCities.length, 1);
   } finally {
     await cleanup();
   }

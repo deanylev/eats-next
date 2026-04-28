@@ -40,7 +40,8 @@ type RestaurantFormLockedFields = {
 };
 
 type RestaurantFormFieldsProps = {
-  cities: Array<{ id: string; name: string; countryName: string }>;
+  countries: Array<{ id: string; name: string }>;
+  cities: Array<{ id: string; name: string; countryId: string; countryName: string }>;
   types: Array<{ id: string; name: string; emoji: string }>;
   areaSuggestionsByCity?: Record<string, string[]>;
   disableAreasUntilCitySelected?: boolean;
@@ -67,6 +68,7 @@ const areStringSetsEqual = (left: string[] | undefined, right: string[] | undefi
 };
 
 export function RestaurantFormFields({
+  countries,
   cities,
   types,
   areaSuggestionsByCity,
@@ -79,6 +81,8 @@ export function RestaurantFormFields({
   keyPrefix,
   showDevelopmentPopulateButton = false
 }: RestaurantFormFieldsProps) {
+  const [availableCountries, setAvailableCountries] = useState(countries);
+  const [availableCities, setAvailableCities] = useState(cities);
   const [availableTypes, setAvailableTypes] = useState(types);
   const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>(defaults?.typeIds ?? []);
   const [selectedMealTypes, setSelectedMealTypes] = useState<MealType[]>(
@@ -91,6 +95,15 @@ export function RestaurantFormFields({
   const [selectedExistingArea, setSelectedExistingArea] = useState<string>('');
   const [newAreaValue, setNewAreaValue] = useState<string>('');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
+  const [isLocationCreatorOpen, setIsLocationCreatorOpen] = useState<boolean>(false);
+  const [newCountryName, setNewCountryName] = useState<string>('');
+  const [selectedCountryIdForNewCity, setSelectedCountryIdForNewCity] = useState<string>(() => {
+    const defaultCity = cities.find((city) => city.id === (defaults?.cityId ?? ''));
+    return defaultCity?.countryId ?? countries[0]?.id ?? '';
+  });
+  const [newCityName, setNewCityName] = useState<string>('');
+  const [isCreatingCountry, setIsCreatingCountry] = useState<boolean>(false);
+  const [isCreatingCity, setIsCreatingCity] = useState<boolean>(false);
   const [newTypeName, setNewTypeName] = useState<string>('');
   const [newTypeEmoji, setNewTypeEmoji] = useState<string>('');
   const [isCreatingType, setIsCreatingType] = useState<boolean>(false);
@@ -102,13 +115,13 @@ export function RestaurantFormFields({
   const cityGroups = useMemo(
     () =>
       buildCitySelectGroups(
-        cities.map((city) => ({
+        availableCities.map((city) => ({
           countryName: city.countryName,
           name: city.name,
           value: city.id
         }))
       ),
-    [cities]
+    [availableCities]
   );
   const areaSuggestionsForCity = useMemo(
     () => areaSuggestionsByCity?.[selectedCityId] ?? [],
@@ -135,6 +148,17 @@ export function RestaurantFormFields({
     return areaSuggestionsForCity.filter((area) => !selectedAreaLookup.has(area.trim().toLowerCase()));
   }, [areaSuggestionsForCity, selectedAreaLookup, selectedCityId]);
   const areasValue = useMemo(() => selectedAreas.join('\n'), [selectedAreas]);
+  const normalizedNewCountryName = newCountryName.trim().toLowerCase();
+  const isDuplicateNewCountryName =
+    normalizedNewCountryName.length > 0 &&
+    availableCountries.some((country) => country.name.trim().toLowerCase() === normalizedNewCountryName);
+  const normalizedNewCityName = newCityName.trim().toLowerCase();
+  const isDuplicateNewCityName =
+    normalizedNewCityName.length > 0 &&
+    availableCities.some(
+      (city) =>
+        city.countryId === selectedCountryIdForNewCity && city.name.trim().toLowerCase() === normalizedNewCityName
+    );
   const normalizedNewTypeName = newTypeName.trim().toLowerCase();
   const isDuplicateNewTypeName =
     normalizedNewTypeName.length > 0 &&
@@ -152,6 +176,8 @@ export function RestaurantFormFields({
       urlValue !== (defaults?.url ?? '') ||
       status !== (defaults?.status ?? 'untried') ||
       dislikedReasonValue !== (defaults?.dislikedReason ?? '') ||
+      newCountryName.length > 0 ||
+      newCityName.length > 0 ||
       newTypeName.length > 0 ||
       newTypeEmoji.length > 0
     );
@@ -169,6 +195,8 @@ export function RestaurantFormFields({
     defaults?.url,
     dislikedReasonValue,
     nameValue,
+    newCityName,
+    newCountryName,
     newTypeEmoji,
     newTypeName,
     notesValue,
@@ -217,6 +245,151 @@ export function RestaurantFormFields({
       return [...next].sort((left, right) => left.name.localeCompare(right.name));
     });
     setSelectedTypeIds((current) => (current.includes(type.id) ? current : [...current, type.id]));
+  };
+
+  const upsertCountry = (country: { id: string; name: string }): void => {
+    setAvailableCountries((current) => {
+      const next = current.some((existing) => existing.id === country.id)
+        ? current.map((existing) => (existing.id === country.id ? country : existing))
+        : [...current, country];
+
+      return [...next].sort((left, right) => left.name.localeCompare(right.name));
+    });
+  };
+
+  const upsertCity = (city: { id: string; name: string; countryId: string; countryName: string }): void => {
+    setAvailableCities((current) => {
+      const next = current.some((existing) => existing.id === city.id)
+        ? current.map((existing) => (existing.id === city.id ? city : existing))
+        : [...current, city];
+
+      return [...next].sort((left, right) => {
+        const countryComparison = left.countryName.localeCompare(right.countryName);
+        if (countryComparison !== 0) {
+          return countryComparison;
+        }
+
+        return left.name.localeCompare(right.name);
+      });
+    });
+  };
+
+  const handleCitySelectionChange = (value: string): void => {
+    setSelectedCityId(value);
+    setSelectedExistingArea('');
+
+    const selectedCity = availableCities.find((city) => city.id === value);
+    if (selectedCity) {
+      setSelectedCountryIdForNewCity(selectedCity.countryId);
+    }
+  };
+
+  const handleCreateCountry = async (): Promise<void> => {
+    const trimmedName = newCountryName.trim();
+    if (!trimmedName) {
+      window.confirm('Country name is required.');
+      return;
+    }
+
+    if (isDuplicateNewCountryName) {
+      return;
+    }
+
+    setIsCreatingCountry(true);
+
+    try {
+      const response = await fetch('/api/countries', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: trimmedName
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { country?: { id: string; name: string }; duplicate?: boolean; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.country) {
+        window.confirm(payload?.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+
+      upsertCountry(payload.country);
+      setSelectedCountryIdForNewCity(payload.country.id);
+
+      if (payload.duplicate) {
+        setNewCountryName(payload.country.name);
+        return;
+      }
+
+      setNewCountryName('');
+    } catch {
+      window.confirm('Something went wrong. Please try again.');
+    } finally {
+      setIsCreatingCountry(false);
+    }
+  };
+
+  const handleCreateCity = async (): Promise<void> => {
+    const trimmedName = newCityName.trim();
+    if (!selectedCountryIdForNewCity) {
+      window.confirm('Pick a country first.');
+      return;
+    }
+
+    if (!trimmedName) {
+      window.confirm('City name is required.');
+      return;
+    }
+
+    if (isDuplicateNewCityName) {
+      return;
+    }
+
+    setIsCreatingCity(true);
+
+    try {
+      const response = await fetch('/api/cities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          countryId: selectedCountryIdForNewCity,
+          name: trimmedName
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            city?: { countryId: string; countryName: string; id: string; name: string };
+            duplicate?: boolean;
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok || !payload?.city) {
+        window.confirm(payload?.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+
+      upsertCity(payload.city);
+      setSelectedCountryIdForNewCity(payload.city.countryId);
+      setSelectedCityId(payload.city.id);
+      setSelectedExistingArea('');
+
+      if (payload.duplicate) {
+        setNewCityName(payload.city.name);
+        return;
+      }
+
+      setNewCityName('');
+    } catch {
+      window.confirm('Something went wrong. Please try again.');
+    } finally {
+      setIsCreatingCity(false);
+    }
   };
 
   const handleCreateType = async (): Promise<void> => {
@@ -288,6 +461,32 @@ export function RestaurantFormFields({
     void handleCreateType();
   };
 
+  const handleInlineCountryKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    if (isCreatingCountry) {
+      return;
+    }
+
+    void handleCreateCountry();
+  };
+
+  const handleInlineCityKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    if (isCreatingCity) {
+      return;
+    }
+
+    void handleCreateCity();
+  };
+
   const addArea = (value: string): void => {
     const trimmedValue = value.trim();
     const normalizedValue = trimmedValue.toLowerCase();
@@ -331,7 +530,7 @@ export function RestaurantFormFields({
   };
 
   const handlePopulateFakeValues = (): void => {
-    const fakeCityId = selectedCityId || cities[0]?.id || '';
+    const fakeCityId = selectedCityId || availableCities[0]?.id || '';
     const fakeTypeIds = hasSelectedTypes ? selectedTypeIds : availableTypes[0] ? [availableTypes[0].id] : [];
     const areaSuggestions = fakeCityId ? areaSuggestionsByCity?.[fakeCityId] ?? [] : [];
     const fakeAreas = areaSuggestions.slice(0, 2);
@@ -365,13 +564,85 @@ export function RestaurantFormFields({
           required={true}
           groups={cityGroups}
           value={selectedCityId}
-          onChange={(value) => {
-            setSelectedCityId(value);
-            setSelectedExistingArea('');
-          }}
+          onChange={handleCitySelectionChange}
           disabled={lockedFields?.city}
         />
       </label>
+      <div className="inline-location-toggle">
+        <button
+          type="button"
+          className="location-toggle-button"
+          aria-expanded={isLocationCreatorOpen}
+          onClick={() => setIsLocationCreatorOpen((current) => !current)}
+        >
+          {isLocationCreatorOpen ? 'Hide' : 'Add new country or city'}
+        </button>
+      </div>
+      {isLocationCreatorOpen ? (
+        <div className="inline-type-creator">
+          <div className="inline-location-creator-row">
+            <input
+              type="text"
+              value={newCountryName}
+              placeholder="New country name"
+              onChange={(event) => setNewCountryName(event.target.value)}
+              onKeyDown={handleInlineCountryKeyDown}
+            />
+            <button
+              type="button"
+              className="secondary-action-button"
+              disabled={isCreatingCountry || newCountryName.trim().length === 0 || isDuplicateNewCountryName}
+              onClick={() => {
+                void handleCreateCountry();
+              }}
+            >
+              {isCreatingCountry ? 'Adding…' : 'Add country'}
+            </button>
+          </div>
+          <div className="inline-location-creator-row">
+            <select
+              value={selectedCountryIdForNewCity}
+              onChange={(event) => setSelectedCountryIdForNewCity(event.target.value)}
+              disabled={availableCountries.length === 0 || isCreatingCity}
+            >
+              <option value="" disabled>
+                {availableCountries.length === 0 ? 'Add a country first' : 'Choose country'}
+              </option>
+              {availableCountries.map((country) => (
+                <option key={`${keyPrefix}-country-${country.id}`} value={country.id}>
+                  {country.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newCityName}
+              placeholder="New city name"
+              onChange={(event) => setNewCityName(event.target.value)}
+              onKeyDown={handleInlineCityKeyDown}
+              disabled={availableCountries.length === 0}
+            />
+            <button
+              type="button"
+              className="secondary-action-button"
+              disabled={
+                isCreatingCity ||
+                availableCountries.length === 0 ||
+                selectedCountryIdForNewCity.length === 0 ||
+                newCityName.trim().length === 0 ||
+                isDuplicateNewCityName
+              }
+              onClick={() => {
+                void handleCreateCity();
+              }}
+            >
+              {isCreatingCity ? 'Adding…' : 'Add city'}
+            </button>
+          </div>
+          {isDuplicateNewCountryName ? <div className="inline-type-warning">That country already exists.</div> : null}
+          {isDuplicateNewCityName ? <div className="inline-type-warning">That city already exists in this country.</div> : null}
+        </div>
+      ) : null}
 
       <div className="field-group">
         <div className="field-group-label">Areas (optional)</div>
