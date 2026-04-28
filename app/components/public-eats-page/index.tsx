@@ -1326,6 +1326,18 @@ export function PublicEatsPage({
 
     return map;
   }, [boardCategory, boardLanes, boardRestaurants]);
+  const visibleSearchResultCount = useMemo(() => {
+    if (!isSearchActive) {
+      return 0;
+    }
+
+    let count = 0;
+    for (const places of grouped.values()) {
+      count += places.length;
+    }
+
+    return count;
+  }, [grouped, isSearchActive]);
   const effectiveViewMode: ViewMode = viewMode === 'kanban' && boardCategory !== null ? 'kanban' : 'list';
   const kanbanGridStyle = useMemo((): CSSProperties => {
     const columnCount = Math.max(visibleBoardStatuses.length, 1);
@@ -2529,6 +2541,14 @@ export function PublicEatsPage({
                 </div>
               ) : null}
             </div>
+            {isSearchActive ? (
+              <div className={styles.searchSummary} aria-live="polite">
+                <div className={styles.searchSummaryTitle}>Searching for “{searchQuery.trim()}”</div>
+                <div className={styles.searchSummaryMeta}>
+                  {visibleSearchResultCount === 1 ? '1 restaurant found' : `${visibleSearchResultCount} restaurants found`}
+                </div>
+              </div>
+            ) : null}
             {boardErrorMessage ? <div className={styles.boardError}>{boardErrorMessage}</div> : null}
             {effectiveViewMode === 'kanban' && boardCategory !== null && !isSearchActive ? (
               <div className={styles.kanbanBoard}>

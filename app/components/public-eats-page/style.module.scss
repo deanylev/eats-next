@@ -847,6 +847,33 @@
   margin-bottom: 4px;
 }
 
+.searchSummary {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--theme-secondary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 18px 0 16px;
+  padding: 12px 14px;
+}
+
+.searchSummaryTitle {
+  color: var(--theme-on-primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.searchSummaryMeta {
+  color: var(--theme-on-primary-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
 @media only screen and (min-width: 701px) {
   .sorting {
     column-gap: 18px;
