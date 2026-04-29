@@ -92,7 +92,6 @@ export function RestaurantFormFields({
   );
   const [selectedCityId, setSelectedCityId] = useState<string>(defaults?.cityId ?? '');
   const [selectedAreas, setSelectedAreas] = useState<string[]>(defaults?.areas ?? []);
-  const [selectedExistingArea, setSelectedExistingArea] = useState<string>('');
   const [newAreaValue, setNewAreaValue] = useState<string>('');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
   const [isLocationCreatorOpen, setIsLocationCreatorOpen] = useState<boolean>(false);
@@ -212,16 +211,6 @@ export function RestaurantFormFields({
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  useEffect(() => {
-    if (selectedExistingArea.length === 0) {
-      return;
-    }
-
-    if (!availableAreaOptions.includes(selectedExistingArea)) {
-      setSelectedExistingArea('');
-    }
-  }, [availableAreaOptions, selectedExistingArea]);
-
   const toggleMealType = (mealType: MealType, checked: boolean): void => {
     setSelectedMealTypes((current) => {
       if (checked) {
@@ -276,7 +265,6 @@ export function RestaurantFormFields({
 
   const handleCitySelectionChange = (value: string): void => {
     setSelectedCityId(value);
-    setSelectedExistingArea('');
 
     const selectedCity = availableCities.find((city) => city.id === value);
     if (selectedCity) {
@@ -377,7 +365,6 @@ export function RestaurantFormFields({
       upsertCity(payload.city);
       setSelectedCountryIdForNewCity(payload.city.countryId);
       setSelectedCityId(payload.city.id);
-      setSelectedExistingArea('');
 
       if (payload.duplicate) {
         setNewCityName(payload.city.name);
@@ -506,15 +493,6 @@ export function RestaurantFormFields({
     setSelectedAreas((current) => current.filter((area) => area !== value));
   };
 
-  const handleAddExistingArea = (): void => {
-    if (selectedExistingArea.length === 0) {
-      return;
-    }
-
-    addArea(selectedExistingArea);
-    setSelectedExistingArea('');
-  };
-
   const handleAddNewArea = (): void => {
     addArea(newAreaValue);
     setNewAreaValue('');
@@ -549,7 +527,6 @@ export function RestaurantFormFields({
     setUrlValue(`https://example.com/restaurants/test-${fakeSuffix}/`);
     setStatus('untried');
     setDislikedReasonValue('');
-    setSelectedExistingArea('');
     setNewAreaValue('');
   };
 
@@ -674,8 +651,13 @@ export function RestaurantFormFields({
             <>
               <div className="area-picker-row">
                 <select
-                  value={selectedExistingArea}
-                  onChange={(event) => setSelectedExistingArea(event.target.value)}
+                  value=""
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value.length > 0) {
+                      addArea(value);
+                    }
+                  }}
                   disabled={
                     (disableAreasUntilCitySelected && selectedCityId.length === 0) ||
                     availableAreaOptions.length === 0
@@ -694,14 +676,6 @@ export function RestaurantFormFields({
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className="secondary-action-button"
-                  onClick={handleAddExistingArea}
-                  disabled={selectedExistingArea.length === 0}
-                >
-                  Add area
-                </button>
               </div>
               <div className="area-picker-row">
                 <input
