@@ -219,6 +219,20 @@ const getPrimaryType = (restaurant: PublicRestaurant): RestaurantType | null => 
 const getRestaurantTypeSummary = (restaurant: PublicRestaurant): string =>
   restaurant.types.map((type) => `${type.emoji} ${type.name}`).join(', ');
 
+const updateRestaurantCardPointerTint = (element: HTMLDivElement, clientX: number, clientY: number): void => {
+  const bounds = element.getBoundingClientRect();
+  const pointerX = clientX - bounds.left;
+  const pointerY = clientY - bounds.top;
+
+  element.style.setProperty('--card-pointer-x', `${pointerX.toFixed(1)}px`);
+  element.style.setProperty('--card-pointer-y', `${pointerY.toFixed(1)}px`);
+  element.style.setProperty('--card-pointer-opacity', '1');
+};
+
+const clearRestaurantCardPointerTint = (element: HTMLDivElement): void => {
+  element.style.setProperty('--card-pointer-opacity', '0');
+};
+
 const buildBoardLanes = (
   boardCategory: BoardCategory,
   restaurants: PublicRestaurant[]
@@ -431,6 +445,8 @@ export function PublicEatsPage({
   const [controlsWalkthroughSpotlightRect, setControlsWalkthroughSpotlightRect] = useState<SpotlightRect | null>(null);
   const [controlsWalkthroughCardPosition, setControlsWalkthroughCardPosition] = useState<WalkthroughCardPosition | null>(null);
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
+  const [activeLuckyConfettiId, setActiveLuckyConfettiId] = useState<string | null>(null);
+  const [luckyRunCount, setLuckyRunCount] = useState(0);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
   const [filterPopoverMaxHeight, setFilterPopoverMaxHeight] = useState<number | null>(null);
@@ -443,7 +459,6 @@ export function PublicEatsPage({
   const [isSavingEditRestaurant, setIsSavingEditRestaurant] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const restaurantCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const luckyCardHasEnteredViewport = useRef<boolean>(false);
   const cityFieldRef = useRef<HTMLDivElement | null>(null);
   const compactFieldRef = useRef<HTMLDivElement | null>(null);
   const statusFieldRef = useRef<HTMLDivElement | null>(null);
@@ -1481,32 +1496,51 @@ export function PublicEatsPage({
       return;
     }
 
-    luckyCardHasEnteredViewport.current = false;
+    let timeoutId: number | null = null;
 
-    const onScroll = (): void => {
+    const startConfetti = (): void => {
+      setActiveLuckyConfettiId(luckyRestaurantId);
+      timeoutId = window.setTimeout(() => {
+        setActiveLuckyConfettiId((current) => (current === luckyRestaurantId ? null : current));
+        setLuckyRestaurantId((current) => (current === luckyRestaurantId ? null : current));
+      }, 1800);
+    };
+
+    const isLuckyCardInViewport = (): boolean => {
       const luckyCard = restaurantCardRefs.current[luckyRestaurantId];
       if (!luckyCard) {
-        setLuckyRestaurantId(null);
-        luckyCardHasEnteredViewport.current = false;
-        return;
+        return false;
       }
 
       const rect = luckyCard.getBoundingClientRect();
-      const inViewport = rect.bottom > 0 && rect.top < window.innerHeight;
-      if (inViewport) {
-        luckyCardHasEnteredViewport.current = true;
-      } else if (luckyCardHasEnteredViewport.current) {
-        setLuckyRestaurantId(null);
-        luckyCardHasEnteredViewport.current = false;
-      }
+      return rect.bottom > 0 && rect.top < window.innerHeight;
     };
 
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const onScroll = (): void => {
+      if (!isLuckyCardInViewport()) {
+        return;
+      }
+
+      window.removeEventListener('scroll', onScroll);
+      startConfetti();
+    };
+
+    setActiveLuckyConfettiId(null);
+
+    if (isLuckyCardInViewport()) {
+      startConfetti();
+    } else {
+      window.addEventListener('scroll', onScroll, { passive: true });
+    }
+
     return () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+
       window.removeEventListener('scroll', onScroll);
     };
-  }, [luckyRestaurantId]);
+  }, [luckyRestaurantId, luckyRunCount]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1762,8 +1796,8 @@ export function PublicEatsPage({
       return;
     }
 
-    luckyCardHasEnteredViewport.current = false;
     setLuckyRestaurantId(luckyId);
+    setLuckyRunCount((current) => current + 1);
 
     const cardRect = luckyCard.getBoundingClientRect();
     const currentScrollTop = Math.max(
@@ -2076,11 +2110,17 @@ export function PublicEatsPage({
           }
           onDragEnd={options.onDragEnd}
           onDragStart={options.onDragStart}
+          onMouseMove={(event) => {
+            updateRestaurantCardPointerTint(event.currentTarget, event.clientX, event.clientY);
+          }}
+          onMouseLeave={(event) => {
+            clearRestaurantCardPointerTint(event.currentTarget);
+          }}
         >
-          {luckyRestaurantId === place.id ? (
+          {activeLuckyConfettiId === place.id ? (
             <div className={styles.confettiLayer} aria-hidden="true">
               {confettiPieceIndexes.map((index) => (
-                <span className={styles.confettiPiece} key={`${place.id}-confetti-${index}`} />
+                <span className={styles.confettiPiece} key={`${place.id}-confetti-${luckyRunCount}-${index}`} />
               ))}
             </div>
           ) : null}
@@ -2245,9 +2285,11 @@ export function PublicEatsPage({
     [
       canDeleteRestaurants,
       canEditRestaurants,
+      activeLuckyConfettiId,
       compactCards,
       expandedCompactCardIds,
       luckyRestaurantId,
+      luckyRunCount,
       shouldIgnoreCompactCardToggle,
       toggleCompactCardExpansion
     ]
