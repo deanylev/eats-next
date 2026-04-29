@@ -14,8 +14,35 @@ export const restaurantStatusFilterSet = new Set<RestaurantStatusFilter>(['liked
 export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
 export const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 export const defaultRestaurantStatuses: RestaurantStatusFilter[] = ['untried', 'liked'];
+export const unassignedAreaLaneId = '__unassigned-area__';
 export const showFeelingLuckyForStatuses = (statuses: RestaurantStatusFilter[]): boolean =>
   !(statuses.length === 1 && statuses[0] === 'disliked');
+
+export const getPrimaryArea = (restaurant: { areas: string[] }): string | null =>
+  restaurant.areas[0]?.trim() ?? null;
+
+export const getRestaurantAreaLaneIds = (restaurant: { areas: string[] }): string[] => {
+  const areas = restaurant.areas
+    .map((area) => area.trim())
+    .filter((area) => area.length > 0);
+
+  if (areas.length === 0) {
+    return [unassignedAreaLaneId];
+  }
+
+  return [...new Set(areas)];
+};
+
+export const getIncludedRestaurantAreaLaneIds = (
+  restaurant: { areas: string[] },
+  excluded: string[]
+): string[] => {
+  const excludedSet = new Set(excluded);
+
+  return getRestaurantAreaLaneIds(restaurant).filter(
+    (areaLaneId) => areaLaneId === unassignedAreaLaneId || !excludedSet.has(areaLaneId)
+  );
+};
 
 export const getFeelingLuckyCandidateIds = (
   restaurantIds: string[],

@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import {
   getPreservedIncludedHeadings,
   getFeelingLuckyCandidateIds,
+  getIncludedRestaurantAreaLaneIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
+  getPrimaryArea,
+  getRestaurantAreaLaneIds,
   isUrl,
   mealLabel,
   readUrlState,
   reconcileExcludedAfterStatusChange,
-  showFeelingLuckyForStatuses
+  showFeelingLuckyForStatuses,
+  unassignedAreaLaneId
 } from '../app/components/public-eats-page/utils';
 
 test('mealLabel capitalizes known meal labels', () => {
@@ -202,5 +206,56 @@ test('reconcileExcludedAfterStatusChange preserves selections that temporarily d
       ['Bentleigh', 'Brighton', 'CBD', 'Fitzroy North']
     ),
     ['CBD']
+  );
+});
+
+test('getRestaurantAreaLaneIds includes every unique trimmed area', () => {
+  assert.deepEqual(
+    getRestaurantAreaLaneIds({
+      areas: [' CBD ', 'Fitzroy', 'CBD', '']
+    }),
+    ['CBD', 'Fitzroy']
+  );
+});
+
+test('getRestaurantAreaLaneIds uses the unassigned lane when there are no valid areas', () => {
+  assert.deepEqual(
+    getRestaurantAreaLaneIds({
+      areas: [' ', '']
+    }),
+    [unassignedAreaLaneId]
+  );
+});
+
+test('getIncludedRestaurantAreaLaneIds filters out excluded areas', () => {
+  assert.deepEqual(
+    getIncludedRestaurantAreaLaneIds(
+      {
+        areas: ['CBD', 'Fitzroy']
+      },
+      ['Fitzroy']
+    ),
+    ['CBD']
+  );
+});
+
+test('getIncludedRestaurantAreaLaneIds keeps the unassigned lane visible', () => {
+  assert.deepEqual(
+    getIncludedRestaurantAreaLaneIds(
+      {
+        areas: []
+      },
+      ['CBD', 'Fitzroy']
+    ),
+    [unassignedAreaLaneId]
+  );
+});
+
+test('getPrimaryArea returns the first trimmed area', () => {
+  assert.equal(
+    getPrimaryArea({
+      areas: [' CBD ', 'Fitzroy']
+    }),
+    'CBD'
   );
 });

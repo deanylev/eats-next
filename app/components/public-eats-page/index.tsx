@@ -12,7 +12,10 @@ import {
   confettiPieceIndexes,
   defaultRestaurantStatuses,
   getFeelingLuckyCandidateIds,
+  getIncludedRestaurantAreaLaneIds,
+  getPrimaryArea,
   getPreservedIncludedHeadings,
+  getRestaurantAreaLaneIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
@@ -20,6 +23,7 @@ import {
   readUrlState,
   reconcileExcludedAfterStatusChange,
   showFeelingLuckyForStatuses,
+  unassignedAreaLaneId,
   type CategoryFilter,
   type RestaurantStatusFilter
 } from '@/app/components/public-eats-page/utils';
@@ -193,7 +197,6 @@ type DraggedBoardCard = {
   sourceStatus: RestaurantStatusFilter;
 };
 
-const unassignedAreaLaneId = '__unassigned-area__';
 const unassignedAreaLaneLabel = 'No Area';
 const silentBoardMoveErrorMessages = new Set([
   'A disliked reason is required to move a restaurant to Not Recommended.',
@@ -211,8 +214,6 @@ const getBoardCategory = (category: CategoryFilter, isAllCitiesSelected: boolean
 
   return null;
 };
-
-const getPrimaryArea = (restaurant: PublicRestaurant): string | null => restaurant.areas[0]?.trim() ?? null;
 
 const getPrimaryType = (restaurant: PublicRestaurant): RestaurantType | null => restaurant.types[0] ?? null;
 
@@ -235,7 +236,8 @@ const clearRestaurantCardPointerTint = (element: HTMLDivElement): void => {
 
 const buildBoardLanes = (
   boardCategory: BoardCategory,
-  restaurants: PublicRestaurant[]
+  restaurants: PublicRestaurant[],
+  excluded: string[] = []
 ): BoardLane[] => {
   if (boardCategory === 'city') {
     const lanes = new Map<string, BoardLane>();
@@ -256,17 +258,22 @@ const buildBoardLanes = (
     let hasUnassignedLane = false;
 
     for (const restaurant of restaurants) {
-      const primaryArea = getPrimaryArea(restaurant);
-      if (!primaryArea) {
+      const areaLaneIds = getIncludedRestaurantAreaLaneIds(restaurant, excluded);
+      if (areaLaneIds.includes(unassignedAreaLaneId)) {
         hasUnassignedLane = true;
-        continue;
       }
 
-      lanes.set(primaryArea, {
-        boardCategory,
-        id: primaryArea,
-        label: primaryArea
-      });
+      for (const area of areaLaneIds) {
+        if (area === unassignedAreaLaneId) {
+          continue;
+        }
+
+        lanes.set(area, {
+          boardCategory,
+          id: area,
+          label: area
+        });
+      }
     }
 
     const ordered = [...lanes.values()].sort((laneA, laneB) => byAlpha(laneA.label, laneB.label));
@@ -308,6 +315,19 @@ const getRestaurantBoardLaneId = (restaurant: PublicRestaurant, boardCategory: B
   }
 
   return getPrimaryType(restaurant)?.id ?? '';
+};
+
+const getRestaurantBoardLaneIds = (
+  restaurant: PublicRestaurant,
+  boardCategory: BoardCategory,
+  excluded: string[] = []
+): string[] => {
+  if (boardCategory === 'area') {
+    return getIncludedRestaurantAreaLaneIds(restaurant, excluded);
+  }
+
+  const laneId = getRestaurantBoardLaneId(restaurant, boardCategory);
+  return laneId ? [laneId] : [];
 };
 
 type WalkthroughTargetId = 'city' | 'status' | 'filters' | 'compact' | 'search';
@@ -1293,8 +1313,7 @@ export function PublicEatsPage({
       }
 
       if (boardCategory === 'area') {
-        const primaryArea = getPrimaryArea(restaurant);
-        return primaryArea === null || !excluded.includes(primaryArea);
+        return getIncludedRestaurantAreaLaneIds(restaurant, excluded).length > 0;
       }
 
       const primaryType = getPrimaryType(restaurant);
@@ -1302,8 +1321,8 @@ export function PublicEatsPage({
     });
   }, [boardCategory, excluded, grouped, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedStatuses]);
   const boardLanes = useMemo(
-    () => (boardCategory ? buildBoardLanes(boardCategory, boardRestaurants) : []),
-    [boardCategory, boardRestaurants]
+    () => (boardCategory ? buildBoardLanes(boardCategory, boardRestaurants, excluded) : []),
+    [boardCategory, boardRestaurants, excluded]
   );
   const visibleBoardStatuses = useMemo(
     () => restaurantStatusChoices.filter((status) => selectedStatuses.includes(status)),
@@ -1324,23 +1343,20 @@ export function PublicEatsPage({
     }
 
     for (const restaurant of boardRestaurants) {
-      const laneId = getRestaurantBoardLaneId(restaurant, boardCategory);
-      if (!laneId) {
-        continue;
-      }
+      for (const laneId of getRestaurantBoardLaneIds(restaurant, boardCategory, excluded)) {
+        const lane = map.get(laneId);
+        if (!lane) {
+          continue;
+        }
 
-      const lane = map.get(laneId);
-      if (!lane) {
-        continue;
+        const current = lane.get(restaurant.status) ?? [];
+        current.push(restaurant);
+        lane.set(restaurant.status, current);
       }
-
-      const current = lane.get(restaurant.status) ?? [];
-      current.push(restaurant);
-      lane.set(restaurant.status, current);
     }
 
     return map;
-  }, [boardCategory, boardLanes, boardRestaurants]);
+  }, [boardCategory, boardLanes, boardRestaurants, excluded]);
   const visibleSearchResultCount = useMemo(() => {
     if (!isSearchActive) {
       return 0;
