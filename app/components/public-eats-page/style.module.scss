@@ -2208,6 +2208,17 @@
           inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 10%, transparent);
       }
 
+      &.newRestaurantCard {
+        animation: new-restaurant-pulse 2.2s ease-out 1;
+        border-color: transparent;
+        box-shadow:
+          0 0 0 1px color-mix(in srgb, var(--theme-secondary) 58%, transparent),
+          0 0 0 7px color-mix(in srgb, var(--theme-secondary) 12%, transparent),
+          0 0 28px color-mix(in srgb, var(--theme-secondary) 34%, transparent),
+          0 14px 32px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+      }
+
       &.likedPlaceCard:not(.compactPlaceCard) {
         --card-spotlight-color: #51d084;
 
@@ -3274,6 +3285,34 @@
   100% {
     opacity: 0;
     transform: translate3d(0, 180px, 0) rotate(500deg);
+  }
+}
+
+@keyframes new-restaurant-pulse {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--theme-secondary) 0%, transparent),
+      0 8px 18px rgba(0, 0, 0, 0.12);
+    transform: translateY(0) scale(0.995);
+  }
+
+  28% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--theme-secondary) 58%, transparent),
+      0 0 0 9px color-mix(in srgb, var(--theme-secondary) 16%, transparent),
+      0 0 34px color-mix(in srgb, var(--theme-secondary) 38%, transparent),
+      0 16px 34px rgba(0, 0, 0, 0.22);
+    transform: translateY(-2px) scale(1.008);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--theme-secondary) 58%, transparent),
+      0 0 0 7px color-mix(in srgb, var(--theme-secondary) 12%, transparent),
+      0 0 28px color-mix(in srgb, var(--theme-secondary) 34%, transparent),
+      0 14px 32px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+    transform: translateY(0) scale(1);
   }
 }
 

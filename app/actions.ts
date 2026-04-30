@@ -32,6 +32,7 @@ import {
   updateRestaurantTypeRecord
 } from '@/lib/cms-write';
 import { getDb } from '@/lib/db';
+import { parseRestaurantFormData } from '@/lib/restaurant-form-data';
 import {
   importAllTenants,
   importIntoCurrentTenant,
@@ -73,8 +74,6 @@ import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
 import {
   cityInputSchema,
   countryInputSchema,
-  parseAreas,
-  restaurantInputSchema,
   restaurantTypeInputSchema
 } from '@/lib/validators';
 
@@ -328,20 +327,6 @@ const parseRestaurantTypeInput = (formData: FormData) =>
   restaurantTypeInputSchema.parse({
     name: formData.get('name'),
     emoji: formData.get('emoji')
-  });
-
-const parseRestaurantInput = (formData: FormData) =>
-  restaurantInputSchema.parse({
-    cityId: formData.get('cityId'),
-    areas: parseAreas(formData.get('areas')),
-    mealTypes: formData.getAll('mealTypes'),
-    name: formData.get('name'),
-    notes: formData.get('notes'),
-    referredBy: formData.get('referredBy') ?? undefined,
-    typeIds: formData.getAll('typeIds'),
-    url: formData.get('url'),
-    status: formData.get('status'),
-    dislikedReason: formData.get('dislikedReason') ?? undefined
   });
 
 const parseBoardMoveInput = (formData: FormData) => {
@@ -981,31 +966,36 @@ export const deleteRestaurantType = async (formData: FormData): Promise<void> =>
 export const createRestaurant = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
-    await createRestaurantRecord(getDb(), tenant.id, parseRestaurantInput(formData));
+    await createRestaurantRecord(getDb(), tenant.id, parseRestaurantFormData(formData));
   }, { successMessage: 'Restaurant created.' });
 };
 
 export const createRestaurantFromRoot = async (formData: FormData): Promise<void> => {
-  return runRootAction(
-    async () => {
-      const { tenant } = await requireAdminSession();
-      await createRestaurantRecord(getDb(), tenant.id, parseRestaurantInput(formData));
-    },
-    {
-      errorCookie: ROOT_CREATE_ERROR_COOKIE,
-      successCookie: ROOT_CREATE_SUCCESS_COOKIE,
-      successMessage: 'Restaurant created successfully.',
-      successRedirectTarget: getRefererRedirectTarget([['openCreateDialog', null]], '/'),
-      errorRedirectTarget: getRefererRedirectTarget([['openCreateDialog', '1']], '/')
+  try {
+    const { tenant } = await requireAdminSession();
+    const restaurantId = await createRestaurantRecord(getDb(), tenant.id, parseRestaurantFormData(formData));
+
+    clearRootFlash(ROOT_CREATE_ERROR_COOKIE);
+    setRootSuccess(ROOT_CREATE_SUCCESS_COOKIE, 'Restaurant created successfully.');
+    redirect(getRefererRedirectTarget([
+      ['openCreateDialog', null],
+      ['newRestaurant', restaurantId]
+    ], '/'));
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
     }
-  );
+
+    setRootError(ROOT_CREATE_ERROR_COOKIE, getUserErrorText(error));
+    redirect(getRefererRedirectTarget([['openCreateDialog', '1']], '/'));
+  }
 };
 
 export const updateRestaurant = async (formData: FormData): Promise<void> => {
   return runAdminAction(async () => {
     const { tenant } = await requireAdminSession();
     const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-    await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantInput(formData));
+    await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantFormData(formData));
   });
 };
 
@@ -1017,7 +1007,7 @@ export const updateRestaurantFromRoot = async (formData: FormData): Promise<void
     async () => {
       const { tenant } = await requireAdminSession();
       const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
-      await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantInput(formData));
+      await updateRestaurantRecord(getDb(), tenant.id, restaurantId, parseRestaurantFormData(formData));
     },
     {
       errorCookie: ROOT_EDIT_ERROR_COOKIE,

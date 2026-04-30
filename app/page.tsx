@@ -20,8 +20,6 @@ export default async function RootPage({ searchParams }: RootPageProps) {
     const tenant = await resolveRequestTenant();
     const { hasSession } = await getAdminSessionForTenant(tenant);
     const flashMessages = readFlashMessages([
-      flashCookieNames.rootCreateError,
-      flashCookieNames.rootCreateSuccess,
       flashCookieNames.rootEditError,
       flashCookieNames.rootEditSuccess,
       flashCookieNames.rootDeleteError
@@ -42,10 +40,8 @@ export default async function RootPage({ searchParams }: RootPageProps) {
           hasSession ? { countries: data.countries, cities: data.cities, types: data.types, areaSuggestionsByCity } : undefined
         }
         createTools={hasSession ? { countries: data.countries, cities: data.cities, types: data.types } : undefined}
-        rootCreateErrorMessage={flashMessages[flashCookieNames.rootCreateError]}
-        rootCreateSuccessMessage={flashMessages[flashCookieNames.rootCreateSuccess]}
         openCreateDialogByDefault={
-          searchParams?.openCreateDialog === '1' || Boolean(flashMessages[flashCookieNames.rootCreateError])
+          searchParams?.openCreateDialog === '1'
         }
         rootEditErrorMessage={flashMessages[flashCookieNames.rootEditError]}
         rootEditSuccessMessage={flashMessages[flashCookieNames.rootEditSuccess]}

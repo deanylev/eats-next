@@ -1,9 +1,10 @@
 'use client';
 
 import Fuse from 'fuse.js';
+import { useRouter } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
-import type { CSSProperties, DragEvent } from 'react';
-import { createRestaurantFromRoot, moveRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
+import type { CSSProperties, DragEvent, FormEvent } from 'react';
+import { moveRestaurantFromRoot, updateRestaurantFromRoot } from '@/app/actions';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 import { DeleteRestaurantForm } from '@/app/components/delete-restaurant-form';
 import { RestaurantFormFields, type RestaurantFormDefaults } from '@/app/components/restaurant-form-fields';
@@ -41,6 +42,8 @@ const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 const minimumUpwardFilterPopoverListHeight = 160;
 const filterPopoverOffset = 20;
+const newRestaurantQueryParam = 'newRestaurant';
+const newRestaurantHighlightDurationMs = 4200;
 
 const readStoredCompactCards = (): boolean => {
   if (typeof window === 'undefined') {
@@ -406,8 +409,6 @@ type Props = {
     cities: Array<{ id: string; name: string; countryId: string; countryName: string }>;
     types: Array<{ id: string; name: string; emoji: string }>;
   };
-  rootCreateErrorMessage?: string | null;
-  rootCreateSuccessMessage?: string | null;
   openCreateDialogByDefault?: boolean;
   rootEditErrorMessage?: string | null;
   rootEditSuccessMessage?: string | null;
@@ -425,14 +426,13 @@ export function PublicEatsPage({
   allowRestaurantEditing = true,
   adminTools,
   createTools,
-  rootCreateErrorMessage = null,
-  rootCreateSuccessMessage = null,
   openCreateDialogByDefault = false,
   rootEditErrorMessage = null,
   rootEditSuccessMessage = null,
   rootDeleteErrorMessage = null,
   openEditRestaurantId
 }: Props) {
+  const router = useRouter();
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [boardErrorMessage, setBoardErrorMessage] = useState<string | null>(null);
@@ -467,6 +467,8 @@ export function PublicEatsPage({
   const [luckyRestaurantId, setLuckyRestaurantId] = useState<string | null>(null);
   const [activeLuckyConfettiId, setActiveLuckyConfettiId] = useState<string | null>(null);
   const [luckyRunCount, setLuckyRunCount] = useState(0);
+  const [pendingNewRestaurantId, setPendingNewRestaurantId] = useState<string | null>(null);
+  const [highlightedRestaurantId, setHighlightedRestaurantId] = useState<string | null>(null);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
   const [filterPopoverDirection, setFilterPopoverDirection] = useState<'up' | 'down'>('up');
   const [filterPopoverMaxHeight, setFilterPopoverMaxHeight] = useState<number | null>(null);
@@ -474,6 +476,8 @@ export function PublicEatsPage({
   const [isSearchPopoverOpen, setIsSearchPopoverOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(openCreateDialogByDefault);
   const [createDialogHasUnsavedChanges, setCreateDialogHasUnsavedChanges] = useState(false);
+  const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null);
+  const [isCreatingRestaurant, setIsCreatingRestaurant] = useState(false);
   const [editingRestaurantId, setEditingRestaurantId] = useState<string | null>(openEditRestaurantId ?? null);
   const [editDialogHasUnsavedChanges, setEditDialogHasUnsavedChanges] = useState(false);
   const [isSavingEditRestaurant, setIsSavingEditRestaurant] = useState(false);
@@ -495,6 +499,22 @@ export function PublicEatsPage({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverId = useId();
   const filtersReady = hasInitializedFilters;
+
+  const clearNewRestaurantQueryParam = useCallback((): void => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(newRestaurantQueryParam)) {
+      return;
+    }
+
+    url.searchParams.delete(newRestaurantQueryParam);
+    const query = url.searchParams.toString();
+    const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, []);
 
   useEffect(() => {
     setRestaurants(initialRestaurants);
@@ -1064,10 +1084,45 @@ export function PublicEatsPage({
       return;
     }
 
+    setCreateErrorMessage(null);
+    setIsCreatingRestaurant(false);
     setCreateDialogHasUnsavedChanges(false);
     setBoardCreatePreset(null);
     setIsCreateDialogOpen(false);
   }, [createDialogHasUnsavedChanges]);
+  const handleCreateRestaurantSubmit = useCallback(async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+
+    if (isCreatingRestaurant) {
+      return;
+    }
+
+    setCreateErrorMessage(null);
+    setIsCreatingRestaurant(true);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      const response = await fetch('/api/restaurants', {
+        method: 'POST',
+        body: formData
+      });
+      const result = (await response.json()) as { error?: string; restaurantId?: string };
+
+      if (!response.ok || !result.restaurantId) {
+        throw new Error(result.error ?? 'Could not create restaurant.');
+      }
+
+      setCreateDialogHasUnsavedChanges(false);
+      setBoardCreatePreset(null);
+      setIsCreateDialogOpen(false);
+      setPendingNewRestaurantId(result.restaurantId);
+      router.refresh();
+    } catch (error) {
+      setCreateErrorMessage(error instanceof Error ? error.message : 'Could not create restaurant.');
+    } finally {
+      setIsCreatingRestaurant(false);
+    }
+  }, [isCreatingRestaurant, router]);
 
   const closeEditRestaurantDialog = useCallback((): void => {
     if (editDialogHasUnsavedChanges && !window.confirm('Discard unsaved changes?')) {
@@ -1582,25 +1637,18 @@ export function PublicEatsPage({
   }, []);
 
   useEffect(() => {
-    if (!rootCreateErrorMessage) {
+    if (!highlightedRestaurantId) {
       return;
     }
 
-    window.confirm(rootCreateErrorMessage);
-    clearFlashCookieClient(flashCookieNames.rootCreateError, '/');
-    setIsCreateDialogOpen(true);
-  }, [rootCreateErrorMessage]);
+    const clearHighlightTimeoutId = window.setTimeout(() => {
+      setHighlightedRestaurantId((current) => (current === highlightedRestaurantId ? null : current));
+    }, newRestaurantHighlightDurationMs);
 
-  useEffect(() => {
-    if (!rootCreateSuccessMessage) {
-      return;
-    }
-
-    clearFlashCookieClient(flashCookieNames.rootCreateSuccess, '/');
-    setCreateDialogHasUnsavedChanges(false);
-    setBoardCreatePreset(null);
-    setIsCreateDialogOpen(false);
-  }, [rootCreateSuccessMessage]);
+    return () => {
+      window.clearTimeout(clearHighlightTimeoutId);
+    };
+  }, [highlightedRestaurantId]);
 
   useEffect(() => {
     if (!rootEditErrorMessage) {
@@ -1763,6 +1811,7 @@ export function PublicEatsPage({
         defaults,
         lockedFields
       });
+      setCreateErrorMessage(null);
       setIsCreateDialogOpen(true);
     },
     [boardCategory, createDefaultCityId, createDefaultMealTypes, createTools]
@@ -1801,6 +1850,129 @@ export function PublicEatsPage({
     statusFilterSnapshot.current = null;
     preservedIncludedHeadings.current = null;
   }, [getDefaultStatusesForCity]);
+  const scrollRestaurantCardIntoView = useCallback((restaurantId: string, behavior: ScrollBehavior = 'smooth'): boolean => {
+    const restaurantCard = restaurantCardRefs.current[restaurantId];
+    if (!restaurantCard || typeof window === 'undefined') {
+      return false;
+    }
+
+    const cardRect = restaurantCard.getBoundingClientRect();
+    const currentScrollTop = Math.max(
+      window.scrollY,
+      window.pageYOffset,
+      document.documentElement?.scrollTop ?? 0,
+      document.body?.scrollTop ?? 0
+    );
+    const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
+    window.scrollTo({
+      top: targetTop,
+      behavior
+    });
+
+    return true;
+  }, []);
+  const ensureNewRestaurantVisible = useCallback((restaurant: PublicRestaurant): boolean => {
+    let hasUpdatedFilters = false;
+
+    if (searchQuery.trim().length > 0) {
+      setSearchQuery('');
+      hasUpdatedFilters = true;
+    }
+
+    if (!isAllCitiesSelected && selectedCity !== restaurant.cityName) {
+      setSelectedCity(restaurant.cityName);
+      setSelectedStatuses((current) => {
+        const next = getDefaultStatusesForCity(restaurant.cityName);
+        return next.includes(restaurant.status) ? next : [...next, restaurant.status];
+      });
+      statusFilterSnapshot.current = null;
+      preservedIncludedHeadings.current = null;
+      hasUpdatedFilters = true;
+    } else if (!selectedStatuses.includes(restaurant.status)) {
+      setSelectedStatuses((current) => [...current, restaurant.status]);
+      hasUpdatedFilters = true;
+    }
+
+    if (selectedMealType !== 'Any' && !restaurant.mealTypes.includes(selectedMealType)) {
+      setSelectedMealType('Any');
+      hasUpdatedFilters = true;
+    }
+
+    if (category === 'area') {
+      const visibleHeadings =
+        isAllCitiesSelected || restaurant.areas.length === 0
+          ? [isAllCitiesSelected ? getCityGroupingHeading(restaurant) : restaurant.cityName]
+          : restaurant.areas;
+
+      if (visibleHeadings.some((heading) => excluded.includes(heading))) {
+        setExcluded((current) => current.filter((entry) => !visibleHeadings.includes(entry)));
+        preservedIncludedHeadings.current = null;
+        hasUpdatedFilters = true;
+      }
+    }
+
+    if (category === 'type') {
+      const visibleHeadings = restaurant.types.map((type) => type.name);
+
+      if (visibleHeadings.some((heading) => excluded.includes(heading))) {
+        setExcluded((current) => current.filter((entry) => !visibleHeadings.includes(entry)));
+        preservedIncludedHeadings.current = null;
+        hasUpdatedFilters = true;
+      }
+    }
+
+    return hasUpdatedFilters;
+  }, [
+    category,
+    excluded,
+    getDefaultStatusesForCity,
+    isAllCitiesSelected,
+    searchQuery,
+    selectedCity,
+    selectedMealType,
+    selectedStatuses
+  ]);
+  useEffect(() => {
+    if (!pendingNewRestaurantId) {
+      return;
+    }
+
+    const newRestaurant = restaurants.find((restaurant) => restaurant.id === pendingNewRestaurantId);
+    if (!newRestaurant) {
+      return;
+    }
+
+    if (ensureNewRestaurantVisible(newRestaurant)) {
+      return;
+    }
+
+    if (!visibleRestaurantIds.includes(newRestaurant.id)) {
+      return;
+    }
+
+    const revealFrameId = window.requestAnimationFrame(() => {
+      if (!scrollRestaurantCardIntoView(newRestaurant.id)) {
+        return;
+      }
+
+      setLuckyRestaurantId(newRestaurant.id);
+      setLuckyRunCount((current) => current + 1);
+      setHighlightedRestaurantId(newRestaurant.id);
+      clearNewRestaurantQueryParam();
+      setPendingNewRestaurantId(null);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(revealFrameId);
+    };
+  }, [
+    clearNewRestaurantQueryParam,
+    ensureNewRestaurantVisible,
+    pendingNewRestaurantId,
+    restaurants,
+    scrollRestaurantCardIntoView,
+    visibleRestaurantIds
+  ]);
   const handleFeelingLucky = (): void => {
     if (luckyCandidateIds.length === 0) {
       return;
@@ -1814,19 +1986,7 @@ export function PublicEatsPage({
 
     setLuckyRestaurantId(luckyId);
     setLuckyRunCount((current) => current + 1);
-
-    const cardRect = luckyCard.getBoundingClientRect();
-    const currentScrollTop = Math.max(
-      window.scrollY,
-      window.pageYOffset,
-      document.documentElement?.scrollTop ?? 0,
-      document.body?.scrollTop ?? 0
-    );
-    const targetTop = Math.max(0, currentScrollTop + cardRect.top - window.innerHeight * 0.22);
-    window.scrollTo({
-      top: targetTop,
-      behavior: 'smooth'
-    });
+    scrollRestaurantCardIntoView(luckyId);
   };
   const applySavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
     const availableIncludedHeadings = headings.filter((heading) => group.headings.includes(heading));
@@ -2101,7 +2261,9 @@ export function PublicEatsPage({
             canExpandCompactCard ? styles.compactPlaceCardInteractive : ''
           } ${isCompactDetailExpanded ? styles.compactPlaceCardExpanded : ''} ${
             luckyRestaurantId === place.id ? styles.luckyCard : ''
-          } ${options.extraClassName ?? ''} ${
+          } ${highlightedRestaurantId === place.id ? styles.newRestaurantCard : ''} ${
+            options.extraClassName ?? ''
+          } ${
             place.status === 'liked'
               ? styles.likedPlaceCard
               : place.status === 'disliked'
@@ -2304,6 +2466,7 @@ export function PublicEatsPage({
       activeLuckyConfettiId,
       compactCards,
       expandedCompactCardIds,
+      highlightedRestaurantId,
       luckyRestaurantId,
       luckyRunCount,
       shouldIgnoreCompactCardToggle,
@@ -2816,6 +2979,7 @@ export function PublicEatsPage({
             title="Add restaurant"
             onClick={() => {
               setBoardCreatePreset(null);
+              setCreateErrorMessage(null);
               setIsCreateDialogOpen(true);
             }}
           >
@@ -2953,9 +3117,8 @@ export function PublicEatsPage({
                     ×
                   </button>
                 </div>
-                <form
-                  action={createRestaurantFromRoot}
-                >
+                {createErrorMessage ? <div className={styles.boardError}>{createErrorMessage}</div> : null}
+                <form onSubmit={handleCreateRestaurantSubmit}>
                   <RestaurantFormFields
                     countries={createTools.countries}
                     cities={createTools.cities}
@@ -2963,8 +3126,8 @@ export function PublicEatsPage({
                     areaSuggestionsByCity={areaSuggestionsByCity}
                     disableAreasUntilCitySelected
                     keyPrefix="root-create-restaurant"
-                    submitLabel="Create restaurant"
-                    disableSubmit={createTools.cities.length === 0}
+                    submitLabel={isCreatingRestaurant ? 'Creating...' : 'Create restaurant'}
+                    disableSubmit={createTools.cities.length === 0 || isCreatingRestaurant}
                     defaults={{
                       cityId: boardCreatePreset?.defaults.cityId ?? createDefaultCityId,
                       areas: boardCreatePreset?.defaults.areas,
