@@ -15,8 +15,8 @@ import {
   getFeelingLuckyCandidateIds,
   getIncludedRestaurantAreaLaneIds,
   getPrimaryArea,
+  getPrimaryMealType,
   getPreservedIncludedHeadings,
-  getRestaurantAreaLaneIds,
   getMonthHeadingKey,
   getMonthHeadingLabel,
   isUrl,
@@ -390,6 +390,18 @@ const getRestaurantDetailText = (restaurant: PublicRestaurant): string => {
   return restaurant.notes.trim();
 };
 
+const getRestaurantStatusLabel = (status: PublicRestaurant['status']): string => {
+  if (status === 'liked') {
+    return 'Recommended';
+  }
+
+  if (status === 'disliked') {
+    return 'Not Recommended';
+  }
+
+  return 'Want to Try';
+};
+
 type Props = {
   restaurants: PublicRestaurant[];
   defaultCityName?: string | null;
@@ -455,6 +467,7 @@ export function PublicEatsPage({
   const [category, setCategory] = useState<CategoryFilter>('area');
   const [excluded, setExcluded] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [resultsMotionKey, setResultsMotionKey] = useState(0);
   const [compactCards, setCompactCards] = useState(false);
   const [collapsedKanbanLaneIds, setCollapsedKanbanLaneIds] = useState<Set<string>>(new Set());
   const [boardCreatePreset, setBoardCreatePreset] = useState<BoardCreatePreset | null>(null);
@@ -486,6 +499,7 @@ export function PublicEatsPage({
   const cityFieldRef = useRef<HTMLDivElement | null>(null);
   const compactFieldRef = useRef<HTMLDivElement | null>(null);
   const statusFieldRef = useRef<HTMLDivElement | null>(null);
+  const previousResultsMotionSignature = useRef<string | null>(null);
   const filterControlsRef = useRef<HTMLDivElement | null>(null);
   const searchFabButtonRef = useRef<HTMLButtonElement | null>(null);
   const filterPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1485,6 +1499,29 @@ export function PublicEatsPage({
 
     return [...ids];
   }, [grouped]);
+  const resultsMotionSignature = useMemo(
+    () =>
+      [
+        effectiveViewMode,
+        category,
+        selectedCity ?? allCitiesUrlValue,
+        selectedMealType,
+        selectedStatuses.join(','),
+        excluded.join(','),
+        normalizedSearchQuery,
+        visibleRestaurantIds.join(',')
+      ].join('::'),
+    [
+      category,
+      effectiveViewMode,
+      excluded,
+      normalizedSearchQuery,
+      selectedCity,
+      selectedMealType,
+      selectedStatuses,
+      visibleRestaurantIds
+    ]
+  );
   const visibleRestaurantsById = useMemo(
     () => new Map(restaurants.map((restaurant) => [restaurant.id, restaurant])),
     [restaurants]
@@ -1534,15 +1571,31 @@ export function PublicEatsPage({
     && currentIncludedHeadings.length > 1
     && currentIncludedHeadings.length < headings.length
     && matchingSavedFilterGroup === null;
-  const noResultsMessage = selectedStatuses.length === 0
-    ? 'Select at least one status to show restaurants.'
-    : 'No restaurants match these filters.';
   const luckyCandidateIds = useMemo(
     () => getFeelingLuckyCandidateIds(visibleRestaurantIds, visibleRestaurantsById, selectedStatuses),
     [selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
   );
   const disableFeelingLuckyButton =
     !showFeelingLuckyForStatuses(selectedStatuses) || luckyCandidateIds.length === 0;
+
+  useEffect(() => {
+    if (!filtersReady) {
+      return;
+    }
+
+    if (previousResultsMotionSignature.current === null) {
+      previousResultsMotionSignature.current = resultsMotionSignature;
+      return;
+    }
+
+    if (previousResultsMotionSignature.current === resultsMotionSignature) {
+      return;
+    }
+
+    previousResultsMotionSignature.current = resultsMotionSignature;
+    setResultsMotionKey((current) => current + 1);
+  }, [filtersReady, resultsMotionSignature]);
+
   const createAreaSuggestionsByCity = useMemo(() => {
     return buildAreaSuggestionsByCity(restaurants);
   }, [restaurants]);
@@ -1850,6 +1903,65 @@ export function PublicEatsPage({
     statusFilterSnapshot.current = null;
     preservedIncludedHeadings.current = null;
   }, [getDefaultStatusesForCity]);
+  const resetVisibleFilters = useCallback((): void => {
+    setSelectedMealType('Any');
+    setSelectedStatuses(getDefaultStatusesForCity(selectedCity));
+    preservedIncludedHeadings.current = null;
+    statusFilterSnapshot.current = null;
+    setExcluded([]);
+  }, [getDefaultStatusesForCity, selectedCity]);
+  const renderNoResultsState = (variant: 'kanban' | 'list') => {
+    if (isSearchActive) {
+      return (
+        <div className={`${styles.noResults} ${styles.emptyState}`}>
+          <div className={styles.emptyStateKicker}>No match</div>
+          <div className={styles.emptyStateTitle}>Nothing found for “{searchQuery.trim()}”.</div>
+          <p>Try a shorter search, another spelling, or clear the query to get back to browsing.</p>
+          <div className={styles.emptyStateActions}>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setIsSearchPopoverOpen(false);
+              }}
+            >
+              Clear Search
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (selectedStatuses.length === 0) {
+      return (
+        <div className={`${styles.noResults} ${styles.emptyState}`}>
+          <div className={styles.emptyStateKicker}>Nothing visible</div>
+          <div className={styles.emptyStateTitle}>Choose at least one status.</div>
+          <div className={styles.emptyStateActions}>
+            <button
+              type="button"
+              onClick={() => setSelectedStatuses(getDefaultStatusesForCity(selectedCity))}
+            >
+              Show Defaults
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`${styles.noResults} ${styles.emptyState}`}>
+        <div className={styles.emptyStateKicker}>{variant === 'kanban' ? 'Board is clear' : 'No places here'}</div>
+        <div className={styles.emptyStateTitle}>No restaurants match this view.</div>
+        <p>Broaden the filters, switch meal type, or bring the hidden groups back in.</p>
+        <div className={styles.emptyStateActions}>
+          <button type="button" onClick={resetVisibleFilters}>
+            Reset Filters
+          </button>
+        </div>
+      </div>
+    );
+  };
   const scrollRestaurantCardIntoView = useCallback((restaurantId: string, behavior: ScrollBehavior = 'smooth'): boolean => {
     const restaurantCard = restaurantCardRefs.current[restaurantId];
     if (!restaurantCard || typeof window === 'undefined') {
@@ -2254,6 +2366,10 @@ export function PublicEatsPage({
       const isCompactDetailExpanded = expandedCompactCardIds.has(place.id);
       const showCompactCardActions = canEditRestaurants || canDeleteRestaurants;
       const canExpandCompactCard = compactCards && (compactDetailText.length > 0 || showCompactCardActions);
+      const types = category === 'type' ? [] : place.types;
+      const primaryMealType = getPrimaryMealType(place.mealTypes);
+      const areas =
+        category === 'area' ? [] : [...new Set(place.areas.map((area) => area.trim()).filter(Boolean))];
 
       return (
         <div
@@ -2304,11 +2420,7 @@ export function PublicEatsPage({
           ) : null}
           {compactCards ? (
             <span className={styles.compactStatusLabel}>
-              {place.status === 'liked'
-                ? 'Recommended'
-                : place.status === 'disliked'
-                  ? 'Not Recommended'
-                  : 'Want to Try'}
+              {getRestaurantStatusLabel(place.status)}
             </span>
           ) : null}
           {canExpandCompactCard ? (
@@ -2341,6 +2453,25 @@ export function PublicEatsPage({
               <span className={styles.dislikedBadge}>Not Recommended</span>
             </div>
           ) : null}
+          <div className={styles.foodIdentity}>
+            {types.map((type) => (
+              <span className={styles.typePill} key={type.id}>
+                <span aria-hidden="true">{type.emoji}</span>
+                <span>{type.name}</span>
+              </span>
+            ))}
+            {primaryMealType ? (
+              <span
+                className={styles.mealPill}
+                title={place.mealTypes.map((mealType) => mealLabel(mealType)).join(', ')}
+              >
+                {primaryMealType}
+              </span>
+            ) : null}
+            {areas.map((area) => (
+              <span className={styles.areaPill} key={area}>{area}</span>
+            ))}
+          </div>
           <span>
             <a className={styles.subHeading} href={place.url} target="_blank" rel="noreferrer">
               {place.name}
@@ -2369,8 +2500,6 @@ export function PublicEatsPage({
               </button>
             )
           ) : null}
-
-          <span className={styles.areaOrType}>{options.summaryText}</span>
 
           {!compactCards ? (
             place.status === 'disliked' ? (
@@ -2470,7 +2599,8 @@ export function PublicEatsPage({
       luckyRestaurantId,
       luckyRunCount,
       shouldIgnoreCompactCardToggle,
-      toggleCompactCardExpansion
+      toggleCompactCardExpansion,
+      category
     ]
   );
 
@@ -2763,9 +2893,9 @@ export function PublicEatsPage({
             ) : null}
             {boardErrorMessage ? <div className={styles.boardError}>{boardErrorMessage}</div> : null}
             {effectiveViewMode === 'kanban' && boardCategory !== null && !isSearchActive ? (
-              <div className={styles.kanbanBoard}>
+              <div className={`${styles.kanbanBoard} ${styles.resultsMotion}`} key={`kanban-${resultsMotionKey}`}>
                 {boardLanes.length === 0 ? (
-                  <div className={styles.noResults}>{noResultsMessage}</div>
+                  renderNoResultsState('kanban')
                 ) : (
                   <>
                     {boardLanes.map((lane) => (
@@ -2916,11 +3046,14 @@ export function PublicEatsPage({
                 {isMovingBoardCard ? <div className={styles.boardSavingState}>Saving board move…</div> : null}
               </div>
             ) : (
-              <div className={`${styles.placesContainer} ${isSearchActive ? styles.searchPlacesContainer : ''}`}>
+              <div
+                className={`${styles.placesContainer} ${styles.resultsMotion} ${
+                  isSearchActive ? styles.searchPlacesContainer : ''
+                }`}
+                key={`list-${resultsMotionKey}`}
+              >
                 {grouped.size === 0 ? (
-                  <div className={styles.noResults}>
-                    {isSearchActive ? `No restaurants matched "${searchQuery.trim()}".` : noResultsMessage}
-                  </div>
+                  renderNoResultsState('list')
                 ) : (
                   [...grouped.entries()].map(([heading, places]) => (
                     <Fragment key={heading}>

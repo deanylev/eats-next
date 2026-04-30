@@ -18,6 +18,20 @@ export const unassignedAreaLaneId = '__unassigned-area__';
 export const showFeelingLuckyForStatuses = (statuses: RestaurantStatusFilter[]): boolean =>
   !(statuses.length === 1 && statuses[0] === 'disliked');
 
+export const getPrimaryMealType = (mealTypes: string[]) => {
+  if (mealTypes.length === 1) {
+    return mealLabel(mealTypes[0]);
+  }
+
+  const nonSnacks = mealTypes.filter((mealType) => mealType !== 'snack')!;
+  if (nonSnacks.length === 1) {
+    return mealLabel(nonSnacks[0]);
+  }
+
+  const primary = mealLabel(nonSnacks[0]);
+  return `${primary} + ${nonSnacks.length - 1}`;
+};
+
 export const getPrimaryArea = (restaurant: { areas: string[] }): string | null =>
   restaurant.areas[0]?.trim() ?? null;
 
