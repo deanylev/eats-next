@@ -636,12 +636,16 @@
   }
 
   :global(.google-maps-choice-grid) {
+    --google-maps-choice-divider-offset: 31px;
+
     align-items: start;
     display: grid;
     gap: 14px;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 
     @media only screen and (max-width: 820px) {
+      --google-maps-choice-divider-offset: 0px;
+
       grid-template-columns: 1fr;
     }
   }
@@ -671,6 +675,7 @@
     font-weight: 700;
     justify-content: center;
     letter-spacing: 0.08em;
+    margin-top: var(--google-maps-choice-divider-offset);
     min-width: 28px;
     text-transform: uppercase;
 
