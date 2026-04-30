@@ -360,7 +360,14 @@ export function RestaurantFormFields({
     });
   };
 
+  const clearSelectedAreas = (): void => {
+    setSelectedAreas([]);
+    setNewAreaValue('');
+    setAreaSelectionError('');
+  };
+
   const handleCitySelectionChange = (value: string): void => {
+    clearSelectedAreas();
     setSelectedCityId(value);
 
     const selectedCity = availableCities.find((city) => city.id === value);
@@ -461,6 +468,7 @@ export function RestaurantFormFields({
 
       upsertCity(payload.city);
       setSelectedCountryIdForNewCity(payload.city.countryId);
+      clearSelectedAreas();
       setSelectedCityId(payload.city.id);
 
       if (payload.duplicate) {
