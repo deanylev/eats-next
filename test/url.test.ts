@@ -5,6 +5,7 @@ import { isGoogleMapsSearchUrl, isGoogleMapsUrl, normalizeLookupUrl } from '../l
 test('isGoogleMapsUrl accepts direct Google Maps venue URLs', () => {
   assert.equal(isGoogleMapsUrl('https://www.google.com/maps/place/Foo/@1,2,3z'), true);
   assert.equal(isGoogleMapsUrl('https://maps.app.goo.gl/abcd1234'), true);
+  assert.equal(isGoogleMapsUrl('https://maps.google.com/?cid=11885663895765773631'), true);
 });
 
 test('isGoogleMapsUrl rejects non-google URLs', () => {

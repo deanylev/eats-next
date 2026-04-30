@@ -625,6 +625,217 @@
     font-weight: 600;
   }
 
+  :global(.google-maps-search) {
+    display: grid;
+    gap: 8px;
+  }
+
+  :global(.google-maps-choice) {
+    display: grid;
+    gap: 10px;
+  }
+
+  :global(.google-maps-choice-grid) {
+    align-items: start;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+
+    @media only screen and (max-width: 820px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  :global(.google-maps-choice-panel) {
+    align-self: start;
+    background: color-mix(in srgb, var(--theme-on-primary) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+    border-radius: 14px;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  :global(.google-maps-choice-heading) {
+    color: var(--theme-on-primary-strong);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  :global(.google-maps-choice-divider) {
+    align-items: center;
+    color: var(--theme-on-primary-muted);
+    display: flex;
+    font-size: 12px;
+    font-weight: 700;
+    justify-content: center;
+    letter-spacing: 0.08em;
+    min-width: 28px;
+    text-transform: uppercase;
+
+    @media only screen and (max-width: 820px) {
+      min-height: 24px;
+      min-width: 0;
+    }
+  }
+
+  :global(.google-maps-choice-divider span) {
+    background: var(--theme-secondary-glass-bg);
+    border: 1px solid var(--theme-secondary-glass-border);
+    border-radius: 999px;
+    box-shadow: var(--theme-secondary-glass-shadow);
+    color: var(--theme-on-secondary);
+    padding: 5px 8px;
+  }
+
+  :global(.google-maps-search-help) {
+    color: var(--theme-on-primary-muted);
+    display: block;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  :global(.google-maps-selected-place) {
+    align-items: start;
+    backdrop-filter: blur(10px) saturate(140%);
+    background: var(--theme-secondary-glass-bg);
+    border: 1px solid var(--theme-secondary-glass-border);
+    border-radius: 14px;
+    box-shadow: var(--theme-secondary-glass-shadow);
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 14px;
+
+    @media only screen and (max-width: 600px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  :global(.google-maps-selected-place-copy) {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  :global(.google-maps-selected-place-label) {
+    color: color-mix(in srgb, var(--theme-on-secondary) 82%, white 18%);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  :global(.google-maps-selected-place-name) {
+    color: var(--theme-on-secondary);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  :global(.google-maps-selected-place-secondary) {
+    color: color-mix(in srgb, var(--theme-on-secondary) 76%, transparent);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  :global(.google-maps-selected-place) > :global(.secondary-action-button) {
+    background: color-mix(in srgb, white 88%, var(--theme-secondary) 12%);
+    border: 1px solid color-mix(in srgb, var(--theme-on-secondary) 18%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 55%, transparent),
+      0 1px 2px rgba(0, 0, 0, 0.08);
+    color: var(--theme-on-secondary);
+  }
+
+  :global(.google-maps-selected-place) > :global(.secondary-action-button:hover:not(:disabled)) {
+    background: color-mix(in srgb, white 82%, var(--theme-secondary) 18%);
+  }
+
+  :global(.google-maps-suggestion-list) {
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(95, 99, 104, 0.22);
+    border-radius: 14px;
+    box-shadow:
+      0 1px 2px rgba(60, 64, 67, 0.18),
+      0 6px 18px rgba(60, 64, 67, 0.2);
+    display: grid;
+    overflow: hidden;
+  }
+
+  :global(.google-maps-suggestion) {
+    align-items: center;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: #202124;
+    cursor: pointer;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 20px minmax(0, 1fr);
+    padding: 12px 14px;
+    text-align: left;
+    transition: background-color 120ms ease;
+    width: 100%;
+  }
+
+  :global(.google-maps-suggestion + .google-maps-suggestion) {
+    border-top: 1px solid rgba(232, 234, 237, 0.95);
+  }
+
+  :global(.google-maps-suggestion:hover:not(:disabled)),
+  :global(.google-maps-suggestion:focus-visible) {
+    background: #f1f3f4;
+    outline: none;
+  }
+
+  :global(.google-maps-suggestion:disabled) {
+    cursor: progress;
+    opacity: 0.7;
+  }
+
+  :global(.google-maps-suggestion-icon) {
+    align-items: center;
+    color: #5f6368;
+    display: inline-flex;
+    height: 20px;
+    justify-content: center;
+    width: 20px;
+  }
+
+  :global(.google-maps-suggestion-icon svg) {
+    display: block;
+    height: 18px;
+    width: 18px;
+  }
+
+  :global(.google-maps-suggestion-copy) {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  :global(.google-maps-suggestion-primary) {
+    color: #202124;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  :global(.google-maps-suggestion-secondary) {
+    color: #5f6368;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  :global(.google-maps-manual-disabled) {
+    color: var(--theme-on-primary-muted);
+    display: block;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
   :global(.area-suggestion) {
     @include glass.area-suggestion(var(--theme-secondary));
     border-radius: 8px;

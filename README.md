@@ -7,19 +7,21 @@ A vibe coded successor to [eats](https://github.com/deanylev/eats) that uses a C
 2. Set admin credentials in `.env`:
    - `ADMIN_USERNAME`
    - `ADMIN_PASSWORD`
-3. Install dependencies:
+3. To enable Google Maps restaurant autocomplete in the URL field, also set:
+   - `GOOGLE_MAPS_API_KEY`
+4. Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-4. Run migrations:
+5. Run migrations:
 
 ```bash
 pnpm db:migrate
 ```
 
-5. Start:
+6. Start:
 
 ```bash
 pnpm dev

@@ -1,6 +1,6 @@
 'use client';
 
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
@@ -37,6 +37,19 @@ type RestaurantFormLockedFields = {
   areas?: boolean;
   city?: boolean;
   status?: boolean;
+};
+
+type GoogleMapsSuggestion = {
+  fullText: string;
+  placeId: string;
+  primaryText: string;
+  secondaryText: string;
+};
+
+type SelectedGoogleMapsPlace = {
+  label: string;
+  secondaryText: string;
+  url: string;
 };
 
 type RestaurantFormFieldsProps = {
@@ -111,6 +124,14 @@ export function RestaurantFormFields({
   const [referredByValue, setReferredByValue] = useState<string>(defaults?.referredBy ?? '');
   const [urlValue, setUrlValue] = useState<string>(defaults?.url ?? '');
   const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
+  const [googleMapsSearchValue, setGoogleMapsSearchValue] = useState<string>('');
+  const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSuggestion[]>([]);
+  const [googleMapsSearchError, setGoogleMapsSearchError] = useState<string>('');
+  const [isSearchingGoogleMaps, setIsSearchingGoogleMaps] = useState<boolean>(false);
+  const [isResolvingGoogleMapsSelection, setIsResolvingGoogleMapsSelection] = useState<boolean>(false);
+  const [selectedGoogleMapsPlace, setSelectedGoogleMapsPlace] = useState<SelectedGoogleMapsPlace | null>(null);
+  const [areaSelectionError, setAreaSelectionError] = useState<string>('');
+  const googleMapsSessionTokenRef = useRef<string>('');
   const cityGroups = useMemo(
     () =>
       buildCitySelectGroups(
@@ -125,6 +146,10 @@ export function RestaurantFormFields({
   const areaSuggestionsForCity = useMemo(
     () => areaSuggestionsByCity?.[selectedCityId] ?? [],
     [areaSuggestionsByCity, selectedCityId]
+  );
+  const selectedCity = useMemo(
+    () => availableCities.find((city) => city.id === selectedCityId) ?? null,
+    [availableCities, selectedCityId]
   );
   const lockedAreaLookup = useMemo(
     () =>
@@ -147,6 +172,7 @@ export function RestaurantFormFields({
     return areaSuggestionsForCity.filter((area) => !selectedAreaLookup.has(area.trim().toLowerCase()));
   }, [areaSuggestionsForCity, selectedAreaLookup, selectedCityId]);
   const areasValue = useMemo(() => selectedAreas.join('\n'), [selectedAreas]);
+  const requiresGoogleMapsUrl = selectedAreas.length < 2;
   const normalizedNewCountryName = newCountryName.trim().toLowerCase();
   const isDuplicateNewCountryName =
     normalizedNewCountryName.length > 0 &&
@@ -210,6 +236,77 @@ export function RestaurantFormFields({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (requiresGoogleMapsUrl) {
+      return;
+    }
+
+    setSelectedGoogleMapsPlace(null);
+    setGoogleMapsSuggestions([]);
+    setGoogleMapsSearchError('');
+    googleMapsSessionTokenRef.current = '';
+  }, [requiresGoogleMapsUrl]);
+
+  useEffect(() => {
+    if (!requiresGoogleMapsUrl) {
+      setGoogleMapsSuggestions([]);
+      setGoogleMapsSearchError('');
+      setIsSearchingGoogleMaps(false);
+      return;
+    }
+
+    const trimmedSearch = googleMapsSearchValue.trim();
+    if (trimmedSearch.length < 2) {
+      setGoogleMapsSuggestions([]);
+      setGoogleMapsSearchError('');
+      setIsSearchingGoogleMaps(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const sessionToken =
+        googleMapsSessionTokenRef.current || (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`);
+      googleMapsSessionTokenRef.current = sessionToken;
+      setIsSearchingGoogleMaps(true);
+      setGoogleMapsSearchError('');
+
+      void fetch('/api/google-maps-autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          cityName: selectedCity?.name,
+          countryName: selectedCity?.countryName,
+          input: trimmedSearch,
+          sessionToken
+        })
+      })
+        .then(async (response) => {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string; suggestions?: GoogleMapsSuggestion[] }
+            | null;
+
+          if (!response.ok) {
+            throw new Error(payload?.error ?? 'Something went wrong. Please try again.');
+          }
+
+          setGoogleMapsSuggestions(payload?.suggestions ?? []);
+        })
+        .catch((error: unknown) => {
+          setGoogleMapsSuggestions([]);
+          setGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+        })
+        .finally(() => {
+          setIsSearchingGoogleMaps(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [googleMapsSearchValue, requiresGoogleMapsUrl, selectedCity?.countryName, selectedCity?.name]);
 
   const toggleMealType = (mealType: MealType, checked: boolean): void => {
     setSelectedMealTypes((current) => {
@@ -482,6 +579,12 @@ export function RestaurantFormFields({
       return;
     }
 
+    if (selectedGoogleMapsPlace && selectedAreas.length >= 1) {
+      setAreaSelectionError('Clear the selected Google Maps place before adding a second area.');
+      return;
+    }
+
+    setAreaSelectionError('');
     setSelectedAreas((current) => [...current, trimmedValue]);
   };
 
@@ -490,6 +593,7 @@ export function RestaurantFormFields({
       return;
     }
 
+    setAreaSelectionError('');
     setSelectedAreas((current) => current.filter((area) => area !== value));
   };
 
@@ -528,6 +632,48 @@ export function RestaurantFormFields({
     setStatus('untried');
     setDislikedReasonValue('');
     setNewAreaValue('');
+  };
+
+  const handleSelectGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<void> => {
+    const sessionToken = googleMapsSessionTokenRef.current;
+    setIsResolvingGoogleMapsSelection(true);
+    setGoogleMapsSearchError('');
+
+    try {
+      const response = await fetch('/api/google-maps-place-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: sessionToken || undefined
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; label?: string; url?: string }
+        | null;
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error ?? 'Something went wrong. Please try again.');
+      }
+
+      const selectedPlace = {
+        label: payload.label?.trim() || suggestion.primaryText,
+        secondaryText: suggestion.secondaryText,
+        url: payload.url
+      };
+
+      setUrlValue(payload.url);
+      setGoogleMapsSearchValue(payload.label?.trim() || suggestion.fullText);
+      setGoogleMapsSuggestions([]);
+      setSelectedGoogleMapsPlace(selectedPlace);
+      googleMapsSessionTokenRef.current = '';
+    } catch (error) {
+      setGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    } finally {
+      setIsResolvingGoogleMapsSelection(false);
+    }
   };
 
   return (
@@ -707,6 +853,7 @@ export function RestaurantFormFields({
       <small id={`${keyPrefix}-areas-help`}>
         If fewer than 2 areas are entered, URL must be Google Maps. If 2+ areas, URL must not be Google Maps.
       </small>
+      {areaSelectionError ? <div className="inline-type-warning">{areaSelectionError}</div> : null}
 
       <fieldset>
         <legend>Meal Types (pick 1 to 4)</legend>
@@ -799,10 +946,149 @@ export function RestaurantFormFields({
         </div>
       </fieldset>
 
-      <label>
-        URL
-        <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
-      </label>
+      {requiresGoogleMapsUrl ? (
+        <div className="google-maps-choice">
+          <div className="field-group-label">Google Maps URL</div>
+          <small id={`${keyPrefix}-google-maps-help`} className="google-maps-search-help">
+            Pick a place from Google Maps or paste the URL manually.
+          </small>
+          <div className="google-maps-choice-grid" aria-describedby={`${keyPrefix}-google-maps-help`}>
+            <div className="google-maps-choice-panel">
+              <div className="google-maps-choice-heading">Search and pick a place</div>
+              <div className="google-maps-search">
+                {selectedGoogleMapsPlace ? (
+                  <div className="google-maps-selected-place" aria-live="polite">
+                    <div className="google-maps-selected-place-copy">
+                      <div className="google-maps-selected-place-label">Selected place</div>
+                      <div className="google-maps-selected-place-name">{selectedGoogleMapsPlace.label}</div>
+                      {selectedGoogleMapsPlace.secondaryText ? (
+                        <div className="google-maps-selected-place-secondary">
+                          {selectedGoogleMapsPlace.secondaryText}
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary-action-button"
+                      onClick={() => {
+                        setSelectedGoogleMapsPlace(null);
+                        setGoogleMapsSearchValue('');
+                        setGoogleMapsSuggestions([]);
+                        setGoogleMapsSearchError('');
+                        setAreaSelectionError('');
+                        setUrlValue('');
+                        googleMapsSessionTokenRef.current = '';
+                      }}
+                    >
+                      Clear selected place
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="area-picker-row">
+                      <input
+                        type="text"
+                        value={googleMapsSearchValue}
+                        placeholder="Search Google Maps"
+                        onChange={(event) => setGoogleMapsSearchValue(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="secondary-action-button"
+                        onClick={() => {
+                          setGoogleMapsSearchValue('');
+                          setGoogleMapsSuggestions([]);
+                          setGoogleMapsSearchError('');
+                          googleMapsSessionTokenRef.current = '';
+                        }}
+                        disabled={
+                          googleMapsSearchValue.trim().length === 0 &&
+                          googleMapsSuggestions.length === 0 &&
+                          googleMapsSearchError.length === 0
+                        }
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {isSearchingGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
+                    {googleMapsSearchError ? <div className="inline-type-warning">{googleMapsSearchError}</div> : null}
+                    {!isSearchingGoogleMaps &&
+                    !googleMapsSearchError &&
+                    googleMapsSearchValue.trim().length >= 2 &&
+                    googleMapsSuggestions.length === 0 ? (
+                      <div className="inline-type-warning">No matching places found</div>
+                    ) : null}
+                    {googleMapsSuggestions.length > 0 ? (
+                      <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps suggestions">
+                        {googleMapsSuggestions.map((suggestion) => (
+                          <button
+                            key={`${keyPrefix}-google-maps-${suggestion.placeId}`}
+                            type="button"
+                            className="google-maps-suggestion"
+                            onClick={() => {
+                              void handleSelectGoogleMapsSuggestion(suggestion);
+                            }}
+                            disabled={isResolvingGoogleMapsSelection}
+                          >
+                            <span className="google-maps-suggestion-icon" aria-hidden="true">
+                              <svg viewBox="0 0 24 24" focusable="false">
+                                <path
+                                  d="M12 2.75a6.75 6.75 0 0 1 6.75 6.75c0 4.65-5.08 10.37-6.27 11.64a.65.65 0 0 1-.96 0C10.33 19.87 5.25 14.15 5.25 9.5A6.75 6.75 0 0 1 12 2.75Zm0 2A4.75 4.75 0 0 0 7.25 9.5c0 2.97 2.98 6.99 4.75 8.98 1.77-1.99 4.75-6.01 4.75-8.98A4.75 4.75 0 0 0 12 4.75Zm0 2.25a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
+                                  fill="currentColor"
+                                />
+                              </svg>
+                            </span>
+                            <span className="google-maps-suggestion-copy">
+                              <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
+                              {suggestion.secondaryText ? (
+                                <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
+                              ) : null}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {isResolvingGoogleMapsSelection ? (
+                      <div className="inline-type-warning">Filling Google Maps URL…</div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="google-maps-choice-divider" aria-hidden="true">
+              <span>OR</span>
+            </div>
+            <div className="google-maps-choice-panel">
+              <div className="google-maps-choice-heading">Paste the URL manually</div>
+              {selectedGoogleMapsPlace ? <input type="hidden" name="url" value={urlValue} /> : null}
+              <input
+                name={selectedGoogleMapsPlace ? undefined : 'url'}
+                type="url"
+                required
+                value={selectedGoogleMapsPlace ? '' : urlValue}
+                onChange={(event) => {
+                  setUrlValue(event.target.value);
+                  if (selectedGoogleMapsPlace) {
+                    setSelectedGoogleMapsPlace(null);
+                  }
+                }}
+                disabled={selectedGoogleMapsPlace !== null}
+                placeholder={selectedGoogleMapsPlace ? 'Using the selected Google Maps place' : 'https://maps.app.goo.gl/...'}
+              />
+              {selectedGoogleMapsPlace ? (
+                <small className="google-maps-manual-disabled">
+                  Clear the selected place on the left to paste a different Google Maps URL manually.
+                </small>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <label>
+          URL
+          <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
+        </label>
+      )}
 
       <label>
         Status

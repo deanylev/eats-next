@@ -12,7 +12,15 @@ export const isGoogleMapsUrl = (url: string): boolean => {
       return false;
     }
 
-    return host === 'maps.app.goo.gl' || path === '/maps' || path.startsWith('/maps/');
+    if (host === 'maps.app.goo.gl') {
+      return true;
+    }
+
+    if ((host === 'maps.google.com' || host.endsWith('.maps.google.com')) && path === '/') {
+      return parsed.searchParams.has('cid') || parsed.searchParams.has('q') || parsed.searchParams.has('query');
+    }
+
+    return path === '/maps' || path.startsWith('/maps/');
   } catch {
     return false;
   }

@@ -31,6 +31,15 @@ test('restaurantInputSchema accepts a single-area restaurant with a Google Maps 
   assert.equal(restaurantInputSchema.safeParse(baseRestaurantInput).success, true);
 });
 
+test('restaurantInputSchema accepts a selected-place Google Maps cid URL', () => {
+  const result = restaurantInputSchema.safeParse({
+    ...baseRestaurantInput,
+    url: 'https://maps.google.com/?cid=11885663895765773631'
+  });
+
+  assert.equal(result.success, true);
+});
+
 test('restaurantInputSchema rejects a single-area restaurant with a non-Google URL', () => {
   const result = restaurantInputSchema.safeParse({
     ...baseRestaurantInput,
