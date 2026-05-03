@@ -52,6 +52,9 @@ type GoogleMapsSuggestion = {
 
 type SelectedGoogleMapsPlace = {
   address: string | null;
+  area: string | null;
+  cityName: string | null;
+  countryName: string | null;
   label: string;
   latitude: number | null;
   longitude: number | null;
@@ -72,6 +75,7 @@ type RestaurantFormFieldsProps = {
   submitLabel: string;
   disableSubmit?: boolean;
   keyPrefix: string;
+  preferGoogleMapsFirst?: boolean;
   showDevelopmentPopulateButton?: boolean;
 };
 
@@ -100,6 +104,7 @@ export function RestaurantFormFields({
   submitLabel,
   disableSubmit = false,
   keyPrefix,
+  preferGoogleMapsFirst = false,
   showDevelopmentPopulateButton = false
 }: RestaurantFormFieldsProps) {
   const [availableCountries, setAvailableCountries] = useState(countries);
@@ -693,6 +698,9 @@ export function RestaurantFormFields({
       const payload = (await response.json().catch(() => null)) as
         | {
             address?: string | null;
+            area?: string | null;
+            cityName?: string | null;
+            countryName?: string | null;
             error?: string;
             label?: string;
             latitude?: number | null;
@@ -708,6 +716,9 @@ export function RestaurantFormFields({
 
       const selectedPlace = {
         address: payload.address ?? null,
+        area: payload.area ?? null,
+        cityName: payload.cityName ?? null,
+        countryName: payload.countryName ?? null,
         label: payload.label?.trim() || suggestion.primaryText,
         latitude: payload.latitude ?? null,
         longitude: payload.longitude ?? null,
@@ -721,6 +732,28 @@ export function RestaurantFormFields({
       setAddressValue(selectedPlace.address ?? '');
       setLatitudeValue(typeof selectedPlace.latitude === 'number' ? String(selectedPlace.latitude) : '');
       setLongitudeValue(typeof selectedPlace.longitude === 'number' ? String(selectedPlace.longitude) : '');
+      setNameValue((current) => (current.trim().length === 0 ? selectedPlace.label : current));
+      let inferredArea = selectedPlace.area;
+      if (!lockedFields?.city && selectedPlace.cityName && selectedPlace.countryName) {
+        const selectedPlaceCityName = selectedPlace.cityName.trim().toLowerCase();
+        const selectedPlaceCountryName = selectedPlace.countryName.trim().toLowerCase();
+        const matchingCity = availableCities.find(
+          (city) =>
+            city.name.trim().toLowerCase() === selectedPlaceCityName &&
+            city.countryName.trim().toLowerCase() === selectedPlaceCountryName
+        );
+
+        if (matchingCity && matchingCity.id !== selectedCityId) {
+          setSelectedCityId(matchingCity.id);
+          setSelectedCountryIdForNewCity(matchingCity.countryId);
+        } else if (!matchingCity && selectedCity && selectedPlaceCityName !== selectedCity.name.trim().toLowerCase()) {
+          inferredArea = selectedPlace.cityName;
+        }
+      }
+      if (!lockedFields?.areas && inferredArea && selectedAreas.length === 0) {
+        setSelectedAreas([inferredArea]);
+        setAreaSelectionError('');
+      }
       setGoogleMapsSearchValue(payload.label?.trim() || suggestion.fullText);
       setGoogleMapsSuggestions([]);
       setSelectedGoogleMapsPlace(selectedPlace);
@@ -734,98 +767,100 @@ export function RestaurantFormFields({
 
   return (
     <>
-      <label>
-        City
-        {lockedFields?.city ? <input type="hidden" name="cityId" value={selectedCityId} /> : null}
-        <CitySelect
-          id={`${keyPrefix}-city`}
-          name={lockedFields?.city ? undefined : 'cityId'}
-          required={true}
-          groups={cityGroups}
-          value={selectedCityId}
-          onChange={handleCitySelectionChange}
-          disabled={lockedFields?.city}
-        />
-      </label>
-      {!lockedFields?.city && (
-        <div className="inline-location-toggle">
-          <button
-            type="button"
-            className="location-toggle-button"
-            aria-expanded={isLocationCreatorOpen}
-            onClick={() => setIsLocationCreatorOpen((current) => !current)}
-          >
-            {isLocationCreatorOpen ? 'Hide' : 'Add new country or city'}
-          </button>
-        </div>
-      )}
-      {isLocationCreatorOpen ? (
-        <div className="inline-type-creator">
-          <div className="inline-location-creator-row">
-            <input
-              type="text"
-              value={newCountryName}
-              placeholder="New country name"
-              onChange={(event) => setNewCountryName(event.target.value)}
-              onKeyDown={handleInlineCountryKeyDown}
-            />
+      <div className="restaurant-form-city-section">
+        <label>
+          City
+          {lockedFields?.city ? <input type="hidden" name="cityId" value={selectedCityId} /> : null}
+          <CitySelect
+            id={`${keyPrefix}-city`}
+            name={lockedFields?.city ? undefined : 'cityId'}
+            required={true}
+            groups={cityGroups}
+            value={selectedCityId}
+            onChange={handleCitySelectionChange}
+            disabled={lockedFields?.city}
+          />
+        </label>
+        {!lockedFields?.city && (
+          <div className="inline-location-toggle">
             <button
               type="button"
-              className="secondary-action-button"
-              disabled={isCreatingCountry || newCountryName.trim().length === 0 || isDuplicateNewCountryName}
-              onClick={() => {
-                void handleCreateCountry();
-              }}
+              className="location-toggle-button"
+              aria-expanded={isLocationCreatorOpen}
+              onClick={() => setIsLocationCreatorOpen((current) => !current)}
             >
-              {isCreatingCountry ? 'Adding…' : 'Add country'}
+              {isLocationCreatorOpen ? 'Hide' : 'Add new country or city'}
             </button>
           </div>
-          <div className="inline-location-creator-row">
-            <select
-              value={selectedCountryIdForNewCity}
-              onChange={(event) => setSelectedCountryIdForNewCity(event.target.value)}
-              disabled={availableCountries.length === 0 || isCreatingCity}
-            >
-              <option value="" disabled>
-                {availableCountries.length === 0 ? 'Add a country first' : 'Choose country'}
-              </option>
-              {availableCountries.map((country) => (
-                <option key={`${keyPrefix}-country-${country.id}`} value={country.id}>
-                  {country.name}
+        )}
+        {isLocationCreatorOpen ? (
+          <div className="inline-type-creator">
+            <div className="inline-location-creator-row">
+              <input
+                type="text"
+                value={newCountryName}
+                placeholder="New country name"
+                onChange={(event) => setNewCountryName(event.target.value)}
+                onKeyDown={handleInlineCountryKeyDown}
+              />
+              <button
+                type="button"
+                className="secondary-action-button"
+                disabled={isCreatingCountry || newCountryName.trim().length === 0 || isDuplicateNewCountryName}
+                onClick={() => {
+                  void handleCreateCountry();
+                }}
+              >
+                {isCreatingCountry ? 'Adding…' : 'Add country'}
+              </button>
+            </div>
+            <div className="inline-location-creator-row">
+              <select
+                value={selectedCountryIdForNewCity}
+                onChange={(event) => setSelectedCountryIdForNewCity(event.target.value)}
+                disabled={availableCountries.length === 0 || isCreatingCity}
+              >
+                <option value="" disabled>
+                  {availableCountries.length === 0 ? 'Add a country first' : 'Choose country'}
                 </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={newCityName}
-              placeholder="New city name"
-              onChange={(event) => setNewCityName(event.target.value)}
-              onKeyDown={handleInlineCityKeyDown}
-              disabled={availableCountries.length === 0}
-            />
-            <button
-              type="button"
-              className="secondary-action-button"
-              disabled={
-                isCreatingCity ||
-                availableCountries.length === 0 ||
-                selectedCountryIdForNewCity.length === 0 ||
-                newCityName.trim().length === 0 ||
-                isDuplicateNewCityName
-              }
-              onClick={() => {
-                void handleCreateCity();
-              }}
-            >
-              {isCreatingCity ? 'Adding…' : 'Add city'}
-            </button>
+                {availableCountries.map((country) => (
+                  <option key={`${keyPrefix}-country-${country.id}`} value={country.id}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={newCityName}
+                placeholder="New city name"
+                onChange={(event) => setNewCityName(event.target.value)}
+                onKeyDown={handleInlineCityKeyDown}
+                disabled={availableCountries.length === 0}
+              />
+              <button
+                type="button"
+                className="secondary-action-button"
+                disabled={
+                  isCreatingCity ||
+                  availableCountries.length === 0 ||
+                  selectedCountryIdForNewCity.length === 0 ||
+                  newCityName.trim().length === 0 ||
+                  isDuplicateNewCityName
+                }
+                onClick={() => {
+                  void handleCreateCity();
+                }}
+              >
+                {isCreatingCity ? 'Adding…' : 'Add city'}
+              </button>
+            </div>
+            {isDuplicateNewCountryName ? <div className="inline-type-warning">That country already exists.</div> : null}
+            {isDuplicateNewCityName ? <div className="inline-type-warning">That city already exists in this country.</div> : null}
           </div>
-          {isDuplicateNewCountryName ? <div className="inline-type-warning">That country already exists.</div> : null}
-          {isDuplicateNewCityName ? <div className="inline-type-warning">That city already exists in this country.</div> : null}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
-      <div className="field-group">
+      <div className="field-group restaurant-form-area-section">
         <div className="field-group-label">Areas (optional)</div>
         <input type="hidden" name="areas" value={areasValue} />
         <div className="area-picker" aria-describedby={`${keyPrefix}-areas-help`}>
@@ -1003,10 +1038,12 @@ export function RestaurantFormFields({
       </fieldset>
 
       {requiresGoogleMapsUrl ? (
-        <div className="google-maps-choice">
-          <div className="field-group-label">Google Maps URL</div>
+        <div className={`google-maps-choice ${preferGoogleMapsFirst ? 'google-maps-choice-first' : ''}`}>
+          <div className="field-group-label">{preferGoogleMapsFirst ? 'Google Maps place' : 'Google Maps URL'}</div>
           <small id={`${keyPrefix}-google-maps-help`} className="google-maps-search-help">
-            Pick a place from Google Maps or paste the URL manually.
+            {preferGoogleMapsFirst
+              ? 'Search Google Maps first. The form will fill the name, area, URL, and map details when it can.'
+              : 'Pick a place from Google Maps or paste the URL manually.'}
           </small>
           <div className="google-maps-choice-grid" aria-describedby={`${keyPrefix}-google-maps-help`}>
             <div className="google-maps-choice-panel">

@@ -635,6 +635,15 @@
     gap: 10px;
   }
 
+  :global(.google-maps-choice-first) {
+    order: -30;
+  }
+
+  :global(.restaurant-form-city-section) {
+    display: grid;
+    gap: 10px;
+  }
+
   :global(.google-maps-choice-grid) {
     --google-maps-choice-divider-offset: 31px;
 

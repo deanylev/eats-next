@@ -31,6 +31,11 @@ type GoogleMapsAutocompleteApiResponse = {
 };
 
 type GoogleMapsPlaceDetailsApiResponse = {
+  addressComponents?: Array<{
+    longText?: string;
+    shortText?: string;
+    types?: string[];
+  }>;
   displayName?: { text?: string };
   formattedAddress?: string;
   googleMapsUri?: string;
@@ -54,6 +59,9 @@ export type GoogleMapsSuggestion = {
 
 export type GoogleMapsResolvedPlace = {
   address: string | null;
+  area: string | null;
+  cityName: string | null;
+  countryName: string | null;
   label: string;
   latitude: number | null;
   longitude: number | null;
@@ -69,8 +77,15 @@ const googleMapsAutocompleteFieldMask = [
   'suggestions.placePrediction.structuredFormat.secondaryText.text',
   'suggestions.placePrediction.text.text'
 ].join(',');
-const googleMapsPlaceDetailsFieldMask = ['displayName', 'formattedAddress', 'googleMapsUri', 'location'].join(',');
+const googleMapsPlaceDetailsFieldMask = [
+  'addressComponents',
+  'displayName',
+  'formattedAddress',
+  'googleMapsUri',
+  'location'
+].join(',');
 const googleMapsTextSearchFieldMask = [
+  'places.addressComponents',
   'places.id',
   'places.displayName',
   'places.formattedAddress',
@@ -183,6 +198,15 @@ export const searchGoogleMapsSuggestions = async ({
     .slice(0, 5);
 };
 
+const findAddressComponentText = (
+  addressComponents: GoogleMapsPlaceDetailsApiResponse['addressComponents'],
+  types: string[]
+): string | null => {
+  const component = addressComponents?.find((entry) => types.some((type) => entry.types?.includes(type)));
+
+  return component?.longText?.trim() || component?.shortText?.trim() || null;
+};
+
 export const resolveGoogleMapsPlaceUrl = async ({
   placeId,
   sessionToken
@@ -214,8 +238,20 @@ export const resolveGoogleMapsPlaceUrl = async ({
     throw new Error('Google Maps did not return a place URL for that result.');
   }
 
+  const cityName = findAddressComponentText(payload.addressComponents, ['locality', 'postal_town']);
+  const countryName = findAddressComponentText(payload.addressComponents, ['country']);
+  const area = findAddressComponentText(payload.addressComponents, [
+    'neighborhood',
+    'sublocality',
+    'sublocality_level_1',
+    'administrative_area_level_3'
+  ]);
+
   return {
     address: payload.formattedAddress?.trim() || null,
+    area,
+    cityName,
+    countryName,
     label: payload.displayName?.text?.trim() ?? '',
     latitude: typeof payload.location?.latitude === 'number' ? payload.location.latitude : null,
     longitude: typeof payload.location?.longitude === 'number' ? payload.location.longitude : null,
@@ -326,6 +362,14 @@ const searchGoogleMapsPlace = async ({
 
   return {
     address: place.formattedAddress?.trim() || null,
+    area: findAddressComponentText(place.addressComponents, [
+      'neighborhood',
+      'sublocality',
+      'sublocality_level_1',
+      'administrative_area_level_3'
+    ]),
+    cityName: findAddressComponentText(place.addressComponents, ['locality', 'postal_town']),
+    countryName: findAddressComponentText(place.addressComponents, ['country']),
     label: place.displayName?.text?.trim() ?? '',
     latitude: typeof place.location?.latitude === 'number' ? place.location.latitude : null,
     longitude: typeof place.location?.longitude === 'number' ? place.location.longitude : null,
@@ -360,6 +404,9 @@ export const resolveGoogleMapsLocationFromUrl = async ({
   if (coordinates) {
     return {
       address: null,
+      area: null,
+      cityName: null,
+      countryName: null,
       label: placeName ?? name,
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,

@@ -3689,6 +3689,7 @@ export function PublicEatsPage({
                     keyPrefix="root-create-restaurant"
                     submitLabel={isCreatingRestaurant ? 'Creating...' : 'Create restaurant'}
                     disableSubmit={createTools.cities.length === 0 || isCreatingRestaurant}
+                    preferGoogleMapsFirst
                     defaults={{
                       cityId: boardCreatePreset?.defaults.cityId ?? createDefaultCityId,
                       areas: boardCreatePreset?.defaults.areas,
