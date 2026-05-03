@@ -40,6 +40,7 @@ const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', '
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
 const viewModeStorageKey = 'publicEatsViewMode';
+const mapLabelModeStorageKey = 'publicEatsMapLabelMode';
 const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 const minimumUpwardFilterPopoverListHeight = 160;
@@ -69,6 +70,21 @@ const readStoredViewMode = (): ViewMode => {
     return stored === 'kanban' || stored === 'map' ? stored : 'list';
   } catch {
     return 'list';
+  }
+};
+
+type MapLabelMode = 'emoji' | 'emojiName' | 'none';
+
+const readStoredMapLabelMode = (): MapLabelMode => {
+  if (typeof window === 'undefined') {
+    return 'emoji';
+  }
+
+  try {
+    const stored = window.localStorage.getItem(mapLabelModeStorageKey);
+    return stored === 'emojiName' || stored === 'none' || stored === 'emoji' ? stored : 'emoji';
+  } catch {
+    return 'emoji';
   }
 };
 
@@ -464,7 +480,8 @@ const renderMapInfoUrlRow = (label: string, value: string): string => {
 };
 
 const getRestaurantMapMarkerColors = (
-  status: PublicRestaurant['status']
+  status: PublicRestaurant['status'],
+  themeSecondaryColor: string
 ): { fill: string; stroke: string } => {
   if (status === 'liked') {
     return { fill: '#28a65d', stroke: '#17653a' };
@@ -474,13 +491,14 @@ const getRestaurantMapMarkerColors = (
     return { fill: '#e13f36', stroke: '#8f221c' };
   }
 
-  return { fill: '#f2bd33', stroke: '#8a6412' };
+  return { fill: themeSecondaryColor, stroke: '#17131c' };
 };
 
 const buildRestaurantMapMarkerIcon = (
-  status: PublicRestaurant['status']
+  status: PublicRestaurant['status'],
+  themeSecondaryColor: string
 ): string => {
-  const colors = getRestaurantMapMarkerColors(status);
+  const colors = getRestaurantMapMarkerColors(status, themeSecondaryColor);
 
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="54" viewBox="0 0 38 54">
@@ -497,6 +515,19 @@ const buildUserLocationMapMarkerIcon = (): string =>
       <circle cx="15" cy="15" r="8" fill="#3b82f6" stroke="#fff" stroke-width="3" />
     </svg>`
   )}`;
+
+const getRestaurantMapLabel = (restaurant: PublicRestaurant, mode: MapLabelMode): string | null => {
+  if (mode === 'none') {
+    return null;
+  }
+
+  const emoji = restaurant.types[0]?.emoji.trim() ?? '';
+  if (mode === 'emoji') {
+    return emoji || null;
+  }
+
+  return [emoji, restaurant.name].filter(Boolean).join(' ');
+};
 
 const getDistanceInKm = (
   first: { latitude: number; longitude: number },
@@ -574,6 +605,9 @@ export function PublicEatsPage({
   openEditRestaurantId
 }: Props) {
   const router = useRouter();
+  const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
+  const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
+  const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [boardErrorMessage, setBoardErrorMessage] = useState<string | null>(null);
@@ -602,6 +636,7 @@ export function PublicEatsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [resultsMotionKey, setResultsMotionKey] = useState(0);
   const [compactCards, setCompactCards] = useState(false);
+  const [mapLabelMode, setMapLabelMode] = useState<MapLabelMode>('emoji');
   const [collapsedKanbanLaneIds, setCollapsedKanbanLaneIds] = useState<Set<string>>(new Set());
   const [boardCreatePreset, setBoardCreatePreset] = useState<BoardCreatePreset | null>(null);
   const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
@@ -711,6 +746,7 @@ export function PublicEatsPage({
 
   useEffect(() => {
     setCompactCards(readStoredCompactCards());
+    setMapLabelMode(readStoredMapLabelMode());
     setViewMode(readStoredViewMode());
 
     const urlState = readUrlState();
@@ -738,6 +774,18 @@ export function PublicEatsPage({
       // Ignore storage failures; compact mode still works for the current page session.
     }
   }, [compactCards, hasInitializedFilters]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hasInitializedFilters) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(mapLabelModeStorageKey, mapLabelMode);
+    } catch {
+      // Ignore storage failures; map label mode still works for the current page session.
+    }
+  }, [hasInitializedFilters, mapLabelMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !hasInitializedFilters) {
@@ -2431,16 +2479,19 @@ export function PublicEatsPage({
           lat: restaurant.latitude as number,
           lng: restaurant.longitude as number
         };
+        const mapLabel = getRestaurantMapLabel(restaurant, mapLabelMode);
         const marker = new googleMaps.Marker({
           icon: {
             anchor: new googleMaps.Point(19, 52),
             scaledSize: new googleMaps.Size(38, 54),
-            url: buildRestaurantMapMarkerIcon(restaurant.status)
+            url: buildRestaurantMapMarkerIcon(restaurant.status, resolvedSecondaryColor)
           },
-          label: {
-            className: 'eats-map-marker-label',
-            text: restaurant.name
-          },
+          ...(mapLabel ? {
+            label: {
+              className: 'eats-map-marker-label',
+              text: mapLabel
+            }
+          } : {}),
           map: googleMapRef.current,
           position,
           title: restaurant.name
@@ -2549,7 +2600,7 @@ export function PublicEatsPage({
       clearGoogleMapObjects();
       googleMapRef.current = null;
     };
-  }, [effectiveViewMode, googleMapsBrowserApiKey, mappedVisibleRestaurants, userLocation]);
+  }, [effectiveViewMode, googleMapsBrowserApiKey, mapLabelMode, mappedVisibleRestaurants, resolvedSecondaryColor, userLocation]);
   const applySavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
     const availableIncludedHeadings = headings.filter((heading) => group.headings.includes(heading));
     preservedIncludedHeadings.current = availableIncludedHeadings;
@@ -2806,9 +2857,6 @@ export function PublicEatsPage({
     ]
   );
   const showWalkthroughDebugTrigger = process.env.NODE_ENV !== 'production';
-  const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
-  const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
-  const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
   const renderRestaurantCard = useCallback(
     (place: PublicRestaurant, options: RestaurantCardRenderOptions) => {
       const compactDetailText = getRestaurantDetailText(place);
@@ -3145,14 +3193,25 @@ export function PublicEatsPage({
                     </select>
                   ) : null}
                   {effectiveViewMode === 'map' && hasMappedVisibleRestaurants ? (
-                    <button
-                      type="button"
-                      className={`${styles.compactToggle} ${styles.mapLocationButton}`}
-                      onClick={() => requestUserLocation()}
-                      disabled={isLocatingUser}
-                    >
-                      {isLocatingUser ? 'Refreshing...' : userLocation ? 'Refresh location' : 'Centre on me'}
-                    </button>
+                    <>
+                      <select
+                        aria-label="Map labels"
+                        value={mapLabelMode}
+                        onChange={(event) => setMapLabelMode(event.target.value as MapLabelMode)}
+                      >
+                        <option value="emoji">Emoji labels</option>
+                        <option value="emojiName">Emoji + name</option>
+                        <option value="none">No labels</option>
+                      </select>
+                      <button
+                        type="button"
+                        className={`${styles.compactToggle} ${styles.mapLocationButton}`}
+                        onClick={() => requestUserLocation()}
+                        disabled={isLocatingUser}
+                      >
+                        {isLocatingUser ? 'Refreshing...' : userLocation ? 'Refresh location' : 'Centre on me'}
+                      </button>
+                    </>
                   ) : (
                     <label className={styles.compactToggle}>
                       <input
