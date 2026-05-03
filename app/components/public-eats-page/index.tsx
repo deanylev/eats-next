@@ -683,6 +683,7 @@ export function PublicEatsPage({
   const googleMapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapRef = useRef<any>(null);
   const googleMarkersRef = useRef<any[]>([]);
+  const googleMarkersByRestaurantIdRef = useRef<Map<string, any>>(new Map());
   const googleUserMarkerRef = useRef<any>(null);
   const shouldFocusUserLocationRef = useRef(false);
   const userLocationFocusModeRef = useRef<UserLocationFocusMode>('always');
@@ -891,7 +892,8 @@ export function PublicEatsPage({
   }, [citiesByCountry]);
 
   const isAllCitiesSelected = selectedCity === null;
-  const isCityGrouping = category === 'area' && isAllCitiesSelected;
+  const filterCategory: CategoryFilter = viewMode === 'map' ? 'type' : category;
+  const isCityGrouping = filterCategory === 'area' && isAllCitiesSelected;
   const categoryOptionAreaLabel = isAllCitiesSelected ? 'City' : 'Area';
   const filterEntityLabelPlural = isCityGrouping ? 'Cities' : 'Areas';
   const savedGroupCategoryLabel = isCityGrouping ? 'city' : 'area';
@@ -993,7 +995,7 @@ export function PublicEatsPage({
     const values = new Set<string>();
 
     for (const restaurant of mealFilteredRestaurants) {
-      if (category === 'area') {
+      if (filterCategory === 'area') {
         if (isAllCitiesSelected || restaurant.areas.length === 0) {
           values.add(isAllCitiesSelected ? getCityGroupingHeading(restaurant) : (selectedCity ?? restaurant.cityName));
         } else {
@@ -1003,24 +1005,24 @@ export function PublicEatsPage({
         }
       }
 
-      if (category === 'type') {
+      if (filterCategory === 'type') {
         for (const type of restaurant.types) {
           values.add(type.name);
         }
       }
 
-      if (category === 'recentlyAdded') {
+      if (filterCategory === 'recentlyAdded') {
         values.add(getMonthHeadingKey(restaurant.createdAt));
       }
     }
 
     const headingList = [...values];
-    if (category === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded') {
       return headingList.sort((a, b) => b.localeCompare(a));
     }
 
     return headingList.sort((a, b) => byAlpha(a, b));
-  }, [category, isAllCitiesSelected, mealFilteredRestaurants, selectedCity]);
+  }, [filterCategory, isAllCitiesSelected, mealFilteredRestaurants, selectedCity]);
 
   const controlsWalkthroughSteps = useMemo((): WalkthroughStep[] => {
     const steps: WalkthroughStep[] = [];
@@ -1048,7 +1050,7 @@ export function PublicEatsPage({
       description: 'Use these to show places I want to try, places I recommend, or places I would skip.'
     });
 
-    if (category !== 'recentlyAdded' && headings.length > 1) {
+    if (filterCategory !== 'recentlyAdded' && headings.length > 1) {
       steps.push({
         id: 'filters',
         title: 'Narrow it down',
@@ -1069,7 +1071,7 @@ export function PublicEatsPage({
     });
 
     return steps;
-  }, [category, defaultCityName, hasMultipleCities, hasMultipleCountries, headings.length, isSearchActive, onlyCountryName]);
+  }, [filterCategory, defaultCityName, hasMultipleCities, hasMultipleCountries, headings.length, isSearchActive, onlyCountryName]);
 
   const activeControlsWalkthroughStep = controlsWalkthroughSteps[controlsWalkthroughStepIndex] ?? null;
 
@@ -1230,7 +1232,7 @@ export function PublicEatsPage({
       return;
     }
 
-    if (category === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded') {
       return;
     }
 
@@ -1249,7 +1251,7 @@ export function PublicEatsPage({
     }
 
     setExcluded((current) => current.filter((entry) => headings.includes(entry)));
-  }, [category, hasInitializedFilters, headings, selectedCity]);
+  }, [filterCategory, hasInitializedFilters, headings, selectedCity]);
 
   useEffect(() => {
     if (!hasInitializedFilters) {
@@ -1263,14 +1265,14 @@ export function PublicEatsPage({
 
     preservedIncludedHeadings.current = null;
     setExcluded([]);
-  }, [category, hasInitializedFilters, selectedCity]);
+  }, [filterCategory, hasInitializedFilters, selectedCity]);
 
   useEffect(() => {
-    if (category === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded') {
       setIsFilterPopoverOpen(false);
       setFilterPopoverDirection('up');
     }
-  }, [category]);
+  }, [filterCategory]);
 
   useEffect(() => {
     if (!isSearchPopoverOpen) {
@@ -1442,7 +1444,7 @@ export function PublicEatsPage({
     return () => {
       window.removeEventListener('resize', updateFilterPopoverDirection);
     };
-  }, [category, headings.length, isFilterPopoverOpen, savedFilterGroups.length, selectedCity]);
+  }, [filterCategory, headings.length, isFilterPopoverOpen, savedFilterGroups.length, selectedCity]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !hasInitializedFilters) {
@@ -1514,7 +1516,7 @@ export function PublicEatsPage({
 
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
-      if (category === 'area') {
+      if (filterCategory === 'area') {
         headingValues.push(
           ...(isAllCitiesSelected || restaurant.areas.length === 0
             ? [isAllCitiesSelected ? getCityGroupingHeading(restaurant) : (selectedCity ?? restaurant.cityName)]
@@ -1522,16 +1524,16 @@ export function PublicEatsPage({
         );
       }
 
-      if (category === 'type') {
+      if (filterCategory === 'type') {
         headingValues.push(...restaurant.types.map((type) => type.name));
       }
 
-      if (category === 'recentlyAdded') {
+      if (filterCategory === 'recentlyAdded') {
         headingValues.push(getMonthHeadingKey(restaurant.createdAt));
       }
 
       for (const heading of headingValues) {
-        if (category !== 'recentlyAdded' && excluded.includes(heading)) {
+        if (filterCategory !== 'recentlyAdded' && excluded.includes(heading)) {
           continue;
         }
 
@@ -1541,12 +1543,12 @@ export function PublicEatsPage({
       }
     }
 
-    if (category === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded') {
       return new Map([...map.entries()].sort(([headingA], [headingB]) => headingB.localeCompare(headingA)));
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
-  }, [category, excluded, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
+  }, [excluded, filterCategory, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
   const boardCategory = useMemo(() => getBoardCategory(category, isAllCitiesSelected), [category, isAllCitiesSelected]);
   const boardRestaurants = useMemo(() => {
     if (isSearchActive) {
@@ -1692,7 +1694,7 @@ export function PublicEatsPage({
     () =>
       [
         effectiveViewMode,
-        category,
+        filterCategory,
         selectedCity ?? allCitiesUrlValue,
         selectedMealType,
         selectedStatuses.join(','),
@@ -1701,9 +1703,9 @@ export function PublicEatsPage({
         visibleRestaurantIds.join(',')
       ].join('::'),
     [
-      category,
       effectiveViewMode,
       excluded,
+      filterCategory,
       normalizedSearchQuery,
       selectedCity,
       selectedMealType,
@@ -1751,6 +1753,10 @@ export function PublicEatsPage({
     () => mappedGoogleMapsRestaurants.length,
     [mappedGoogleMapsRestaurants]
   );
+  const hasVisibleMultiAreaGoogleMapsRestaurants = useMemo(
+    () => visibleGoogleMapsRestaurants.some((restaurant) => restaurant.areas.length > 1),
+    [visibleGoogleMapsRestaurants]
+  );
   const hasMappedVisibleRestaurants = mappedVisibleRestaurants.length > 0;
   useEffect(() => {
     if (viewMode === 'map' && !hasMappedVisibleRestaurants) {
@@ -1761,7 +1767,7 @@ export function PublicEatsPage({
     () => headings.filter((heading) => !excluded.includes(heading)).length,
     [excluded, headings]
   );
-  const activeFilterGroupCategory = category === 'area' || category === 'type' ? category : null;
+  const activeFilterGroupCategory = filterCategory === 'area' || filterCategory === 'type' ? filterCategory : null;
   const currentIncludedHeadings = useMemo(
     () => headings.filter((heading) => !excluded.includes(heading)),
     [excluded, headings]
@@ -1803,8 +1809,14 @@ export function PublicEatsPage({
     && currentIncludedHeadings.length < headings.length
     && matchingSavedFilterGroup === null;
   const luckyCandidateIds = useMemo(
-    () => getFeelingLuckyCandidateIds(visibleRestaurantIds, visibleRestaurantsById, selectedStatuses),
-    [selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
+    () => {
+      const candidateIds = effectiveViewMode === 'map'
+        ? mappedVisibleRestaurants.map((restaurant) => restaurant.id)
+        : visibleRestaurantIds;
+
+      return getFeelingLuckyCandidateIds(candidateIds, visibleRestaurantsById, selectedStatuses);
+    },
+    [effectiveViewMode, mappedVisibleRestaurants, selectedStatuses, visibleRestaurantIds, visibleRestaurantsById]
   );
   const disableFeelingLuckyButton =
     !showFeelingLuckyForStatuses(selectedStatuses) || luckyCandidateIds.length === 0;
@@ -1882,7 +1894,9 @@ export function PublicEatsPage({
 
     setActiveLuckyConfettiId(null);
 
-    if (isLuckyCardInViewport()) {
+    if (effectiveViewMode === 'map') {
+      startConfetti();
+    } else if (isLuckyCardInViewport()) {
       startConfetti();
     } else {
       window.addEventListener('scroll', onScroll, { passive: true });
@@ -1895,7 +1909,7 @@ export function PublicEatsPage({
 
       window.removeEventListener('scroll', onScroll);
     };
-  }, [luckyRestaurantId, luckyRunCount]);
+  }, [effectiveViewMode, luckyRestaurantId, luckyRunCount]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1991,7 +2005,7 @@ export function PublicEatsPage({
   useEffect(() => {
     setFilterPopoverMaxHeight(null);
     setFilterPopoverListMaxHeight(null);
-  }, [category, selectedCity]);
+  }, [filterCategory, selectedCity]);
 
   const statusCounts = useMemo(() => {
     const counts = new Map<RestaurantStatusFilter, number>(
@@ -2106,7 +2120,7 @@ export function PublicEatsPage({
     }
 
     statusFilterSnapshot.current =
-      category !== 'recentlyAdded'
+      filterCategory !== 'recentlyAdded'
         ? {
             preservedIncludedHeadings:
               preservedIncludedHeadings.current ?? getPreservedIncludedHeadings(headings, excluded)
@@ -2241,7 +2255,7 @@ export function PublicEatsPage({
       hasUpdatedFilters = true;
     }
 
-    if (category === 'area') {
+    if (filterCategory === 'area') {
       const visibleHeadings =
         isAllCitiesSelected || restaurant.areas.length === 0
           ? [isAllCitiesSelected ? getCityGroupingHeading(restaurant) : restaurant.cityName]
@@ -2254,7 +2268,7 @@ export function PublicEatsPage({
       }
     }
 
-    if (category === 'type') {
+    if (filterCategory === 'type') {
       const visibleHeadings = restaurant.types.map((type) => type.name);
 
       if (visibleHeadings.some((heading) => excluded.includes(heading))) {
@@ -2266,8 +2280,8 @@ export function PublicEatsPage({
 
     return hasUpdatedFilters;
   }, [
-    category,
     excluded,
+    filterCategory,
     getDefaultStatusesForCity,
     isAllCitiesSelected,
     searchQuery,
@@ -2322,6 +2336,24 @@ export function PublicEatsPage({
     }
 
     const luckyId = luckyCandidateIds[Math.floor(Math.random() * luckyCandidateIds.length)];
+    if (effectiveViewMode === 'map') {
+      const marker = googleMarkersByRestaurantIdRef.current.get(luckyId);
+      const googleMaps = (window as GoogleMapsWindow).google?.maps;
+      if (!marker || !googleMapRef.current || !googleMaps) {
+        return;
+      }
+
+      const position = marker.getPosition?.();
+      if (position) {
+        googleMapRef.current.panTo(position);
+        googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
+      }
+      googleMaps.event.trigger(marker, 'click');
+      setLuckyRestaurantId(luckyId);
+      setLuckyRunCount((current) => current + 1);
+      return;
+    }
+
     const luckyCard = restaurantCardRefs.current[luckyId];
     if (!luckyCard) {
       return;
@@ -2390,6 +2422,7 @@ export function PublicEatsPage({
     if (effectiveViewMode !== 'map') {
       googleMapRef.current = null;
       googleMarkersRef.current = [];
+      googleMarkersByRestaurantIdRef.current.clear();
       googleUserMarkerRef.current = null;
       return;
     }
@@ -2408,6 +2441,7 @@ export function PublicEatsPage({
         marker.setMap(null);
       }
       googleMarkersRef.current = [];
+      googleMarkersByRestaurantIdRef.current.clear();
       if (googleUserMarkerRef.current) {
         googleUserMarkerRef.current.setMap(null);
         googleUserMarkerRef.current = null;
@@ -2437,6 +2471,7 @@ export function PublicEatsPage({
       const center = userLocation && shouldUseUserLocation
         ? { lat: userLocation.latitude, lng: userLocation.longitude }
         : fallbackCenter;
+      const hasExistingMap = Boolean(googleMapRef.current);
 
       if (!googleMapRef.current) {
         googleMapRef.current = new googleMaps.Map(googleMapContainerRef.current, {
@@ -2447,13 +2482,12 @@ export function PublicEatsPage({
           streetViewControl: true,
           zoom: 13
         });
-      } else {
-        googleMapRef.current.setCenter(center);
       }
 
       clearGoogleMapObjects();
 
       const bounds = new googleMaps.LatLngBounds();
+      const restaurantPositions: Array<{ lat: number; lng: number }> = [];
       const infoWindow = new googleMaps.InfoWindow({
         headerDisabled: true
       });
@@ -2479,6 +2513,7 @@ export function PublicEatsPage({
           lat: restaurant.latitude as number,
           lng: restaurant.longitude as number
         };
+        restaurantPositions.push(position);
         const mapLabel = getRestaurantMapLabel(restaurant, mapLabelMode);
         const marker = new googleMaps.Marker({
           icon: {
@@ -2536,6 +2571,7 @@ export function PublicEatsPage({
           });
         });
         googleMarkersRef.current.push(marker);
+        googleMarkersByRestaurantIdRef.current.set(restaurant.id, marker);
         bounds.extend(position);
       }
 
@@ -2546,7 +2582,14 @@ export function PublicEatsPage({
         googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
       } else if (!bounds.isEmpty()) {
         shouldFocusUserLocationRef.current = false;
-        googleMapRef.current.fitBounds(bounds, 64);
+        const currentBounds = googleMapRef.current.getBounds?.();
+        const hasVisibleRestaurantInCurrentBounds = currentBounds
+          ? restaurantPositions.some((position) => currentBounds.contains(position))
+          : false;
+
+        if (!hasExistingMap || !hasVisibleRestaurantInCurrentBounds) {
+          googleMapRef.current.fitBounds(bounds, 64);
+        }
       }
       setMapLoadErrorMessage(null);
     };
@@ -2572,7 +2615,6 @@ export function PublicEatsPage({
           window.cancelAnimationFrame(renderFrameId);
         }
         clearGoogleMapObjects();
-        googleMapRef.current = null;
       };
     }
 
@@ -2598,7 +2640,6 @@ export function PublicEatsPage({
         window.cancelAnimationFrame(renderFrameId);
       }
       clearGoogleMapObjects();
-      googleMapRef.current = null;
     };
   }, [effectiveViewMode, googleMapsBrowserApiKey, mapLabelMode, mappedVisibleRestaurants, resolvedSecondaryColor, userLocation]);
   const applySavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
@@ -3159,7 +3200,8 @@ export function PublicEatsPage({
                   <div className={`${styles.sortingField} ${styles.categoryField}`}>
                     <label htmlFor="category">{effectiveViewMode === 'kanban' ? 'Group By:' : 'Categorise By:'}</label>
                     <select
-                      value={category}
+                      value={filterCategory}
+                      disabled={effectiveViewMode === 'map'}
                       onChange={(event) => setCategory(event.target.value as CategoryFilter)}
                     >
                       <option value="area">
@@ -3258,7 +3300,7 @@ export function PublicEatsPage({
               </div>
               {!isSearchActive ? (
                 <div className={styles.filterControls} ref={filterControlsRef}>
-                  {category !== 'recentlyAdded' && headings.length > 1 ? (
+                  {filterCategory !== 'recentlyAdded' && headings.length > 1 ? (
                     <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
                       <button
                         type="button"
@@ -3270,7 +3312,7 @@ export function PublicEatsPage({
                           setIsFilterPopoverOpen((current) => !current);
                         }}
                       >
-                        {category === 'area' ? `Filter ${filterEntityLabelPlural}` : 'Filter Types'} ({filterButtonStateLabel})
+                        {filterCategory === 'area' ? `Filter ${filterEntityLabelPlural}` : 'Filter Types'} ({filterButtonStateLabel})
                       </button>
                       {isFilterPopoverOpen ? (
                         <div
@@ -3377,7 +3419,7 @@ export function PublicEatsPage({
                                   }}
                                 />
                                 <span>
-                                  {category === 'type'
+                                  {filterCategory === 'type'
                                     ? `${mealFilteredRestaurants
                                         .flatMap((restaurant) => restaurant.types)
                                         .find((type) => type.name === heading)?.emoji ?? ''} ${heading}`
@@ -3419,13 +3461,13 @@ export function PublicEatsPage({
             ) : null}
             {boardErrorMessage ? <div className={styles.boardError}>{boardErrorMessage}</div> : null}
             {effectiveViewMode === 'map' && hasMappedVisibleRestaurants ? (
-              <div className={`${styles.mapView} ${styles.resultsMotion}`} key={`map-${resultsMotionKey}`}>
+              <div className={`${styles.mapView} ${styles.resultsMotion}`}>
                 {locationErrorMessage ? <div className={styles.inlineMapError}>{locationErrorMessage}</div> : null}
                 {mapLoadErrorMessage ? <div className={styles.inlineMapError}>{mapLoadErrorMessage}</div> : null}
                 <div className={styles.embeddedGoogleMap} ref={googleMapContainerRef} />
-                {visibleGoogleMapsRestaurants.length > mappedGoogleMapsRestaurantCount ? (
+                {hasVisibleMultiAreaGoogleMapsRestaurants ? (
                   <div className={styles.mapMissingHint}>
-                    Some places are not on the map yet.
+                    Multi-area places aren’t shown on the map.
                   </div>
                 ) : null}
               </div>
