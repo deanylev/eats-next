@@ -1935,6 +1935,35 @@ export function PublicEatsPage({
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) {
+      return;
+    }
+
+    const documentElement = document.documentElement;
+    const updateVisualViewportOffset = (): void => {
+      const viewport = window.visualViewport;
+      if (!viewport) {
+        return;
+      }
+
+      const bottomOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      documentElement.style.setProperty('--visual-viewport-bottom-offset', `${bottomOffset}px`);
+    };
+
+    updateVisualViewportOffset();
+    window.visualViewport.addEventListener('resize', updateVisualViewportOffset);
+    window.visualViewport.addEventListener('scroll', updateVisualViewportOffset);
+    window.addEventListener('orientationchange', updateVisualViewportOffset);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateVisualViewportOffset);
+      window.visualViewport?.removeEventListener('scroll', updateVisualViewportOffset);
+      window.removeEventListener('orientationchange', updateVisualViewportOffset);
+      documentElement.style.removeProperty('--visual-viewport-bottom-offset');
+    };
+  }, []);
+
+  useEffect(() => {
     if (!highlightedRestaurantId) {
       return;
     }

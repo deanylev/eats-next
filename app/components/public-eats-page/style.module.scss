@@ -255,7 +255,7 @@
 
 .floatingActionStack {
   align-items: flex-end;
-  bottom: 22px;
+  bottom: max(0px, calc(22px - var(--visual-viewport-bottom-offset, 0px)));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -282,7 +282,7 @@
   background: var(--theme-secondary-glass-bg);
   border: 1px solid var(--theme-secondary-glass-border);
   border-radius: 50%;
-  bottom: 22px;
+  bottom: max(0px, calc(22px - var(--visual-viewport-bottom-offset, 0px)));
   box-shadow: var(--theme-secondary-glass-shadow);
   color: var(--theme-on-secondary);
   cursor: pointer;
@@ -990,7 +990,7 @@
 
 @media only screen and (max-width: 700px) {
   .addFab {
-    bottom: 16px;
+    bottom: max(0px, calc(16px - var(--visual-viewport-bottom-offset, 0px)));
     height: 48px;
     right: 16px;
     width: 48px;
@@ -1012,13 +1012,13 @@
   }
 
   .floatingActionStack {
-    bottom: 16px;
+    bottom: max(0px, calc(16px - var(--visual-viewport-bottom-offset, 0px)));
     right: 16px;
   }
 
   .eatsRoot button.floatingLeft,
   .embeddedRoot button.floatingLeft {
-    bottom: 16px;
+    bottom: max(0px, calc(16px - var(--visual-viewport-bottom-offset, 0px)));
     left: 16px;
     right: auto;
   }

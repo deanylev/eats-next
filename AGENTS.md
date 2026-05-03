@@ -18,6 +18,7 @@ This repo is a multi-tenant restaurant CMS and public listing site built with Ne
 - Prefer small, coherent changes over broad rewrites.
 - Do not add dependencies unless they materially simplify the code.
 - Do not run `pnpm build` or `tsc` unless explicitly asked.
+- Do not start or keep a dev server running unless explicitly asked.
 
 ## Project Shape
 - `app/`: routes, server actions, UI components
