@@ -62,6 +62,10 @@ type ExportRestaurantRecord = {
   createdAt: string;
   deletedAt: string | null;
   dislikedReason: string | null;
+  googlePlaceId?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   mealTypes: Array<{
     createdAt: string;
     mealType: (typeof mealTypeEnum.enumValues)[number];
@@ -162,6 +166,10 @@ const tenantBundleSchema = z.object({
       createdAt: timestampSchema,
       deletedAt: nullableTimestampSchema,
       dislikedReason: z.string().nullable(),
+      googlePlaceId: z.string().nullable().optional(),
+      address: z.string().nullable().optional(),
+      latitude: z.number().nullable().optional(),
+      longitude: z.number().nullable().optional(),
       mealTypes: z.array(
         z.object({
           createdAt: timestampSchema,
@@ -269,6 +277,10 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
           name: restaurants.name,
           notes: restaurants.notes,
           referredBy: restaurants.referredBy,
+          googlePlaceId: restaurants.googlePlaceId,
+          address: restaurants.address,
+          latitude: restaurants.latitude,
+          longitude: restaurants.longitude,
           status: restaurants.status,
           triedAt: restaurants.triedAt,
           updatedAt: restaurants.updatedAt,
@@ -411,6 +423,10 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
       createdAt: restaurant.createdAt.toISOString(),
       deletedAt: toIsoString(restaurant.deletedAt),
       dislikedReason: restaurant.dislikedReason,
+      googlePlaceId: restaurant.googlePlaceId,
+      address: restaurant.address,
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude,
       mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
       name: restaurant.name,
       notes: restaurant.notes,
@@ -526,6 +542,10 @@ const insertTenantBundleData = async (tx: DbLike, tenantId: string, bundle: Tena
       createdAt: toDate(restaurant.createdAt) ?? new Date(),
       deletedAt: toDate(restaurant.deletedAt),
       dislikedReason: restaurant.dislikedReason,
+      googlePlaceId: restaurant.googlePlaceId ?? null,
+      address: restaurant.address ?? null,
+      latitude: restaurant.latitude ?? null,
+      longitude: restaurant.longitude ?? null,
       id: restaurantId,
       name: restaurant.name,
       notes: restaurant.notes,

@@ -29,6 +29,10 @@ export type RestaurantFormDefaults = {
   referredBy?: string;
   typeIds?: string[];
   url?: string;
+  googlePlaceId?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status?: RestaurantStatus;
   dislikedReason?: string | null;
 };
@@ -47,7 +51,11 @@ type GoogleMapsSuggestion = {
 };
 
 type SelectedGoogleMapsPlace = {
+  address: string | null;
   label: string;
+  latitude: number | null;
+  longitude: number | null;
+  placeId: string;
   secondaryText: string;
   url: string;
 };
@@ -123,6 +131,14 @@ export function RestaurantFormFields({
   const [notesValue, setNotesValue] = useState<string>(defaults?.notes ?? '');
   const [referredByValue, setReferredByValue] = useState<string>(defaults?.referredBy ?? '');
   const [urlValue, setUrlValue] = useState<string>(defaults?.url ?? '');
+  const [googlePlaceIdValue, setGooglePlaceIdValue] = useState<string>(defaults?.googlePlaceId ?? '');
+  const [addressValue, setAddressValue] = useState<string>(defaults?.address ?? '');
+  const [latitudeValue, setLatitudeValue] = useState<string>(
+    typeof defaults?.latitude === 'number' ? String(defaults.latitude) : ''
+  );
+  const [longitudeValue, setLongitudeValue] = useState<string>(
+    typeof defaults?.longitude === 'number' ? String(defaults.longitude) : ''
+  );
   const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
   const [googleMapsSearchValue, setGoogleMapsSearchValue] = useState<string>('');
   const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSuggestion[]>([]);
@@ -199,6 +215,10 @@ export function RestaurantFormFields({
       referredByValue !== (defaults?.referredBy ?? '') ||
       !areStringSetsEqual(selectedTypeIds, defaults?.typeIds) ||
       urlValue !== (defaults?.url ?? '') ||
+      googlePlaceIdValue !== (defaults?.googlePlaceId ?? '') ||
+      addressValue !== (defaults?.address ?? '') ||
+      latitudeValue !== (typeof defaults?.latitude === 'number' ? String(defaults.latitude) : '') ||
+      longitudeValue !== (typeof defaults?.longitude === 'number' ? String(defaults.longitude) : '') ||
       status !== (defaults?.status ?? 'untried') ||
       dislikedReasonValue !== (defaults?.dislikedReason ?? '') ||
       newCountryName.length > 0 ||
@@ -215,10 +235,18 @@ export function RestaurantFormFields({
     defaults?.name,
     defaults?.notes,
     defaults?.referredBy,
+    defaults?.address,
+    defaults?.googlePlaceId,
+    defaults?.latitude,
+    defaults?.longitude,
     defaults?.status,
     defaults?.typeIds,
     defaults?.url,
     dislikedReasonValue,
+    addressValue,
+    googlePlaceIdValue,
+    latitudeValue,
+    longitudeValue,
     nameValue,
     newCityName,
     newCountryName,
@@ -637,6 +665,10 @@ export function RestaurantFormFields({
     setReferredByValue('Local recommendation');
     setSelectedTypeIds(fakeTypeIds);
     setUrlValue(`https://example.com/restaurants/test-${fakeSuffix}/`);
+    setGooglePlaceIdValue('');
+    setAddressValue('');
+    setLatitudeValue('');
+    setLongitudeValue('');
     setStatus('untried');
     setDislikedReasonValue('');
     setNewAreaValue('');
@@ -659,7 +691,15 @@ export function RestaurantFormFields({
         })
       });
       const payload = (await response.json().catch(() => null)) as
-        | { error?: string; label?: string; url?: string }
+        | {
+            address?: string | null;
+            error?: string;
+            label?: string;
+            latitude?: number | null;
+            longitude?: number | null;
+            placeId?: string;
+            url?: string;
+          }
         | null;
 
       if (!response.ok || !payload?.url) {
@@ -667,12 +707,20 @@ export function RestaurantFormFields({
       }
 
       const selectedPlace = {
+        address: payload.address ?? null,
         label: payload.label?.trim() || suggestion.primaryText,
+        latitude: payload.latitude ?? null,
+        longitude: payload.longitude ?? null,
+        placeId: payload.placeId ?? suggestion.placeId,
         secondaryText: suggestion.secondaryText,
         url: payload.url
       };
 
       setUrlValue(payload.url);
+      setGooglePlaceIdValue(selectedPlace.placeId);
+      setAddressValue(selectedPlace.address ?? '');
+      setLatitudeValue(typeof selectedPlace.latitude === 'number' ? String(selectedPlace.latitude) : '');
+      setLongitudeValue(typeof selectedPlace.longitude === 'number' ? String(selectedPlace.longitude) : '');
       setGoogleMapsSearchValue(payload.label?.trim() || suggestion.fullText);
       setGoogleMapsSuggestions([]);
       setSelectedGoogleMapsPlace(selectedPlace);
@@ -985,6 +1033,10 @@ export function RestaurantFormFields({
                         setGoogleMapsSearchError('');
                         setAreaSelectionError('');
                         setUrlValue('');
+                        setGooglePlaceIdValue('');
+                        setAddressValue('');
+                        setLatitudeValue('');
+                        setLongitudeValue('');
                         googleMapsSessionTokenRef.current = '';
                       }}
                     >
@@ -1069,6 +1121,10 @@ export function RestaurantFormFields({
             <div className="google-maps-choice-panel">
               <div className="google-maps-choice-heading">Paste the URL manually</div>
               {selectedGoogleMapsPlace ? <input type="hidden" name="url" value={urlValue} /> : null}
+              <input type="hidden" name="googlePlaceId" value={googlePlaceIdValue} />
+              <input type="hidden" name="address" value={addressValue} />
+              <input type="hidden" name="latitude" value={latitudeValue} />
+              <input type="hidden" name="longitude" value={longitudeValue} />
               <input
                 name={selectedGoogleMapsPlace ? undefined : 'url'}
                 type="url"
@@ -1076,6 +1132,10 @@ export function RestaurantFormFields({
                 value={selectedGoogleMapsPlace ? '' : urlValue}
                 onChange={(event) => {
                   setUrlValue(event.target.value);
+                  setGooglePlaceIdValue('');
+                  setAddressValue('');
+                  setLatitudeValue('');
+                  setLongitudeValue('');
                   if (selectedGoogleMapsPlace) {
                     setSelectedGoogleMapsPlace(null);
                   }
@@ -1095,6 +1155,10 @@ export function RestaurantFormFields({
         <label>
           URL
           <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
+          <input type="hidden" name="googlePlaceId" value="" />
+          <input type="hidden" name="address" value="" />
+          <input type="hidden" name="latitude" value="" />
+          <input type="hidden" name="longitude" value="" />
         </label>
       )}
 

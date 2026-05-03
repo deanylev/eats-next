@@ -15,6 +15,12 @@ const httpUrlSchema = z
     }
   }, 'URL must start with http:// or https://.');
 const emojiRegex = /(\p{Extended_Pictographic}|\p{Emoji_Presentation})/u;
+const optionalCoordinateSchema = z
+  .number()
+  .finite()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
 
 export const countryInputSchema = z.object({
   name: z.string().trim().min(1, 'Country name is required.')
@@ -76,6 +82,14 @@ export const restaurantInputSchema = z
     referredBy: referredByInputSchema,
     typeIds: z.array(z.string().uuid('Invalid type id.')).min(1, 'Pick at least one type.'),
     url: httpUrlSchema,
+    googlePlaceId: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    latitude: optionalCoordinateSchema.refine((value) => value === null || (value >= -90 && value <= 90), {
+      message: 'Latitude must be between -90 and 90.'
+    }),
+    longitude: optionalCoordinateSchema.refine((value) => value === null || (value >= -180 && value <= 180), {
+      message: 'Longitude must be between -180 and 180.'
+    }),
     status: z.enum(restaurantStatusEnum.enumValues),
     dislikedReason: z.string().trim().optional()
   })
@@ -112,6 +126,23 @@ export const restaurantInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ['url'],
         message: 'When there are two or more areas, URL must not be a Google Maps URL.'
+      });
+    }
+
+    const hasOnlyOneCoordinate = (value.latitude === null) !== (value.longitude === null);
+    if (hasOnlyOneCoordinate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['latitude'],
+        message: 'Latitude and longitude must be provided together.'
+      });
+    }
+
+    if (!googleMaps && (value.googlePlaceId || value.address || value.latitude !== null || value.longitude !== null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['url'],
+        message: 'Location metadata can only be saved for Google Maps URLs.'
       });
     }
   });

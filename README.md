@@ -9,6 +9,7 @@ A vibe coded successor to [eats](https://github.com/deanylev/eats) that uses a C
    - `ADMIN_PASSWORD`
 3. To enable Google Maps restaurant autocomplete in the URL field, also set:
    - `GOOGLE_MAPS_API_KEY`
+   - `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` for the embedded public map
 4. Install dependencies:
 
 ```bash

@@ -26,6 +26,7 @@ import {
   restoreRestaurantRecord,
   permanentlyDeleteRestaurantRecord,
   softDeleteRestaurantRecord,
+  updateRestaurantLocationMetadataRecord,
   updateCityRecord,
   updateCountryRecord,
   updateRestaurantRecord,
@@ -46,6 +47,7 @@ import {
 } from '@/lib/admin-form-state';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
+import { resolveGoogleMapsLocationFromUrl } from '@/lib/google-maps';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
 import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
 import {
@@ -71,6 +73,7 @@ import {
 } from '@/lib/tenant';
 import { deleteSubdomainTenantRecord } from '@/lib/tenant-write';
 import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
+import { isGoogleMapsUrl } from '@/lib/url';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -1041,6 +1044,161 @@ export const moveRestaurantFromRoot = async (
   }
 };
 
+type BackfillLocationResult = 'updated' | 'skipped' | 'failed';
+
+const backfillRestaurantLocation = async (
+  restaurant: {
+    id: string;
+    name: string;
+    url: string;
+    cityName: string;
+    countryName: string;
+    latitude: number | null;
+    longitude: number | null;
+  },
+  tenantId: string,
+  options?: { force?: boolean }
+): Promise<BackfillLocationResult> => {
+  if (!isGoogleMapsUrl(restaurant.url)) {
+    return 'skipped';
+  }
+
+  if (!options?.force && restaurant.latitude !== null && restaurant.longitude !== null) {
+    return 'skipped';
+  }
+
+  const location = await resolveGoogleMapsLocationFromUrl({
+    cityName: restaurant.cityName,
+    countryName: restaurant.countryName,
+    name: restaurant.name,
+    url: restaurant.url
+  });
+
+  if (!location || location.latitude === null || location.longitude === null) {
+    return 'failed';
+  }
+
+  await updateRestaurantLocationMetadataRecord(getDb(), tenantId, restaurant.id, {
+    address: location.address,
+    googlePlaceId: location.placeId,
+    latitude: location.latitude,
+    longitude: location.longitude
+  });
+
+  return 'updated';
+};
+
+export const backfillRestaurantLocations = async (): Promise<void> => {
+  try {
+    const { tenant } = await requireAdminSession();
+    if (!process.env.GOOGLE_MAPS_API_KEY?.trim()) {
+      throw userFacingError('GOOGLE_MAPS_API_KEY is required to backfill location data.');
+    }
+
+    const db = getDb();
+    const restaurantRows = await db
+      .select({
+        id: restaurants.id,
+        name: restaurants.name,
+        url: restaurants.url,
+        latitude: restaurants.latitude,
+        longitude: restaurants.longitude,
+        cityName: cities.name,
+        countryName: countries.name
+      })
+      .from(restaurants)
+      .innerJoin(cities, eq(restaurants.cityId, cities.id))
+      .innerJoin(countries, eq(cities.countryId, countries.id))
+      .where(and(eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
+      .orderBy(asc(countries.name), asc(cities.name), asc(restaurants.name));
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    for (const restaurant of restaurantRows) {
+      try {
+        const result = await backfillRestaurantLocation(restaurant, tenant.id);
+        if (result === 'updated') {
+          updatedCount += 1;
+        } else if (result === 'skipped') {
+          skippedCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      } catch (error) {
+        failedCount += 1;
+        console.error(`Failed to backfill restaurant location for ${restaurant.id}`, error);
+      }
+    }
+
+    setAdminSuccess(
+      `Location backfill finished. Updated ${updatedCount}, skipped ${skippedCount}, failed ${failedCount}.`
+    );
+    redirect('/admin?tab=backup');
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    setFlashCookieServer(ADMIN_ERROR_COOKIE, getUserErrorText(error), '/admin');
+    redirect('/admin?tab=backup');
+  }
+};
+
+export const backfillRestaurantLocationFromRoot = async (formData: FormData): Promise<void> => {
+  const rawRestaurantId = String(formData.get('restaurantId') ?? '').trim();
+  const safeRestaurantId = ADMIN_ID_REGEX.test(rawRestaurantId) ? rawRestaurantId : null;
+
+  return runRootAction(
+    async () => {
+      if (process.env.NODE_ENV === 'production') {
+        throw userFacingError('Per-place location backfill is only available in development.');
+      }
+      if (!process.env.GOOGLE_MAPS_API_KEY?.trim()) {
+        throw userFacingError('GOOGLE_MAPS_API_KEY is required to backfill location data.');
+      }
+
+      const { tenant } = await requireAdminSession();
+      const restaurantId = parseUuid(formData.get('restaurantId'), 'Invalid restaurant id.');
+      const restaurant = await getDb()
+        .select({
+          id: restaurants.id,
+          name: restaurants.name,
+          url: restaurants.url,
+          latitude: restaurants.latitude,
+          longitude: restaurants.longitude,
+          cityName: cities.name,
+          countryName: countries.name
+        })
+        .from(restaurants)
+        .innerJoin(cities, eq(restaurants.cityId, cities.id))
+        .innerJoin(countries, eq(cities.countryId, countries.id))
+        .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenant.id), isNull(restaurants.deletedAt)))
+        .limit(1);
+      const foundRestaurant = restaurant[0];
+      if (!foundRestaurant) {
+        throw userFacingError('Restaurant not found.');
+      }
+
+      const result = await backfillRestaurantLocation(foundRestaurant, tenant.id, { force: true });
+      if (result !== 'updated') {
+        throw userFacingError(
+          result === 'skipped'
+            ? 'That restaurant does not have a Google Maps URL.'
+            : 'Could not resolve location metadata for that restaurant.'
+        );
+      }
+    },
+    {
+      errorCookie: ROOT_EDIT_ERROR_COOKIE,
+      successCookie: ROOT_EDIT_SUCCESS_COOKIE,
+      successMessage: 'Restaurant location backfilled.',
+      successRedirectTarget: getRefererRedirectTarget([['openEditRestaurant', null]], '/'),
+      errorRedirectTarget: getRefererRedirectTarget(safeRestaurantId ? [['openEditRestaurant', safeRestaurantId]] : [], '/')
+    }
+  );
+};
+
 export const deleteRestaurant = async (formData: FormData): Promise<void> => {
   return runRootAction(
     async () => {
@@ -1107,6 +1265,10 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
           notes: restaurants.notes,
           referredBy: restaurants.referredBy,
           url: restaurants.url,
+          googlePlaceId: restaurants.googlePlaceId,
+          address: restaurants.address,
+          latitude: restaurants.latitude,
+          longitude: restaurants.longitude,
           createdAt: restaurants.createdAt,
           status: restaurants.status,
           triedAt: restaurants.triedAt,

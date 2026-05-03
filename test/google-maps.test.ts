@@ -113,12 +113,20 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
       String(input),
       'https://places.googleapis.com/v1/places/place-1?sessionToken=session-123'
     );
-    assert.equal((init?.headers as Record<string, string>)['X-Goog-FieldMask'], 'displayName,googleMapsUri');
+    assert.equal(
+      (init?.headers as Record<string, string>)['X-Goog-FieldMask'],
+      'displayName,formattedAddress,googleMapsUri,location'
+    );
 
     return new Response(
       JSON.stringify({
         displayName: { text: 'Bar Liberty' },
-        googleMapsUri: 'https://maps.google.com/?cid=123'
+        formattedAddress: '234 Johnston St, Fitzroy VIC 3065, Australia',
+        googleMapsUri: 'https://maps.google.com/?cid=123',
+        location: {
+          latitude: -37.7988,
+          longitude: 144.9788
+        }
       }),
       {
         status: 200,
@@ -136,7 +144,11 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
     });
 
     assert.deepEqual(place, {
+      address: '234 Johnston St, Fitzroy VIC 3065, Australia',
       label: 'Bar Liberty',
+      latitude: -37.7988,
+      longitude: 144.9788,
+      placeId: 'place-1',
       url: 'https://maps.google.com/?cid=123'
     });
   } finally {

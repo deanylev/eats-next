@@ -34,6 +34,7 @@ export default async function RootPage({ searchParams }: RootPageProps) {
         title={title}
         primaryColor={tenant.primaryColor}
         secondaryColor={tenant.secondaryColor}
+        googleMapsBrowserApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY ?? ''}
         defaultCityName={data.defaultCityName}
         showAdminButton={hasSession}
         adminTools={

@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import {
   createSubdomainTenant,
+  backfillRestaurantLocations,
   createCity,
   createCountry,
   createRestaurantType,
@@ -589,6 +590,20 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                 </p>
                 <div className={styles.manageActions}>
                   <button type="submit">Import JSON</button>
+                </div>
+              </ConfirmingActionForm>
+            </AdminPanelSection>
+
+            <AdminPanelSection className={styles.panel} title="Location Data">
+              <ConfirmingActionForm
+                action={backfillRestaurantLocations}
+                confirmText="Backfill saved address and coordinates for active restaurants with Google Maps URLs? This may make many Google Maps API requests."
+              >
+                <p className={styles.importHint}>
+                  Uses existing Google Maps URLs, including shortened maps.app.goo.gl links, and skips restaurants that already have coordinates.
+                </p>
+                <div className={styles.manageActions}>
+                  <button type="submit">Backfill map data</button>
                 </div>
               </ConfirmingActionForm>
             </AdminPanelSection>

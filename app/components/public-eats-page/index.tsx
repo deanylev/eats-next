@@ -31,8 +31,10 @@ import {
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
 import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
+import { isGoogleMapsUrl } from '@/lib/url';
 
 import styles from './style.module.scss';
+import { LocationBackfillDebugForm } from './location-backfill-debug-form';
 
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
@@ -63,7 +65,8 @@ const readStoredViewMode = (): ViewMode => {
   }
 
   try {
-    return window.localStorage.getItem(viewModeStorageKey) === 'kanban' ? 'kanban' : 'list';
+    const stored = window.localStorage.getItem(viewModeStorageKey);
+    return stored === 'kanban' || stored === 'map' ? stored : 'list';
   } catch {
     return 'list';
   }
@@ -175,6 +178,10 @@ type PublicRestaurant = {
   notes: string;
   referredBy: string;
   url: string;
+  googlePlaceId: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string | Date;
   status: 'untried' | 'liked' | 'disliked';
   dislikedReason: string | null;
@@ -183,7 +190,7 @@ type PublicRestaurant = {
   types: RestaurantType[];
 };
 
-type ViewMode = 'list' | 'kanban';
+type ViewMode = 'list' | 'kanban' | 'map';
 type BoardCategory = 'city' | 'area' | 'type';
 type BoardLane = {
   boardCategory: BoardCategory;
@@ -199,12 +206,33 @@ type DraggedBoardCard = {
   sourceLaneId: string;
   sourceStatus: RestaurantStatusFilter;
 };
+type UserLocation = {
+  latitude: number;
+  longitude: number;
+};
+type GoogleMapsWindow = Window & {
+  google?: any;
+  initEatsGoogleMap?: () => void;
+};
 
 const unassignedAreaLaneLabel = 'No Area';
 const silentBoardMoveErrorMessages = new Set([
   'A disliked reason is required to move a restaurant to Not Recommended.',
   'Notes are required.'
 ]);
+
+const canBackfillRestaurantLocation = (restaurant: PublicRestaurant): boolean =>
+  restaurant.areas.length < 2 &&
+  isGoogleMapsUrl(restaurant.url) &&
+  (restaurant.latitude === null || restaurant.longitude === null);
+
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 
 const getBoardCategory = (category: CategoryFilter, isAllCitiesSelected: boolean): BoardCategory | null => {
   if (category === 'type') {
@@ -402,6 +430,65 @@ const getRestaurantStatusLabel = (status: PublicRestaurant['status']): string =>
   return 'Want to Try';
 };
 
+const renderMapInfoRow = (label: string, value: string): string => {
+  if (!value.trim()) {
+    return '';
+  }
+
+  return `<div style="display:flex;gap:8px;margin-top:7px;">
+    <span style="color:#6b7280;flex:0 0 58px;font-size:12px;font-weight:700;">${escapeHtml(label)}</span>
+    <span style="color:#374151;font-size:12px;line-height:1.35;min-width:0;overflow-wrap:anywhere;">${escapeHtml(value)}</span>
+  </div>`;
+};
+
+const renderMapInfoUrlRow = (label: string, value: string): string => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return '';
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return renderMapInfoRow(label, trimmedValue);
+    }
+
+    return `<div style="display:flex;gap:8px;margin-top:7px;">
+      <span style="color:#6b7280;flex:0 0 96px;font-size:12px;font-weight:700;">${escapeHtml(label)}</span>
+      <a style="font-size:12px;line-height:1.35;min-width:0;overflow-wrap:anywhere;" href="${escapeHtml(url.toString())}" target="_blank" rel="noreferrer">Click here</a>
+    </div>`;
+  } catch {
+    return renderMapInfoRow(label, trimmedValue);
+  }
+};
+
+const getRestaurantMapMarkerColors = (
+  status: PublicRestaurant['status']
+): { fill: string; stroke: string } => {
+  if (status === 'liked') {
+    return { fill: '#28a65d', stroke: '#17653a' };
+  }
+
+  if (status === 'disliked') {
+    return { fill: '#e13f36', stroke: '#8f221c' };
+  }
+
+  return { fill: '#f2bd33', stroke: '#8a6412' };
+};
+
+const buildRestaurantMapMarkerIcon = (
+  status: PublicRestaurant['status']
+): string => {
+  const colors = getRestaurantMapMarkerColors(status);
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="54" viewBox="0 0 38 54">
+      <path d="M19 52C16 45 4 33 4 19C4 10.716 10.716 4 19 4C27.284 4 34 10.716 34 19C34 33 22 45 19 52Z" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3" />
+      <circle cx="19" cy="19" r="7" fill="#fff" fill-opacity="0.92" />
+    </svg>`
+  )}`;
+};
+
 type Props = {
   restaurants: PublicRestaurant[];
   defaultCityName?: string | null;
@@ -409,6 +496,7 @@ type Props = {
   title?: string | null;
   primaryColor?: string | null;
   secondaryColor?: string | null;
+  googleMapsBrowserApiKey?: string;
   allowRestaurantEditing?: boolean;
   adminTools?: {
     countries: Array<{ id: string; name: string }>;
@@ -435,6 +523,7 @@ export function PublicEatsPage({
   title = `Dean's Favourite Eats`,
   primaryColor = DEFAULT_PRIMARY_COLOR,
   secondaryColor = DEFAULT_SECONDARY_COLOR,
+  googleMapsBrowserApiKey = '',
   allowRestaurantEditing = true,
   adminTools,
   createTools,
@@ -451,6 +540,10 @@ export function PublicEatsPage({
   const [draggedBoardCard, setDraggedBoardCard] = useState<DraggedBoardCard | null>(null);
   const [boardDropTarget, setBoardDropTarget] = useState<BoardDropTarget | null>(null);
   const [isMovingBoardCard, startMovingBoardCardTransition] = useTransition();
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [isLocatingUser, setIsLocatingUser] = useState(false);
+  const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
+  const [mapLoadErrorMessage, setMapLoadErrorMessage] = useState<string | null>(null);
   const triedCount = restaurants.filter((restaurant) => restaurant.status === 'liked').length;
   const untriedCount = restaurants.filter((restaurant) => restaurant.status === 'untried').length;
   const [hasInitializedFilters, setHasInitializedFilters] = useState(false);
@@ -512,6 +605,12 @@ export function PublicEatsPage({
   const searchPopoverRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverId = useId();
+  const googleMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const googleMapRef = useRef<any>(null);
+  const googleMarkersRef = useRef<any[]>([]);
+  const googleUserMarkerRef = useRef<any>(null);
+  const shouldFocusUserLocationRef = useRef(false);
+  const autoRequestedLocationContextRef = useRef<string | null>(null);
   const filtersReady = hasInitializedFilters;
 
   const clearNewRestaurantQueryParam = useCallback((): void => {
@@ -871,7 +970,7 @@ export function PublicEatsPage({
     steps.push({
       id: 'compact',
       title: 'Choose your view',
-      description: 'Switch between list and kanban here. Compact cards also shows more places at once when you want a denser view.'
+      description: 'Switch between list, map, and kanban here when available. Compact cards also shows more places at once when you want a denser view.'
     });
 
     steps.push({
@@ -1438,7 +1537,8 @@ export function PublicEatsPage({
 
     return count;
   }, [grouped, isSearchActive]);
-  const effectiveViewMode: ViewMode = viewMode === 'kanban' && boardCategory !== null ? 'kanban' : 'list';
+  const effectiveViewMode: ViewMode =
+    viewMode === 'kanban' && boardCategory !== null ? 'kanban' : viewMode === 'map' ? 'map' : 'list';
   const kanbanGridStyle = useMemo((): CSSProperties => {
     const columnCount = Math.max(visibleBoardStatuses.length, 1);
     const minColumnWidth = 252;
@@ -1526,6 +1626,48 @@ export function PublicEatsPage({
     () => new Map(restaurants.map((restaurant) => [restaurant.id, restaurant])),
     [restaurants]
   );
+  const visibleRestaurants = useMemo(
+    () =>
+      visibleRestaurantIds
+        .map((id) => visibleRestaurantsById.get(id))
+        .filter((restaurant): restaurant is PublicRestaurant => Boolean(restaurant)),
+    [visibleRestaurantIds, visibleRestaurantsById]
+  );
+  const visibleGoogleMapsRestaurants = useMemo(
+    () =>
+      visibleRestaurants.filter(
+        (restaurant) =>
+          restaurant.googlePlaceId ||
+          restaurant.url.includes('google') ||
+          restaurant.url.includes('maps.app') ||
+          restaurant.url.includes('goo.gl')
+      ),
+    [visibleRestaurants]
+  );
+  const mappedVisibleRestaurants = useMemo(
+    () =>
+      visibleRestaurants.filter(
+        (restaurant) => typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+      ),
+    [visibleRestaurants]
+  );
+  const mappedGoogleMapsRestaurants = useMemo(
+    () =>
+      visibleGoogleMapsRestaurants.filter(
+        (restaurant) => typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+      ),
+    [visibleGoogleMapsRestaurants]
+  );
+  const mappedGoogleMapsRestaurantCount = useMemo(
+    () => mappedGoogleMapsRestaurants.length,
+    [mappedGoogleMapsRestaurants]
+  );
+  const hasMappedVisibleRestaurants = mappedVisibleRestaurants.length > 0;
+  useEffect(() => {
+    if (viewMode === 'map' && !hasMappedVisibleRestaurants) {
+      setViewMode('list');
+    }
+  }, [hasMappedVisibleRestaurants, viewMode]);
   const includedHeadingsCount = useMemo(
     () => headings.filter((heading) => !excluded.includes(heading)).length,
     [excluded, headings]
@@ -2100,6 +2242,262 @@ export function PublicEatsPage({
     setLuckyRunCount((current) => current + 1);
     scrollRestaurantCardIntoView(luckyId);
   };
+  const requestUserLocation = useCallback((): void => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationErrorMessage('Location is not available in this browser.');
+      return;
+    }
+
+    setIsLocatingUser(true);
+    setLocationErrorMessage(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        shouldFocusUserLocationRef.current = true;
+        setUserLocation(nextLocation);
+        setIsLocatingUser(false);
+      },
+      (error) => {
+        setLocationErrorMessage(error.message || 'Could not get your current location.');
+        setIsLocatingUser(false);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60_000,
+        timeout: 10_000
+      }
+    );
+  }, []);
+  useEffect(() => {
+    if (effectiveViewMode !== 'map' || isAllCitiesSelected) {
+      autoRequestedLocationContextRef.current = null;
+      return;
+    }
+
+    if (!hasMappedVisibleRestaurants || isLocatingUser) {
+      return;
+    }
+
+    const locationContext = selectedCity ?? 'default-city';
+    if (autoRequestedLocationContextRef.current === locationContext) {
+      return;
+    }
+
+    autoRequestedLocationContextRef.current = locationContext;
+    requestUserLocation();
+  }, [
+    effectiveViewMode,
+    hasMappedVisibleRestaurants,
+    isAllCitiesSelected,
+    isLocatingUser,
+    requestUserLocation,
+    selectedCity
+  ]);
+  useEffect(() => {
+    if (effectiveViewMode !== 'map') {
+      googleMapRef.current = null;
+      googleMarkersRef.current = [];
+      googleUserMarkerRef.current = null;
+      return;
+    }
+
+    if (!googleMapsBrowserApiKey.trim()) {
+      setMapLoadErrorMessage('Set NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY to render the embedded Google Map.');
+      return;
+    }
+
+    let cancelled = false;
+    let renderFrameId: number | null = null;
+    const windowWithGoogle = window as GoogleMapsWindow;
+
+    const clearGoogleMapObjects = (): void => {
+      for (const marker of googleMarkersRef.current) {
+        marker.setMap(null);
+      }
+      googleMarkersRef.current = [];
+      if (googleUserMarkerRef.current) {
+        googleUserMarkerRef.current.setMap(null);
+        googleUserMarkerRef.current = null;
+      }
+    };
+
+    const renderMap = (): void => {
+      if (cancelled || !googleMapContainerRef.current || !windowWithGoogle.google?.maps) {
+        return;
+      }
+
+      const googleMaps = windowWithGoogle.google.maps;
+      if (googleMapRef.current?.getDiv?.() !== googleMapContainerRef.current) {
+        googleMapRef.current = null;
+      }
+
+      const fallbackCenter = mappedVisibleRestaurants[0]
+        ? {
+            lat: mappedVisibleRestaurants[0].latitude as number,
+            lng: mappedVisibleRestaurants[0].longitude as number
+          }
+        : { lat: -37.8136, lng: 144.9631 };
+      const center = userLocation
+        ? { lat: userLocation.latitude, lng: userLocation.longitude }
+        : fallbackCenter;
+
+      if (!googleMapRef.current) {
+        googleMapRef.current = new googleMaps.Map(googleMapContainerRef.current, {
+          center,
+          clickableIcons: true,
+          fullscreenControl: true,
+          mapTypeControl: false,
+          streetViewControl: true,
+          zoom: 13
+        });
+      } else {
+        googleMapRef.current.setCenter(center);
+      }
+
+      clearGoogleMapObjects();
+
+      const bounds = new googleMaps.LatLngBounds();
+      const infoWindow = new googleMaps.InfoWindow({
+        headerDisabled: true
+      });
+
+      if (userLocation) {
+        const userPosition = { lat: userLocation.latitude, lng: userLocation.longitude };
+        googleUserMarkerRef.current = new googleMaps.Marker({
+          map: googleMapRef.current,
+          position: userPosition,
+          title: 'Your current location',
+          zIndex: 1000
+        });
+        bounds.extend(userPosition);
+      }
+
+      for (const restaurant of mappedVisibleRestaurants) {
+        const position = {
+          lat: restaurant.latitude as number,
+          lng: restaurant.longitude as number
+        };
+        const marker = new googleMaps.Marker({
+          icon: {
+            anchor: new googleMaps.Point(19, 52),
+            scaledSize: new googleMaps.Size(38, 54),
+            url: buildRestaurantMapMarkerIcon(restaurant.status)
+          },
+          label: {
+            className: 'eats-map-marker-label',
+            text: restaurant.name
+          },
+          map: googleMapRef.current,
+          position,
+          title: restaurant.name
+        });
+        marker.addListener('click', () => {
+          const mapsUrl = restaurant.googlePlaceId
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.name)}&query_place_id=${encodeURIComponent(restaurant.googlePlaceId)}`
+            : restaurant.url;
+          const address = restaurant.address
+            ? `<div style="color:#4b5563;font-size:12px;line-height:1.35;margin-top:5px;">${escapeHtml(restaurant.address)}</div>`
+            : '';
+          const typeText = restaurant.types.map((type) => `${type.emoji} ${type.name}`).join(', ');
+          const restaurantAreaNames = restaurant.areas.filter((area) => area.trim().length > 0);
+          const areaText = isAllCitiesSelected
+            ? [restaurant.cityName, ...restaurantAreaNames].join(' · ')
+            : restaurantAreaNames.join(' · ');
+          const mealText = restaurant.mealTypes.map((mealType) => mealLabel(mealType)).join(', ');
+          const detailText = getRestaurantDetailText(restaurant);
+          const detailLabel = restaurant.status === 'disliked' ? 'Reason' : 'Notes';
+          const infoWindowContent = document.createElement('div');
+          infoWindowContent.className = 'eats-map-info-window';
+          infoWindowContent.innerHTML =
+            `<button class="eats-map-info-close" type="button" aria-label="Close">×</button>
+            <div style="box-sizing:border-box;color:#111827;font-family:Arial,sans-serif;width:min(360px, calc(80vw - 48px));padding:0 30px 2px 0;">
+              <div style="font-size:15px;font-weight:700;line-height:1.25;padding-right:4px;">${escapeHtml(restaurant.name)}</div>
+              <div style="color:#111827;font-size:12px;font-weight:700;margin-top:5px;">${escapeHtml(getRestaurantStatusLabel(restaurant.status))}</div>
+              ${address}
+              ${renderMapInfoRow('Food', typeText)}
+              ${renderMapInfoRow('Area', areaText)}
+              ${renderMapInfoRow('Meals', mealText)}
+              ${renderMapInfoRow(detailLabel, detailText)}
+              ${renderMapInfoUrlRow('Where I Found It', restaurant.referredBy.trim())}
+              <a style="display:inline-block;font-size:13px;margin-top:10px;" href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
+            </div>`;
+          infoWindowContent.querySelector('.eats-map-info-close')?.addEventListener('click', () => {
+            infoWindow.close();
+          });
+          infoWindow.setContent(infoWindowContent);
+          infoWindow.open({
+            anchor: marker,
+            map: googleMapRef.current
+          });
+        });
+        googleMarkersRef.current.push(marker);
+        bounds.extend(position);
+      }
+
+      googleMaps.event.trigger(googleMapRef.current, 'resize');
+      if (userLocation && shouldFocusUserLocationRef.current) {
+        shouldFocusUserLocationRef.current = false;
+        googleMapRef.current.panTo({ lat: userLocation.latitude, lng: userLocation.longitude });
+        googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
+      } else if (!bounds.isEmpty()) {
+        googleMapRef.current.fitBounds(bounds, 64);
+      }
+      setMapLoadErrorMessage(null);
+    };
+
+    const scheduleRenderMap = (): void => {
+      if (renderFrameId !== null) {
+        window.cancelAnimationFrame(renderFrameId);
+      }
+
+      renderFrameId = window.requestAnimationFrame(() => {
+        renderFrameId = window.requestAnimationFrame(() => {
+          renderFrameId = null;
+          renderMap();
+        });
+      });
+    };
+
+    if (windowWithGoogle.google?.maps) {
+      scheduleRenderMap();
+      return () => {
+        cancelled = true;
+        if (renderFrameId !== null) {
+          window.cancelAnimationFrame(renderFrameId);
+        }
+        clearGoogleMapObjects();
+        googleMapRef.current = null;
+      };
+    }
+
+    windowWithGoogle.initEatsGoogleMap = scheduleRenderMap;
+    const existingScript = document.getElementById('eats-google-maps-js');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.id = 'eats-google-maps-js';
+      script.async = true;
+      script.defer = true;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsBrowserApiKey)}&callback=initEatsGoogleMap`;
+      script.onerror = () => {
+        if (!cancelled) {
+          setMapLoadErrorMessage('Could not load Google Maps.');
+        }
+      };
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      if (renderFrameId !== null) {
+        window.cancelAnimationFrame(renderFrameId);
+      }
+      clearGoogleMapObjects();
+      googleMapRef.current = null;
+    };
+  }, [effectiveViewMode, googleMapsBrowserApiKey, mappedVisibleRestaurants, userLocation]);
   const applySavedFilterGroup = useCallback((group: SavedFilterGroup): void => {
     const availableIncludedHeadings = headings.filter((heading) => group.headings.includes(heading));
     preservedIncludedHeadings.current = availableIncludedHeadings;
@@ -2356,6 +2754,7 @@ export function PublicEatsPage({
     ]
   );
   const showWalkthroughDebugTrigger = process.env.NODE_ENV !== 'production';
+  const showLocationBackfillDebugButton = process.env.NODE_ENV !== 'production';
   const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
@@ -2584,6 +2983,9 @@ export function PublicEatsPage({
                   buttonClassName={styles.deleteButton}
                 />
               ) : null}
+              {canEditRestaurants && showLocationBackfillDebugButton && canBackfillRestaurantLocation(place) ? (
+                <LocationBackfillDebugForm restaurantId={place.id} />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -2592,6 +2994,7 @@ export function PublicEatsPage({
     [
       canDeleteRestaurants,
       canEditRestaurants,
+      showLocationBackfillDebugButton,
       activeLuckyConfettiId,
       compactCards,
       expandedCompactCardIds,
@@ -2681,21 +3084,35 @@ export function PublicEatsPage({
                   {!isSearchActive ? (
                     <select
                       id="viewMode"
-                      value={effectiveViewMode}
+                      value={effectiveViewMode === 'map' && !hasMappedVisibleRestaurants ? 'list' : effectiveViewMode}
                       onChange={(event) => setViewMode(event.target.value as ViewMode)}
                     >
                       <option value="list">List</option>
+                      <option value="map" disabled={!hasMappedVisibleRestaurants}>
+                        Map
+                      </option>
                       {boardCategory !== null ? <option value="kanban">Kanban</option> : null}
                     </select>
                   ) : null}
-                  <label className={styles.compactToggle}>
-                    <input
-                      type="checkbox"
-                      checked={compactCards}
-                      onChange={(event) => setCompactCards(event.target.checked)}
-                    />
-                    <span>Compact Cards</span>
-                  </label>
+                  {effectiveViewMode === 'map' && hasMappedVisibleRestaurants ? (
+                    <button
+                      type="button"
+                      className={`${styles.compactToggle} ${styles.mapLocationButton}`}
+                      onClick={requestUserLocation}
+                      disabled={isLocatingUser}
+                    >
+                      {isLocatingUser ? 'Refreshing...' : userLocation ? 'Refresh location' : 'Centre on me'}
+                    </button>
+                  ) : (
+                    <label className={styles.compactToggle}>
+                      <input
+                        type="checkbox"
+                        checked={compactCards}
+                        onChange={(event) => setCompactCards(event.target.checked)}
+                      />
+                      <span>Compact Cards</span>
+                    </label>
+                  )}
                 </div>
               </div>
               <div className={`${styles.sortingField} ${styles.statusFilterGroup}`} ref={statusFieldRef}>
@@ -2892,7 +3309,18 @@ export function PublicEatsPage({
               </div>
             ) : null}
             {boardErrorMessage ? <div className={styles.boardError}>{boardErrorMessage}</div> : null}
-            {effectiveViewMode === 'kanban' && boardCategory !== null && !isSearchActive ? (
+            {effectiveViewMode === 'map' && hasMappedVisibleRestaurants ? (
+              <div className={`${styles.mapView} ${styles.resultsMotion}`} key={`map-${resultsMotionKey}`}>
+                {locationErrorMessage ? <div className={styles.inlineMapError}>{locationErrorMessage}</div> : null}
+                {mapLoadErrorMessage ? <div className={styles.inlineMapError}>{mapLoadErrorMessage}</div> : null}
+                <div className={styles.embeddedGoogleMap} ref={googleMapContainerRef} />
+                {visibleGoogleMapsRestaurants.length > mappedGoogleMapsRestaurantCount ? (
+                  <div className={styles.mapMissingHint}>
+                    Some places are not on the map yet.
+                  </div>
+                ) : null}
+              </div>
+            ) : effectiveViewMode === 'kanban' && boardCategory !== null && !isSearchActive ? (
               <div className={`${styles.kanbanBoard} ${styles.resultsMotion}`} key={`kanban-${resultsMotionKey}`}>
                 {boardLanes.length === 0 ? (
                   renderNoResultsState('kanban')
@@ -3345,6 +3773,10 @@ export function PublicEatsPage({
                   referredBy: editingRestaurant.referredBy,
                   typeIds: editingRestaurant.types.map((type) => type.id),
                   url: editingRestaurant.url,
+                  googlePlaceId: editingRestaurant.googlePlaceId,
+                  address: editingRestaurant.address,
+                  latitude: editingRestaurant.latitude,
+                  longitude: editingRestaurant.longitude,
                   status: editingRestaurant.status,
                   dislikedReason: editingRestaurant.dislikedReason
                 }}

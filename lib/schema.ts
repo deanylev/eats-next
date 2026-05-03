@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  doublePrecision,
   foreignKey,
   pgEnum,
   pgTable,
@@ -113,6 +114,10 @@ export const restaurants = pgTable(
     notes: text('notes').notNull(),
     referredBy: text('referred_by').notNull(),
     url: text('url').notNull(),
+    googlePlaceId: text('google_place_id'),
+    address: text('address'),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
     status: restaurantStatusEnum('status').notNull(),
     triedAt: timestamp('tried_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
