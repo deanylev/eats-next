@@ -107,6 +107,12 @@
     transform: translateY(-1px);
   }
 
+  button:disabled {
+    cursor: progress;
+    opacity: 0.66;
+    transform: none;
+  }
+
   button[data-delete-button='true'] {
     background: rgba(194, 51, 51, 0.9);
     border: 1px solid rgba(226, 95, 95, 0.78);
@@ -494,6 +500,46 @@
   margin: 0;
 }
 
+.locationBackfillProgress {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 560px;
+  width: 100%;
+}
+
+.locationBackfillStatus {
+  color: var(--tenant-on-primary-muted);
+  display: grid;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 6px;
+  line-height: 1.35;
+  width: 100%;
+}
+
+.locationBackfillProgressBar {
+  background: color-mix(in srgb, var(--tenant-on-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tenant-on-primary) 18%, transparent);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+  width: 100%;
+
+  span {
+    background: var(--tenant-secondary);
+    display: block;
+    height: 100%;
+    transition: width 180ms ease;
+  }
+}
+
+.locationBackfillError {
+  color: #ffd6d6;
+  font-size: 14px;
+  font-weight: 700;
+}
 
 .exportActions {
   display: flex;

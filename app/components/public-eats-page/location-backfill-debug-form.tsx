@@ -13,7 +13,7 @@ const LocationBackfillDebugButton = (): JSX.Element => {
 
   return (
     <button className={styles.debugButton} type="submit" disabled={pending} aria-disabled={pending}>
-      {pending ? '[DEV] Backfilling...' : '[DEV] Backfill map'}
+      {pending ? 'Backfilling...' : 'Backfill map'}
     </button>
   );
 };

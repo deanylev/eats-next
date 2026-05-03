@@ -26,7 +26,6 @@ import {
   restoreRestaurantRecord,
   permanentlyDeleteRestaurantRecord,
   softDeleteRestaurantRecord,
-  updateRestaurantLocationMetadataRecord,
   updateCityRecord,
   updateCountryRecord,
   updateRestaurantRecord,
@@ -40,6 +39,7 @@ import {
   parseImportExportPayload,
   type ImportExportPayload
 } from '@/lib/data-transfer';
+import { backfillRestaurantLocation } from '@/lib/restaurant-location-backfill';
 import {
   ADMIN_SUBDOMAIN_DRAFT_COOKIE,
   buildAdminSubdomainDraft,
@@ -47,7 +47,6 @@ import {
 } from '@/lib/admin-form-state';
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
-import { resolveGoogleMapsLocationFromUrl } from '@/lib/google-maps';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
 import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
 import {
@@ -73,7 +72,6 @@ import {
 } from '@/lib/tenant';
 import { deleteSubdomainTenantRecord } from '@/lib/tenant-write';
 import { DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
-import { isGoogleMapsUrl } from '@/lib/url';
 import {
   cityInputSchema,
   countryInputSchema,
@@ -1044,50 +1042,6 @@ export const moveRestaurantFromRoot = async (
   }
 };
 
-type BackfillLocationResult = 'updated' | 'skipped' | 'failed';
-
-const backfillRestaurantLocation = async (
-  restaurant: {
-    id: string;
-    name: string;
-    url: string;
-    cityName: string;
-    countryName: string;
-    latitude: number | null;
-    longitude: number | null;
-  },
-  tenantId: string,
-  options?: { force?: boolean }
-): Promise<BackfillLocationResult> => {
-  if (!isGoogleMapsUrl(restaurant.url)) {
-    return 'skipped';
-  }
-
-  if (!options?.force && restaurant.latitude !== null && restaurant.longitude !== null) {
-    return 'skipped';
-  }
-
-  const location = await resolveGoogleMapsLocationFromUrl({
-    cityName: restaurant.cityName,
-    countryName: restaurant.countryName,
-    name: restaurant.name,
-    url: restaurant.url
-  });
-
-  if (!location || location.latitude === null || location.longitude === null) {
-    return 'failed';
-  }
-
-  await updateRestaurantLocationMetadataRecord(getDb(), tenantId, restaurant.id, {
-    address: location.address,
-    googlePlaceId: location.placeId,
-    latitude: location.latitude,
-    longitude: location.longitude
-  });
-
-  return 'updated';
-};
-
 export const backfillRestaurantLocations = async (): Promise<void> => {
   try {
     const { tenant } = await requireAdminSession();
@@ -1117,7 +1071,7 @@ export const backfillRestaurantLocations = async (): Promise<void> => {
 
     for (const restaurant of restaurantRows) {
       try {
-        const result = await backfillRestaurantLocation(restaurant, tenant.id);
+        const result = await backfillRestaurantLocation(db, restaurant, tenant.id);
         if (result === 'updated') {
           updatedCount += 1;
         } else if (result === 'skipped') {
@@ -1151,9 +1105,6 @@ export const backfillRestaurantLocationFromRoot = async (formData: FormData): Pr
 
   return runRootAction(
     async () => {
-      if (process.env.NODE_ENV === 'production') {
-        throw userFacingError('Per-place location backfill is only available in development.');
-      }
       if (!process.env.GOOGLE_MAPS_API_KEY?.trim()) {
         throw userFacingError('GOOGLE_MAPS_API_KEY is required to backfill location data.');
       }
@@ -1180,7 +1131,7 @@ export const backfillRestaurantLocationFromRoot = async (formData: FormData): Pr
         throw userFacingError('Restaurant not found.');
       }
 
-      const result = await backfillRestaurantLocation(foundRestaurant, tenant.id, { force: true });
+      const result = await backfillRestaurantLocation(getDb(), foundRestaurant, tenant.id, { force: true });
       if (result !== 'updated') {
         throw userFacingError(
           result === 'skipped'

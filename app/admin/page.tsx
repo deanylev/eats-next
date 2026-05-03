@@ -4,7 +4,6 @@ import { notFound, redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import {
   createSubdomainTenant,
-  backfillRestaurantLocations,
   createCity,
   createCountry,
   createRestaurantType,
@@ -34,8 +33,10 @@ import { flashCookieNames } from '@/lib/flash-cookies';
 import { getAdminSessionForTenant, readFlashMessages, resolveRequestTenant } from '@/lib/request-context';
 import { buildTenantHost, isTenantResolutionError, resolvePublicRequestHostWithPort } from '@/lib/tenant';
 import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
+import { isGoogleMapsUrl } from '@/lib/url';
 
 import styles from './style.module.scss';
+import { LocationBackfillProgressButton } from './location-backfill-progress-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,12 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
 
     const db = getDb();
     const data = await getCmsData(tenant.id, { includeDeleted: true });
+    const missingLocationBackfillCount = data.restaurants.filter(
+      (restaurant) =>
+        restaurant.areas.length < 2 &&
+        isGoogleMapsUrl(restaurant.url) &&
+        (restaurant.latitude === null || restaurant.longitude === null)
+    ).length;
     const subdomainTenants = tenant.isRoot
       ? await db.query.tenants.findMany({
           where: (table, { and, eq }) => and(eq(table.isRoot, false)),
@@ -595,17 +602,17 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
             </AdminPanelSection>
 
             <AdminPanelSection className={styles.panel} title="Location Data">
-              <ConfirmingActionForm
-                action={backfillRestaurantLocations}
-                confirmText="Backfill saved address and coordinates for active restaurants with Google Maps URLs? This may make many Google Maps API requests."
-              >
-                <p className={styles.importHint}>
-                  Uses existing Google Maps URLs, including shortened maps.app.goo.gl links, and skips restaurants that already have coordinates.
-                </p>
-                <div className={styles.manageActions}>
-                  <button type="submit">Backfill map data</button>
-                </div>
-              </ConfirmingActionForm>
+              <p className={styles.importHint}>
+                Uses existing Google Maps URLs, including shortened maps.app.goo.gl links, and skips restaurants that already have coordinates.
+              </p>
+              <p className={styles.importHint}>
+                {missingLocationBackfillCount === 1
+                  ? '1 eligible place is missing map data.'
+                  : `${missingLocationBackfillCount} eligible places are missing map data.`}
+              </p>
+              <div className={styles.manageActions}>
+                <LocationBackfillProgressButton />
+              </div>
             </AdminPanelSection>
           </div>
         );

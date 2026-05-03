@@ -210,6 +210,7 @@ type UserLocation = {
   latitude: number;
   longitude: number;
 };
+type UserLocationFocusMode = 'always' | 'visible-area';
 type GoogleMapsWindow = Window & {
   google?: any;
   initEatsGoogleMap?: () => void;
@@ -489,6 +490,45 @@ const buildRestaurantMapMarkerIcon = (
   )}`;
 };
 
+const buildUserLocationMapMarkerIcon = (): string =>
+  `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+      <circle cx="15" cy="15" r="13" fill="#3b82f6" fill-opacity="0.18" />
+      <circle cx="15" cy="15" r="8" fill="#3b82f6" stroke="#fff" stroke-width="3" />
+    </svg>`
+  )}`;
+
+const getDistanceInKm = (
+  first: { latitude: number; longitude: number },
+  second: { latitude: number; longitude: number }
+): number => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number): number => degrees * (Math.PI / 180);
+  const latitudeDelta = toRadians(second.latitude - first.latitude);
+  const longitudeDelta = toRadians(second.longitude - first.longitude);
+  const firstLatitude = toRadians(first.latitude);
+  const secondLatitude = toRadians(second.latitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const isUserLocationNearMappedRestaurants = (
+  userLocation: UserLocation,
+  mappedRestaurants: PublicRestaurant[]
+): boolean =>
+  mappedRestaurants.some((restaurant) => {
+    if (typeof restaurant.latitude !== 'number' || typeof restaurant.longitude !== 'number') {
+      return false;
+    }
+
+    return getDistanceInKm(userLocation, {
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude
+    }) <= 80;
+  });
+
 type Props = {
   restaurants: PublicRestaurant[];
   defaultCityName?: string | null;
@@ -610,6 +650,7 @@ export function PublicEatsPage({
   const googleMarkersRef = useRef<any[]>([]);
   const googleUserMarkerRef = useRef<any>(null);
   const shouldFocusUserLocationRef = useRef(false);
+  const userLocationFocusModeRef = useRef<UserLocationFocusMode>('always');
   const autoRequestedLocationContextRef = useRef<string | null>(null);
   const filtersReady = hasInitializedFilters;
 
@@ -2242,7 +2283,7 @@ export function PublicEatsPage({
     setLuckyRunCount((current) => current + 1);
     scrollRestaurantCardIntoView(luckyId);
   };
-  const requestUserLocation = useCallback((): void => {
+  const requestUserLocation = useCallback((focusMode: UserLocationFocusMode = 'always'): void => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setLocationErrorMessage('Location is not available in this browser.');
       return;
@@ -2256,6 +2297,7 @@ export function PublicEatsPage({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         };
+        userLocationFocusModeRef.current = focusMode;
         shouldFocusUserLocationRef.current = true;
         setUserLocation(nextLocation);
         setIsLocatingUser(false);
@@ -2287,7 +2329,7 @@ export function PublicEatsPage({
     }
 
     autoRequestedLocationContextRef.current = locationContext;
-    requestUserLocation();
+    requestUserLocation('visible-area');
   }, [
     effectiveViewMode,
     hasMappedVisibleRestaurants,
@@ -2334,13 +2376,17 @@ export function PublicEatsPage({
         googleMapRef.current = null;
       }
 
+      const shouldUseUserLocation = userLocation
+        ? userLocationFocusModeRef.current === 'always' ||
+          isUserLocationNearMappedRestaurants(userLocation, mappedVisibleRestaurants)
+        : false;
       const fallbackCenter = mappedVisibleRestaurants[0]
         ? {
             lat: mappedVisibleRestaurants[0].latitude as number,
             lng: mappedVisibleRestaurants[0].longitude as number
           }
         : { lat: -37.8136, lng: 144.9631 };
-      const center = userLocation
+      const center = userLocation && shouldUseUserLocation
         ? { lat: userLocation.latitude, lng: userLocation.longitude }
         : fallbackCenter;
 
@@ -2364,9 +2410,14 @@ export function PublicEatsPage({
         headerDisabled: true
       });
 
-      if (userLocation) {
+      if (userLocation && shouldUseUserLocation) {
         const userPosition = { lat: userLocation.latitude, lng: userLocation.longitude };
         googleUserMarkerRef.current = new googleMaps.Marker({
+          icon: {
+            anchor: new googleMaps.Point(15, 15),
+            scaledSize: new googleMaps.Size(30, 30),
+            url: buildUserLocationMapMarkerIcon()
+          },
           map: googleMapRef.current,
           position: userPosition,
           title: 'Your current location',
@@ -2438,11 +2489,12 @@ export function PublicEatsPage({
       }
 
       googleMaps.event.trigger(googleMapRef.current, 'resize');
-      if (userLocation && shouldFocusUserLocationRef.current) {
+      if (userLocation && shouldFocusUserLocationRef.current && shouldUseUserLocation) {
         shouldFocusUserLocationRef.current = false;
         googleMapRef.current.panTo({ lat: userLocation.latitude, lng: userLocation.longitude });
         googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
       } else if (!bounds.isEmpty()) {
+        shouldFocusUserLocationRef.current = false;
         googleMapRef.current.fitBounds(bounds, 64);
       }
       setMapLoadErrorMessage(null);
@@ -2754,7 +2806,6 @@ export function PublicEatsPage({
     ]
   );
   const showWalkthroughDebugTrigger = process.env.NODE_ENV !== 'production';
-  const showLocationBackfillDebugButton = process.env.NODE_ENV !== 'production';
   const resolvedPrimaryColor = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const resolvedSecondaryColor = secondaryColor ?? DEFAULT_SECONDARY_COLOR;
   const rootStyle = buildThemeCssVariables(resolvedPrimaryColor, resolvedSecondaryColor, 'theme') as CSSProperties;
@@ -2983,7 +3034,7 @@ export function PublicEatsPage({
                   buttonClassName={styles.deleteButton}
                 />
               ) : null}
-              {canEditRestaurants && showLocationBackfillDebugButton && canBackfillRestaurantLocation(place) ? (
+              {canEditRestaurants && canBackfillRestaurantLocation(place) ? (
                 <LocationBackfillDebugForm restaurantId={place.id} />
               ) : null}
             </div>
@@ -2994,7 +3045,6 @@ export function PublicEatsPage({
     [
       canDeleteRestaurants,
       canEditRestaurants,
-      showLocationBackfillDebugButton,
       activeLuckyConfettiId,
       compactCards,
       expandedCompactCardIds,
@@ -3098,7 +3148,7 @@ export function PublicEatsPage({
                     <button
                       type="button"
                       className={`${styles.compactToggle} ${styles.mapLocationButton}`}
-                      onClick={requestUserLocation}
+                      onClick={() => requestUserLocation()}
                       disabled={isLocatingUser}
                     >
                       {isLocatingUser ? 'Refreshing...' : userLocation ? 'Refresh location' : 'Centre on me'}
