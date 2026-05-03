@@ -2611,12 +2611,7 @@ export function PublicEatsPage({
         googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
       } else if (!bounds.isEmpty()) {
         shouldFocusUserLocationRef.current = false;
-        const currentBounds = googleMapRef.current.getBounds?.();
-        const hasVisibleRestaurantInCurrentBounds = currentBounds
-          ? restaurantPositions.some((position) => currentBounds.contains(position))
-          : false;
-
-        if (!hasExistingMap || !hasVisibleRestaurantInCurrentBounds) {
+        if (!hasExistingMap) {
           googleMapRef.current.fitBounds(bounds, 64);
         }
       }
