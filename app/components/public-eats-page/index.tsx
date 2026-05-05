@@ -1,5 +1,6 @@
 'use client';
 
+import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import Fuse from 'fuse.js';
 import { useRouter } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
@@ -47,6 +48,7 @@ const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
 const savedFilterGroupsStorageKey = 'publicEatsSavedFilterGroups';
 const minimumUpwardFilterPopoverListHeight = 160;
 const filterPopoverOffset = 20;
+const defaultUserLocationMapZoom = 15;
 const newRestaurantQueryParam = 'newRestaurant';
 const newRestaurantHighlightDurationMs = 4200;
 
@@ -258,6 +260,7 @@ type RestaurantLocationPin = {
 };
 
 type ViewMode = 'list' | 'kanban' | 'map';
+type MapClusterStatusCounts = Record<PublicRestaurant['status'], number>;
 type BoardCategory = 'city' | 'area' | 'type';
 type BoardLane = {
   boardCategory: BoardCategory;
@@ -550,9 +553,16 @@ const buildRestaurantMapMarkerIcon = (
   themeSecondaryColor: string,
   themePrimaryColor: string,
   chainLocationCount: number,
-  isChainHighlighted: boolean
+  isChainHighlighted: boolean,
+  isSelected: boolean
 ): string => {
   const colors = getRestaurantMapMarkerColors(status, themeSecondaryColor);
+  const selectedRing = isSelected
+    ? `<g>
+        <circle cx="19" cy="23" r="23" fill="#fff" fill-opacity="0.92" stroke="${themePrimaryColor}" stroke-width="5" />
+        <circle cx="19" cy="23" r="18" fill="none" stroke="#111827" stroke-opacity="0.34" stroke-width="2" />
+      </g>`
+    : '';
   const chainBadge = chainLocationCount > 1
     ? `<g>
         <circle cx="34" cy="12" r="10" fill="#111827" stroke="#fff" stroke-width="3" />
@@ -567,10 +577,51 @@ const buildRestaurantMapMarkerIcon = (
 
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="50" height="62" viewBox="0 0 50 62">
+      ${selectedRing}
       ${highlightRing}
       <path d="M19 56C16 49 4 37 4 23C4 14.716 10.716 8 19 8C27.284 8 34 14.716 34 23C34 37 22 49 19 56Z" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3" />
       <circle cx="19" cy="23" r="7" fill="#fff" fill-opacity="0.92" />
       ${chainBadge}
+    </svg>`
+  )}`;
+};
+
+const buildRestaurantMapClusterIcon = (
+  count: number,
+  statusCounts: MapClusterStatusCounts,
+  themeSecondaryColor: string,
+  themePrimaryColor: string
+): string => {
+  const label = count > 99 ? '99+' : count.toString();
+  const statusOrder: PublicRestaurant['status'][] = ['liked', 'disliked', 'untried'];
+  const dominantStatus = statusOrder.reduce(
+    (currentDominant, status) =>
+      statusCounts[status] > statusCounts[currentDominant] ? status : currentDominant,
+    'untried'
+  );
+  const dominantColor = getRestaurantMapMarkerColors(dominantStatus, themeSecondaryColor).fill;
+  let segmentOffset = 0;
+  const statusSegments = statusOrder
+    .map((status) => {
+      const statusCount = statusCounts[status];
+      if (statusCount === 0) {
+        return '';
+      }
+
+      const segmentSize = (statusCount / count) * 100;
+      const segment = `<circle cx="29" cy="29" r="25" fill="none" stroke="${getRestaurantMapMarkerColors(status, themeSecondaryColor).fill}" stroke-width="7" pathLength="100" stroke-dasharray="${segmentSize.toFixed(3)} ${(100 - segmentSize).toFixed(3)}" stroke-dashoffset="${(-segmentOffset).toFixed(3)}" transform="rotate(-90 29 29)" />`;
+      segmentOffset += segmentSize;
+      return segment;
+    })
+    .join('');
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="58" height="58" viewBox="0 0 58 58">
+      <circle cx="29" cy="29" r="27" fill="${themePrimaryColor}" fill-opacity="0.16" />
+      <circle cx="29" cy="29" r="25" fill="none" stroke="#fff" stroke-width="9" />
+      ${statusSegments}
+      <circle cx="29" cy="29" r="19" fill="${dominantColor}" stroke="#111827" stroke-width="3" />
+      <text x="29" y="34" fill="#111827" font-family="Arial, sans-serif" font-size="${count > 99 ? '13' : '15'}" font-weight="800" text-anchor="middle">${label}</text>
     </svg>`
   )}`;
 };
@@ -695,16 +746,40 @@ const sortDistanceHeadings = (headings: string[]): string[] =>
       - (indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB);
   });
 
-const isUserLocationNearMappedRestaurants = (
+const latitudeToMercator = (latitude: number): number => {
+  const sinLatitude = Math.sin(latitude * Math.PI / 180);
+  return 0.5 - Math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * Math.PI);
+};
+
+const mercatorToLatitude = (mercatorY: number): number =>
+  (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - 2 * mercatorY)));
+
+const isMappedRestaurantWithinUserMapBounds = (
   userLocation: UserLocation,
-  mappedPins: RestaurantLocationPin[]
-): boolean =>
-  mappedPins.some((pin) =>
-    getDistanceInKm(userLocation, {
-      latitude: pin.location.latitude,
-      longitude: pin.location.longitude
-    }) <= 80
+  mappedPins: RestaurantLocationPin[],
+  mapSize: { width: number; height: number }
+): boolean => {
+  if (mapSize.width <= 0 || mapSize.height <= 0) {
+    return false;
+  }
+
+  const worldPixelSize = 256 * 2 ** defaultUserLocationMapZoom;
+  const longitudeDegreesPerPixel = 360 / worldPixelSize;
+  const longitudeDelta = (mapSize.width / 2) * longitudeDegreesPerPixel;
+  const mercatorDelta = mapSize.height / (2 * worldPixelSize);
+  const userMercatorY = latitudeToMercator(userLocation.latitude);
+  const northLatitude = mercatorToLatitude(userMercatorY - mercatorDelta);
+  const southLatitude = mercatorToLatitude(userMercatorY + mercatorDelta);
+  const westLongitude = userLocation.longitude - longitudeDelta;
+  const eastLongitude = userLocation.longitude + longitudeDelta;
+
+  return mappedPins.some((pin) =>
+    pin.location.latitude >= southLatitude &&
+    pin.location.latitude <= northLatitude &&
+    pin.location.longitude >= westLongitude &&
+    pin.location.longitude <= eastLongitude
   );
+};
 
 type Props = {
   restaurants: PublicRestaurant[];
@@ -828,7 +903,9 @@ export function PublicEatsPage({
   const searchPopoverId = useId();
   const googleMapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapRef = useRef<any>(null);
+  const googleMarkerClustererRef = useRef<MarkerClusterer | null>(null);
   const googleMarkersRef = useRef<any[]>([]);
+  const googleMarkerStatusByMarkerRef = useRef<WeakMap<object, PublicRestaurant['status']>>(new WeakMap());
   const googleMarkersByPinIdRef = useRef<Map<string, any>>(new Map());
   const googleMarkerOpenersByPinIdRef = useRef<Map<string, () => void>>(new Map());
   const googleMarkerMetadataByPinIdRef = useRef<Map<string, { restaurantId: string; status: PublicRestaurant['status']; chainLocationCount: number }>>(new Map());
@@ -837,7 +914,6 @@ export function PublicEatsPage({
   const googleUserMarkerRef = useRef<any>(null);
   const pendingMapRestaurantFocusIdRef = useRef<string | null>(null);
   const pendingMapPinFocusIdRef = useRef<string | null>(null);
-  const previousMapFitSignatureRef = useRef<string | null>(null);
   const shouldFocusUserLocationRef = useRef(false);
   const userLocationFocusModeRef = useRef<UserLocationFocusMode>('always');
   const autoRequestedLocationContextRef = useRef<string | null>(null);
@@ -1949,10 +2025,6 @@ export function PublicEatsPage({
 
     return counts;
   }, [mappedVisiblePins]);
-  const mappedVisiblePinSignature = useMemo(
-    () => mappedVisiblePins.map((pin) => pin.id).join('|'),
-    [mappedVisiblePins]
-  );
   const hasMappedVisibleRestaurants = mappedVisiblePins.length > 0;
   useEffect(() => {
     if (!hasInitializedFilters || !hasResolvedCitySelection) {
@@ -2684,13 +2756,16 @@ export function PublicEatsPage({
   useEffect(() => {
       if (effectiveViewMode !== 'map') {
         googleMapRef.current = null;
+        googleMarkerClustererRef.current?.clearMarkers();
+        googleMarkerClustererRef.current?.setMap(null);
+        googleMarkerClustererRef.current = null;
         googleMarkersRef.current = [];
+        googleMarkerStatusByMarkerRef.current = new WeakMap();
         googleMarkersByPinIdRef.current.clear();
         googleMarkerOpenersByPinIdRef.current.clear();
         googleMarkerMetadataByPinIdRef.current.clear();
         selectedMapPinIdRef.current = null;
         selectedMapRestaurantIdRef.current = null;
-        previousMapFitSignatureRef.current = null;
         googleUserMarkerRef.current = null;
         return;
       }
@@ -2705,10 +2780,14 @@ export function PublicEatsPage({
     const windowWithGoogle = window as GoogleMapsWindow;
 
     const clearGoogleMapObjects = (): void => {
+      googleMarkerClustererRef.current?.clearMarkers();
+      googleMarkerClustererRef.current?.setMap(null);
+      googleMarkerClustererRef.current = null;
       for (const marker of googleMarkersRef.current) {
         marker.setMap(null);
       }
       googleMarkersRef.current = [];
+      googleMarkerStatusByMarkerRef.current = new WeakMap();
       googleMarkersByPinIdRef.current.clear();
       googleMarkerOpenersByPinIdRef.current.clear();
       googleMarkerMetadataByPinIdRef.current.clear();
@@ -2729,11 +2808,17 @@ export function PublicEatsPage({
       }
 
       const shouldPrioritizeSearchResults = isSearchActive && mappedVisiblePins.length > 0;
+      const mapSize = {
+        height: googleMapContainerRef.current.clientHeight,
+        width: googleMapContainerRef.current.clientWidth
+      };
+      const isUserNearVisiblePins = userLocation
+        ? isMappedRestaurantWithinUserMapBounds(userLocation, mappedVisiblePins, mapSize)
+        : false;
+      const shouldForceUserLocationFocus = shouldFocusUserLocationRef.current && userLocationFocusModeRef.current === 'always';
       const shouldUseUserLocation = userLocation
         ? !shouldPrioritizeSearchResults &&
-          (userLocationFocusModeRef.current === 'always' ||
-          isUserLocationNearMappedRestaurants(userLocation, mappedVisiblePins)
-          )
+          (isUserNearVisiblePins || shouldForceUserLocationFocus)
         : false;
       const fallbackCenter = mappedVisiblePins[0]
         ? {
@@ -2772,7 +2857,7 @@ export function PublicEatsPage({
       ) {
         selectedMapRestaurantIdRef.current = null;
       }
-      const updateChainHighlight = (restaurantId: string | null): void => {
+      const updateMarkerSelection = (restaurantId: string | null): void => {
         if (restaurantId === null) {
           selectedMapPinIdRef.current = null;
         }
@@ -2786,6 +2871,7 @@ export function PublicEatsPage({
           }
 
           const isChainHighlighted = restaurantId === metadata.restaurantId && metadata.chainLocationCount > 1;
+          const isSelected = selectedMapPinIdRef.current === pinId;
           marker.setIcon({
             anchor: new googleMaps.Point(19, 56),
             scaledSize: new googleMaps.Size(50, 62),
@@ -2794,18 +2880,19 @@ export function PublicEatsPage({
               resolvedSecondaryColor,
               resolvedPrimaryColor,
               metadata.chainLocationCount,
-              isChainHighlighted
+              isChainHighlighted,
+              isSelected
             )
           });
-          marker.setZIndex(isChainHighlighted ? 500 : metadata.chainLocationCount > 1 ? 200 : undefined);
+          marker.setZIndex(isSelected ? 1000 : isChainHighlighted ? 500 : metadata.chainLocationCount > 1 ? 200 : undefined);
         }
       };
       googleMapRef.current.addListener('click', () => {
-        updateChainHighlight(null);
+        updateMarkerSelection(null);
         infoWindow.close();
       });
       infoWindow.addListener('closeclick', () => {
-        updateChainHighlight(null);
+        updateMarkerSelection(null);
       });
 
       if (userLocation && shouldUseUserLocation) {
@@ -2828,6 +2915,7 @@ export function PublicEatsPage({
         const { restaurant, location } = pin;
         const chainLocationCount = mappedVisiblePinCountByRestaurantId.get(restaurant.id) ?? 1;
         const isChainHighlighted = selectedMapRestaurantIdRef.current === restaurant.id && chainLocationCount > 1;
+        const isSelected = selectedMapPinIdRef.current === pin.id;
         const position = {
           lat: location.latitude,
           lng: location.longitude
@@ -2843,7 +2931,8 @@ export function PublicEatsPage({
               resolvedSecondaryColor,
               resolvedPrimaryColor,
               chainLocationCount,
-              isChainHighlighted
+              isChainHighlighted,
+              isSelected
             )
           },
           ...(mapLabel ? {
@@ -2852,14 +2941,13 @@ export function PublicEatsPage({
               text: mapLabel
             }
           } : {}),
-          map: googleMapRef.current,
           position,
           title: restaurant.name,
-          zIndex: isChainHighlighted ? 500 : chainLocationCount > 1 ? 200 : undefined
+          zIndex: isSelected ? 1000 : isChainHighlighted ? 500 : chainLocationCount > 1 ? 200 : undefined
         });
         const openMarkerInfoWindow = (): void => {
           selectedMapPinIdRef.current = pin.id;
-          updateChainHighlight(restaurant.id);
+          updateMarkerSelection(restaurant.id);
           const mapsUrl = location.googlePlaceId
             ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.name)}&query_place_id=${encodeURIComponent(location.googlePlaceId)}`
             : location.googleMapsUrl || restaurant.url;
@@ -2892,11 +2980,11 @@ export function PublicEatsPage({
               <a style="display:inline-block;font-size:13px;margin-top:10px;" href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
             </div>`;
           infoWindowContent.querySelector('.eats-map-info-close')?.addEventListener('click', () => {
-            updateChainHighlight(null);
+            updateMarkerSelection(null);
             infoWindow.close();
           });
           infoWindowContent.querySelector('.eats-map-info-list')?.addEventListener('click', () => {
-            updateChainHighlight(null);
+            updateMarkerSelection(null);
             infoWindow.close();
             showRestaurantInList(restaurant.id);
           });
@@ -2908,6 +2996,7 @@ export function PublicEatsPage({
         };
         marker.addListener('click', openMarkerInfoWindow);
         googleMarkersRef.current.push(marker);
+        googleMarkerStatusByMarkerRef.current.set(marker, restaurant.status);
         googleMarkersByPinIdRef.current.set(pin.id, marker);
         googleMarkerOpenersByPinIdRef.current.set(pin.id, openMarkerInfoWindow);
         googleMarkerMetadataByPinIdRef.current.set(pin.id, {
@@ -2919,13 +3008,55 @@ export function PublicEatsPage({
         restaurantBounds.extend(position);
       }
 
-      updateChainHighlight(selectedMapRestaurantIdRef.current);
       if (
         selectedMapPinIdRef.current &&
         !googleMarkerOpenersByPinIdRef.current.has(selectedMapPinIdRef.current)
       ) {
         selectedMapPinIdRef.current = null;
       }
+      updateMarkerSelection(selectedMapRestaurantIdRef.current);
+      googleMarkerClustererRef.current = new MarkerClusterer({
+        map: googleMapRef.current,
+        markers: googleMarkersRef.current,
+        onClusterClick: (_event, cluster, map): void => {
+          if (cluster.bounds) {
+            map.fitBounds(cluster.bounds, 80);
+            return;
+          }
+
+          if (cluster.position) {
+            map.panTo(cluster.position);
+            map.setZoom(Math.min((map.getZoom() ?? 13) + 2, 20));
+          }
+        },
+        renderer: {
+          render: ({ count, markers, position }): any => {
+            const statusCounts: MapClusterStatusCounts = {
+              disliked: 0,
+              liked: 0,
+              untried: 0
+            };
+
+            for (const marker of markers) {
+              const status = googleMarkerStatusByMarkerRef.current.get(marker as object);
+              if (status) {
+                statusCounts[status] += 1;
+              }
+            }
+
+            return new googleMaps.Marker({
+              icon: {
+                anchor: new googleMaps.Point(29, 29),
+                scaledSize: new googleMaps.Size(58, 58),
+                url: buildRestaurantMapClusterIcon(count, statusCounts, resolvedSecondaryColor, resolvedPrimaryColor)
+              },
+              position,
+              title: `${count} restaurants`,
+              zIndex: Number(googleMaps.Marker.MAX_ZINDEX ?? 10_000) + count
+            });
+          }
+        }
+      });
 
       const pendingMapRestaurantFocusId = pendingMapRestaurantFocusIdRef.current;
       const pendingRestaurantMarkers = pendingMapRestaurantFocusId
@@ -2970,7 +3101,7 @@ export function PublicEatsPage({
               })
               .sort((first, second) => first.distance - second.distance)[0]
           : pendingRestaurantMarkers[0];
-        updateChainHighlight(pendingMapRestaurantFocusId);
+        updateMarkerSelection(pendingMapRestaurantFocusId);
         googleMarkerOpenersByPinIdRef.current.get(
           selectedRestaurantMarker?.pinId ?? pendingRestaurantMarkers[0]?.pinId ?? ''
         )?.();
@@ -3000,14 +3131,21 @@ export function PublicEatsPage({
       } else if (userLocation && shouldFocusUserLocationRef.current && shouldUseUserLocation) {
         shouldFocusUserLocationRef.current = false;
         googleMapRef.current.panTo({ lat: userLocation.latitude, lng: userLocation.longitude });
-        googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
+        googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, defaultUserLocationMapZoom));
+      } else if (
+        userLocation &&
+        shouldFocusUserLocationRef.current &&
+        userLocationFocusModeRef.current === 'visible-area' &&
+        !restaurantBounds.isEmpty()
+      ) {
+        shouldFocusUserLocationRef.current = false;
+        googleMapRef.current.fitBounds(restaurantBounds, 64);
       } else if (!bounds.isEmpty()) {
         shouldFocusUserLocationRef.current = false;
-        if (!hasExistingMap || previousMapFitSignatureRef.current !== mappedVisiblePinSignature) {
+        if (!hasExistingMap) {
           googleMapRef.current.fitBounds(shouldPrioritizeSearchResults && !restaurantBounds.isEmpty() ? restaurantBounds : bounds, 64);
         }
       }
-      previousMapFitSignatureRef.current = mappedVisiblePinSignature;
       setMapLoadErrorMessage(null);
     };
 
@@ -3063,7 +3201,6 @@ export function PublicEatsPage({
     googleMapsBrowserApiKey,
     mapLabelMode,
     mappedVisiblePinCountByRestaurantId,
-    mappedVisiblePinSignature,
     mappedVisiblePins,
     isSearchActive,
     resolvedPrimaryColor,
