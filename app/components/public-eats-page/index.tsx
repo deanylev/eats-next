@@ -113,14 +113,14 @@ type MapLabelMode = 'emoji' | 'emojiName' | 'none';
 
 const readStoredMapLabelMode = (): MapLabelMode => {
   if (typeof window === 'undefined') {
-    return 'emoji';
+    return 'emojiName';
   }
 
   try {
     const stored = window.localStorage.getItem(mapLabelModeStorageKey);
-    return stored === 'emojiName' || stored === 'none' || stored === 'emoji' ? stored : 'emoji';
+    return stored === 'emojiName' || stored === 'none' || stored === 'emoji' ? stored : 'emojiName';
   } catch {
-    return 'emoji';
+    return 'emojiName';
   }
 };
 
@@ -857,7 +857,7 @@ export function PublicEatsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [resultsMotionKey, setResultsMotionKey] = useState(0);
   const [compactCards, setCompactCards] = useState(false);
-  const [mapLabelMode, setMapLabelMode] = useState<MapLabelMode>('emoji');
+  const [mapLabelMode, setMapLabelMode] = useState<MapLabelMode>('emojiName');
   const [collapsedKanbanLaneIds, setCollapsedKanbanLaneIds] = useState<Set<string>>(new Set());
   const [boardCreatePreset, setBoardCreatePreset] = useState<BoardCreatePreset | null>(null);
   const [savedFilterGroups, setSavedFilterGroups] = useState<SavedFilterGroup[]>(readStoredFilterGroups);
