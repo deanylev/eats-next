@@ -338,6 +338,12 @@ export function RestaurantFormFields({
   }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
+    if (status === 'untried' && ratingValue.length > 0) {
+      setRatingValue('');
+    }
+  }, [ratingValue, status]);
+
+  useEffect(() => {
     if (!validationErrorMessage || !firstFieldErrorKey || typeof window === 'undefined') {
       return;
     }
@@ -852,7 +858,12 @@ export function RestaurantFormFields({
 
   return (
     <>
-      <div className="restaurant-form-city-section">
+      <section className="restaurant-form-section restaurant-form-section-place">
+        <div className="restaurant-form-section-heading">
+          <h3>Place</h3>
+        </div>
+
+        <div className="restaurant-form-city-section">
         <label>
           City
           {lockedFields?.city ? <input type="hidden" name="cityId" value={selectedCityId} /> : null}
@@ -948,9 +959,136 @@ export function RestaurantFormFields({
             {isDuplicateNewCityName ? <div className="inline-type-warning">That city already exists in this country.</div> : null}
           </div>
         ) : null}
-      </div>
+        </div>
 
-      <div className="field-group restaurant-form-area-section">
+        {(() => {
+          const existingLocationPlaceIds = new Set(locationRows.map((location) => location.googlePlaceId).filter(Boolean));
+          const availableLocationGoogleMapsSuggestions = locationGoogleMapsSuggestions.filter(
+            (suggestion) => !existingLocationPlaceIds.has(suggestion.placeId)
+          );
+          const selectedLocationGoogleMapsSuggestions = availableLocationGoogleMapsSuggestions.filter((suggestion) =>
+            selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)
+          );
+
+          return (
+            <div className="field-group restaurant-form-locations-section">
+              <div className="field-group-label">Map Locations</div>
+              <input type="hidden" name="locations" value={locationsValue} />
+              {fieldErrors.locations ? (
+                <div className="inline-type-warning" id={`${keyPrefix}-field-error-locations`}>
+                  {fieldErrors.locations}
+                </div>
+              ) : null}
+              <div className="google-maps-search">
+                <div className="area-picker-row">
+                  <input
+                    type="text"
+                    value={locationGoogleMapsSearchValue}
+                    placeholder="Search Google Maps for a location"
+                    onChange={(event) => setLocationGoogleMapsSearchValue(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="secondary-action-button"
+                    onClick={() => {
+                      setLocationGoogleMapsSearchValue('');
+                      setLocationGoogleMapsSuggestions([]);
+                      setSelectedLocationGoogleMapsSuggestionIds([]);
+                      setLocationGoogleMapsSearchError('');
+                      locationGoogleMapsSessionTokenRef.current = '';
+                    }}
+                    disabled={
+                      locationGoogleMapsSearchValue.trim().length === 0 &&
+                      locationGoogleMapsSuggestions.length === 0 &&
+                      locationGoogleMapsSearchError.length === 0
+                    }
+                  >
+                    Clear
+                  </button>
+                </div>
+                {isSearchingLocationGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
+                {locationGoogleMapsSearchError ? <div className="inline-type-warning">{locationGoogleMapsSearchError}</div> : null}
+                {availableLocationGoogleMapsSuggestions.length > 0 ? (
+                  <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps location suggestions">
+                    {availableLocationGoogleMapsSuggestions.map((suggestion) => (
+                      <label
+                        key={`${keyPrefix}-location-google-maps-${suggestion.placeId}`}
+                        className="google-maps-suggestion"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)}
+                          disabled={isResolvingLocationGoogleMapsSelection}
+                          onChange={(event) => toggleLocationGoogleMapsSuggestion(suggestion.placeId, event.target.checked)}
+                        />
+                        <span className="google-maps-suggestion-copy">
+                          <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
+                          {suggestion.secondaryText ? (
+                            <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))}
+                    <div className="google-maps-suggestion-actions">
+                      <button
+                        type="button"
+                        className="secondary-action-button"
+                        disabled={isResolvingLocationGoogleMapsSelection || availableLocationGoogleMapsSuggestions.length === 0}
+                        onClick={() => {
+                          void handleAddLocationGoogleMapsSuggestions(availableLocationGoogleMapsSuggestions);
+                        }}
+                      >
+                        {availableLocationGoogleMapsSuggestions.length === 1
+                          ? 'Add location'
+                          : `Add all ${availableLocationGoogleMapsSuggestions.length} locations`}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-action-button"
+                        disabled={isResolvingLocationGoogleMapsSelection || selectedLocationGoogleMapsSuggestions.length === 0}
+                        onClick={() => {
+                          void handleAddLocationGoogleMapsSuggestions(selectedLocationGoogleMapsSuggestions);
+                        }}
+                      >
+                        {selectedLocationGoogleMapsSuggestions.length === 1
+                          ? 'Add 1 selected location'
+                          : `Add ${selectedLocationGoogleMapsSuggestions.length} selected locations`}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {isResolvingLocationGoogleMapsSelection ? (
+                  <div className="inline-type-warning">Adding map location…</div>
+                ) : null}
+              </div>
+              {locationRows.length > 0 ? (
+                <div className="google-maps-selected-place-list">
+                  {locationRows.map((location, index) => (
+                    <div key={`${keyPrefix}-location-${location.googlePlaceId || location.googleMapsUrl}-${index}`} className="google-maps-selected-place">
+                      <div className="google-maps-selected-place-copy">
+                        <div className="google-maps-selected-place-name">{location.label || location.address || location.googleMapsUrl}</div>
+                        {location.address ? (
+                          <div className="google-maps-selected-place-secondary">{location.address}</div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="secondary-action-button"
+                        onClick={() => setLocationRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="area-picker-empty">Add at least one map location</div>
+              )}
+            </div>
+          );
+        })()}
+
+        <div className="field-group restaurant-form-area-section">
         <div className="field-group-label">Areas (optional)</div>
         <input type="hidden" name="areas" value={areasValue} />
         <div className="area-picker" aria-describedby={`${keyPrefix}-areas-help`}>
@@ -1036,345 +1174,235 @@ export function RestaurantFormFields({
       </small>
       {areaSelectionError ? <div className="inline-type-warning">{areaSelectionError}</div> : null}
 
-      {(() => {
-        const existingLocationPlaceIds = new Set(locationRows.map((location) => location.googlePlaceId).filter(Boolean));
-        const availableLocationGoogleMapsSuggestions = locationGoogleMapsSuggestions.filter(
-          (suggestion) => !existingLocationPlaceIds.has(suggestion.placeId)
-        );
-        const selectedLocationGoogleMapsSuggestions = availableLocationGoogleMapsSuggestions.filter((suggestion) =>
-          selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)
-        );
-
-        return (
-      <div className="field-group restaurant-form-locations-section">
-        <div className="field-group-label">Map Locations (required)</div>
-        <input type="hidden" name="locations" value={locationsValue} />
-        {fieldErrors.locations ? (
-          <div className="inline-type-warning" id={`${keyPrefix}-field-error-locations`}>
-            {fieldErrors.locations}
+        <label className="restaurant-form-name-field">
+          Name
+          <input name="name" required value={nameValue} onChange={(event) => setNameValue(event.target.value)} />
+        </label>
+        {fieldErrors.name ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-name`}>
+            {fieldErrors.name}
           </div>
         ) : null}
-        {locationRows.length > 0 ? (
-          <div className="google-maps-selected-place-list">
-            {locationRows.map((location, index) => (
-              <div key={`${keyPrefix}-location-${location.googlePlaceId || location.googleMapsUrl}-${index}`} className="google-maps-selected-place">
-                <div className="google-maps-selected-place-copy">
-                  <div className="google-maps-selected-place-name">{location.label || location.address || location.googleMapsUrl}</div>
-                  {location.address ? (
-                    <div className="google-maps-selected-place-secondary">{location.address}</div>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="secondary-action-button"
-                  onClick={() => setLocationRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}
-                >
-                  Remove
-                </button>
-              </div>
+
+        <label>
+          URL
+          <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
+          <input type="hidden" name="googlePlaceId" value="" />
+          <input type="hidden" name="address" value="" />
+          <input type="hidden" name="latitude" value="" />
+          <input type="hidden" name="longitude" value="" />
+        </label>
+        {fieldErrors.url ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-url`}>
+            {fieldErrors.url}
+          </div>
+        ) : null}
+
+      </section>
+
+      <section className="restaurant-form-section restaurant-form-section-classification">
+        <div className="restaurant-form-section-heading">
+          <h3>Classification</h3>
+        </div>
+
+        <fieldset>
+          <legend>Meal Types</legend>
+          {fieldErrors.mealTypes ? (
+            <div className="inline-type-warning" id={`${keyPrefix}-field-error-mealTypes`}>
+              {fieldErrors.mealTypes}
+            </div>
+          ) : null}
+          <div className="inline-options">
+            {mealTypeChoices.map((mealType) => (
+              <label key={`${keyPrefix}-meal-${mealType}`}>
+                <input
+                  type="checkbox"
+                  name="mealTypes"
+                  value={mealType}
+                  checked={selectedMealTypes.includes(mealType)}
+                  onChange={(event) => toggleMealType(mealType, event.target.checked)}
+                />
+                {mealTypeLabel[mealType]}
+              </label>
             ))}
           </div>
-        ) : (
-          <div className="area-picker-empty">Add at least one map location</div>
-        )}
-        <div className="google-maps-search">
-            <div className="area-picker-row">
+        </fieldset>
+
+        <fieldset>
+          <legend>Restaurant Types</legend>
+          <div className="inline-type-creator">
+            <div className="inline-type-creator-row">
               <input
                 type="text"
-                value={locationGoogleMapsSearchValue}
-                placeholder="Search Google Maps for a location"
-                onChange={(event) => setLocationGoogleMapsSearchValue(event.target.value)}
+                value={newTypeName}
+                placeholder="New type name"
+                onChange={(event) => setNewTypeName(event.target.value)}
+                onKeyDown={handleInlineTypeKeyDown}
+              />
+              <input
+                type="text"
+                value={newTypeEmoji}
+                placeholder="Emoji"
+                maxLength={8}
+                onChange={(event) => setNewTypeEmoji(event.target.value)}
+                onKeyDown={handleInlineTypeKeyDown}
               />
               <button
                 type="button"
-                className="secondary-action-button"
+                className="inline-type-create-button"
+                disabled={isCreatingType || newTypeName.trim().length === 0 || newTypeEmoji.trim().length === 0 || isDuplicateNewTypeName}
                 onClick={() => {
-                  setLocationGoogleMapsSearchValue('');
-                  setLocationGoogleMapsSuggestions([]);
-                  setSelectedLocationGoogleMapsSuggestionIds([]);
-                  setLocationGoogleMapsSearchError('');
-                  locationGoogleMapsSessionTokenRef.current = '';
+                  void handleCreateType();
                 }}
-                disabled={
-                  locationGoogleMapsSearchValue.trim().length === 0 &&
-                  locationGoogleMapsSuggestions.length === 0 &&
-                  locationGoogleMapsSearchError.length === 0
-                }
               >
-                Clear
+                {isCreatingType ? 'Adding…' : 'Add type'}
               </button>
             </div>
-            {isSearchingLocationGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
-            {locationGoogleMapsSearchError ? <div className="inline-type-warning">{locationGoogleMapsSearchError}</div> : null}
-            {availableLocationGoogleMapsSuggestions.length > 0 ? (
-              <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps location suggestions">
-                {availableLocationGoogleMapsSuggestions.map((suggestion) => (
-                  <label
-                    key={`${keyPrefix}-location-google-maps-${suggestion.placeId}`}
-                    className="google-maps-suggestion"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)}
-                      disabled={isResolvingLocationGoogleMapsSelection}
-                      onChange={(event) => toggleLocationGoogleMapsSuggestion(suggestion.placeId, event.target.checked)}
-                    />
-                    <span className="google-maps-suggestion-copy">
-                      <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
-                      {suggestion.secondaryText ? (
-                        <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                ))}
-                <div className="google-maps-suggestion-actions">
-                  <button
-                    type="button"
-                    className="secondary-action-button"
-                    disabled={isResolvingLocationGoogleMapsSelection || availableLocationGoogleMapsSuggestions.length === 0}
-                    onClick={() => {
-                      void handleAddLocationGoogleMapsSuggestions(availableLocationGoogleMapsSuggestions);
-                    }}
-                  >
-                    {availableLocationGoogleMapsSuggestions.length === 1
-                      ? 'Add location'
-                      : `Add all ${availableLocationGoogleMapsSuggestions.length} locations`}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-action-button"
-                    disabled={isResolvingLocationGoogleMapsSelection || selectedLocationGoogleMapsSuggestions.length === 0}
-                    onClick={() => {
-                      void handleAddLocationGoogleMapsSuggestions(selectedLocationGoogleMapsSuggestions);
-                    }}
-                  >
-                    {selectedLocationGoogleMapsSuggestions.length === 1
-                      ? 'Add 1 selected location'
-                      : `Add ${selectedLocationGoogleMapsSuggestions.length} selected locations`}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {isResolvingLocationGoogleMapsSelection ? (
-              <div className="inline-type-warning">Adding map location…</div>
-            ) : null}
-        </div>
-      </div>
-        );
-      })()}
-
-      <div className="field-group restaurant-form-rating-section">
-        <div className="field-group-label">Stars</div>
-        <input type="hidden" name="rating" value={ratingValue} />
-        <div
-          className="rating-picker"
-          role="radiogroup"
-          aria-label="Restaurant star rating"
-          aria-describedby={fieldErrors.rating ? `${keyPrefix}-field-error-rating` : undefined}
-        >
-          <button
-            type="button"
-            className={`rating-clear-button ${ratingValue.length === 0 ? 'rating-clear-button-active' : ''}`}
-            onClick={() => setRatingValue('')}
-          >
-            No rating
-          </button>
-          <div className="rating-star-buttons">
-            {[1, 2, 3, 4, 5].map((rating) => {
-              const ratingString = String(rating);
-              const isSelected = ratingValue === ratingString;
-              const isFilled = Number(ratingValue || '0') >= rating;
-
-              return (
-                <button
-                  key={`${keyPrefix}-rating-${rating}`}
-                  type="button"
-                  className={`rating-star-button ${isFilled ? 'rating-star-button-filled' : ''}`}
-                  role="radio"
-                  aria-checked={isSelected}
-                  aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
-                  onClick={() => setRatingValue(ratingString)}
-                >
-                  ★
-                </button>
-              );
-            })}
+            {isDuplicateNewTypeName ? <div className="inline-type-warning">That type already exists.</div> : null}
           </div>
-        </div>
-      </div>
-      {fieldErrors.rating ? (
-        <div className="inline-type-warning" id={`${keyPrefix}-field-error-rating`}>
-          {fieldErrors.rating}
-        </div>
-      ) : null}
-
-      <fieldset>
-        <legend>Meal Types (pick 1 to 4)</legend>
-        {fieldErrors.mealTypes ? (
-          <div className="inline-type-warning" id={`${keyPrefix}-field-error-mealTypes`}>
-            {fieldErrors.mealTypes}
-          </div>
-        ) : null}
-        <div className="inline-options">
-          {mealTypeChoices.map((mealType) => (
-            <label key={`${keyPrefix}-meal-${mealType}`}>
-              <input
-                type="checkbox"
-                name="mealTypes"
-                value={mealType}
-                checked={selectedMealTypes.includes(mealType)}
-                onChange={(event) => toggleMealType(mealType, event.target.checked)}
-              />
-              {mealTypeLabel[mealType]}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <label>
-        Name
-        <input name="name" required value={nameValue} onChange={(event) => setNameValue(event.target.value)} />
-      </label>
-      {fieldErrors.name ? (
-        <div className="inline-type-warning" id={`${keyPrefix}-field-error-name`}>
-          {fieldErrors.name}
-        </div>
-      ) : null}
-
-      <label>
-        Notes
-        <textarea
-          name="notes"
-          rows={4}
-          required
-          value={notesValue}
-          onChange={(event) => setNotesValue(event.target.value)}
-        />
-      </label>
-      {fieldErrors.notes ? (
-        <div className="inline-type-warning" id={`${keyPrefix}-field-error-notes`}>
-          {fieldErrors.notes}
-        </div>
-      ) : null}
-
-      <label>
-        Referred by (URL or free text)
-        <input name="referredBy" value={referredByValue} onChange={(event) => setReferredByValue(event.target.value)} />
-      </label>
-      {fieldErrors.referredBy ? (
-        <div className="inline-type-warning" id={`${keyPrefix}-field-error-referredBy`}>
-          {fieldErrors.referredBy}
-        </div>
-      ) : null}
-
-      <fieldset>
-        <legend>Restaurant Types (pick at least 1)</legend>
-        <div className="inline-type-creator">
-          <div className="inline-type-creator-row">
-            <input
-              type="text"
-              value={newTypeName}
-              placeholder="New type name"
-              onChange={(event) => setNewTypeName(event.target.value)}
-              onKeyDown={handleInlineTypeKeyDown}
-            />
-            <input
-              type="text"
-              value={newTypeEmoji}
-              placeholder="Emoji"
-              maxLength={8}
-              onChange={(event) => setNewTypeEmoji(event.target.value)}
-              onKeyDown={handleInlineTypeKeyDown}
-            />
-            <button
-              type="button"
-              className="inline-type-create-button"
-              disabled={isCreatingType || newTypeName.trim().length === 0 || newTypeEmoji.trim().length === 0 || isDuplicateNewTypeName}
-              onClick={() => {
-                void handleCreateType();
-              }}
-            >
-              {isCreatingType ? 'Adding…' : 'Add type'}
-            </button>
-          </div>
-          {isDuplicateNewTypeName ? <div className="inline-type-warning">That type already exists.</div> : null}
-        </div>
-        {fieldErrors.types ? (
-          <div className="inline-type-warning" id={`${keyPrefix}-field-error-types`}>
-            {fieldErrors.types}
-          </div>
-        ) : null}
-        <div className="inline-options">
-          {availableTypes.map((type) => (
-            <label key={`${keyPrefix}-type-${type.id}`}>
-              <input
-                type="checkbox"
-                name="typeIds"
-                value={type.id}
-                checked={selectedTypeIds.includes(type.id)}
-                onChange={(event) => {
-                  setSelectedTypeIds((current) =>
-                    event.target.checked ? [...current, type.id] : current.filter((entry) => entry !== type.id)
-                  );
-                }}
-              />
-              {type.emoji} {type.name}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <label>
-        URL
-        <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
-        <input type="hidden" name="googlePlaceId" value="" />
-        <input type="hidden" name="address" value="" />
-        <input type="hidden" name="latitude" value="" />
-        <input type="hidden" name="longitude" value="" />
-      </label>
-      {fieldErrors.url ? (
-        <div className="inline-type-warning" id={`${keyPrefix}-field-error-url`}>
-          {fieldErrors.url}
-        </div>
-      ) : null}
-
-      <label>
-        Status
-        {lockedFields?.status ? <input type="hidden" name="status" value={status} /> : null}
-        <select
-          name={lockedFields?.status ? undefined : 'status'}
-          required
-          value={status}
-          onChange={(event) => setStatus(event.target.value as RestaurantStatus)}
-          disabled={lockedFields?.status}
-        >
-          {statusChoices.map((status) => (
-            <option key={`${keyPrefix}-status-${status}`} value={status}>
-              {statusLabel[status]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {status === 'disliked' ? (
-        <>
-          <label>
-            Not Recommended Reason
-            <textarea
-              name="dislikedReason"
-              rows={3}
-              required
-              value={dislikedReasonValue}
-              onChange={(event) => setDislikedReasonValue(event.target.value)}
-            />
-          </label>
-          {fieldErrors.status ? (
-            <div className="inline-type-warning" id={`${keyPrefix}-field-error-status`}>
-              {fieldErrors.status}
+          {fieldErrors.types ? (
+            <div className="inline-type-warning" id={`${keyPrefix}-field-error-types`}>
+              {fieldErrors.types}
             </div>
           ) : null}
-        </>
-      ) : null}
+          <div className="inline-options">
+            {availableTypes.map((type) => (
+              <label key={`${keyPrefix}-type-${type.id}`}>
+                <input
+                  type="checkbox"
+                  name="typeIds"
+                  value={type.id}
+                  checked={selectedTypeIds.includes(type.id)}
+                  onChange={(event) => {
+                    setSelectedTypeIds((current) =>
+                      event.target.checked ? [...current, type.id] : current.filter((entry) => entry !== type.id)
+                    );
+                  }}
+                />
+                {type.emoji} {type.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+      </section>
+
+      <section className="restaurant-form-section restaurant-form-section-take">
+        <div className="restaurant-form-section-heading">
+          <h3>Your Take</h3>
+        </div>
+
+        <label>
+          Status
+          {lockedFields?.status ? <input type="hidden" name="status" value={status} /> : null}
+          <select
+            name={lockedFields?.status ? undefined : 'status'}
+            required
+            value={status}
+            onChange={(event) => setStatus(event.target.value as RestaurantStatus)}
+            disabled={lockedFields?.status}
+          >
+            {statusChoices.map((status) => (
+              <option key={`${keyPrefix}-status-${status}`} value={status}>
+                {statusLabel[status]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <input type="hidden" name="rating" value={ratingValue} />
+        {status !== 'untried' ? (
+          <div className="field-group restaurant-form-rating-section">
+            <div className="field-group-label">Stars</div>
+            <div
+              className="rating-picker"
+              role="radiogroup"
+              aria-label="Restaurant star rating"
+              aria-describedby={fieldErrors.rating ? `${keyPrefix}-field-error-rating` : undefined}
+            >
+              <button
+                type="button"
+                className={`rating-clear-button ${ratingValue.length === 0 ? 'rating-clear-button-active' : ''}`}
+                onClick={() => setRatingValue('')}
+              >
+                No rating
+              </button>
+              <div className="rating-star-buttons">
+                {[1, 2, 3, 4, 5].map((rating) => {
+                  const ratingString = String(rating);
+                  const isSelected = ratingValue === ratingString;
+                  const isFilled = Number(ratingValue || '0') >= rating;
+
+                  return (
+                    <button
+                      key={`${keyPrefix}-rating-${rating}`}
+                      type="button"
+                      className={`rating-star-button ${isFilled ? 'rating-star-button-filled' : ''}`}
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
+                      onClick={() => setRatingValue(ratingString)}
+                    >
+                      ★
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {fieldErrors.rating ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-rating`}>
+            {fieldErrors.rating}
+          </div>
+        ) : null}
+
+        <label>
+          Notes
+          <textarea
+            name="notes"
+            rows={4}
+            required
+            value={notesValue}
+            onChange={(event) => setNotesValue(event.target.value)}
+          />
+        </label>
+        {fieldErrors.notes ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-notes`}>
+            {fieldErrors.notes}
+          </div>
+        ) : null}
+
+        {status === 'disliked' ? (
+          <>
+            <label>
+              Not Recommended Reason
+              <textarea
+                name="dislikedReason"
+                rows={3}
+                required
+                value={dislikedReasonValue}
+                onChange={(event) => setDislikedReasonValue(event.target.value)}
+              />
+            </label>
+            {fieldErrors.status ? (
+              <div className="inline-type-warning" id={`${keyPrefix}-field-error-status`}>
+                {fieldErrors.status}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        <label>
+          Referred By
+          <input name="referredBy" value={referredByValue} onChange={(event) => setReferredByValue(event.target.value)} />
+        </label>
+        {fieldErrors.referredBy ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-referredBy`}>
+            {fieldErrors.referredBy}
+          </div>
+        ) : null}
+      </section>
 
       <div className="form-actions">
         <button type="submit" disabled={disableSubmit}>

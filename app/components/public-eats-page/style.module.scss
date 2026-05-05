@@ -419,7 +419,7 @@
 
   form {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     margin-top: 10px;
     max-width: 100%;
     overflow-x: hidden;
@@ -440,6 +440,38 @@
 
   :global(.field-group-label) {
     color: inherit;
+  }
+
+  :global(.restaurant-form-section) {
+    background: color-mix(in srgb, var(--theme-on-primary) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 14%, transparent);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+      0 10px 24px color-mix(in srgb, #000 12%, transparent);
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  :global(.restaurant-form-section-heading) {
+    align-items: baseline;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: -2px;
+  }
+
+  :global(.restaurant-form-section-heading) h3 {
+    color: var(--theme-on-primary);
+    font-size: 15px;
+    line-height: 1.2;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  :global(.restaurant-form-name-field) input {
+    font-size: 18px;
+    font-weight: 750;
   }
 
   input:not([type='checkbox']):not([type='radio']),
@@ -469,17 +501,21 @@
   }
 
   fieldset {
-    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 30%, transparent);
-    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    border-radius: 12px;
     margin: 0;
     max-width: 100%;
-    padding: 8px;
+    padding: 10px;
     width: 100%;
     box-sizing: border-box;
   }
 
   legend {
+    color: var(--theme-on-primary-soft);
+    font-size: 14px;
+    font-weight: 700;
     max-width: 100%;
+    padding: 0 4px;
   }
 
   :global(.inline-options) {
@@ -513,6 +549,10 @@
     max-width: 100%;
   }
 
+  :global(.rating-picker-disabled) {
+    opacity: 0.58;
+  }
+
   :global(.rating-clear-button),
   :global(.rating-star-button) {
     appearance: none;
@@ -538,6 +578,11 @@
     font-weight: 800;
     padding: 8px 12px;
     transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  }
+
+  :global(.rating-clear-button:disabled),
+  :global(.rating-star-button:disabled) {
+    cursor: not-allowed;
   }
 
   :global(.rating-clear-button-active) {

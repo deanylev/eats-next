@@ -131,6 +131,14 @@ export const restaurantInputSchema = z
       });
     }
 
+    if (value.status === 'untried' && value.rating !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rating'],
+        message: 'Stars can only be set after trying a restaurant.'
+      });
+    }
+
     const hasOnlyOneCoordinate = (value.latitude === null) !== (value.longitude === null);
     if (hasOnlyOneCoordinate) {
       ctx.addIssue({
