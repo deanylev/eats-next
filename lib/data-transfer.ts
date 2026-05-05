@@ -15,6 +15,7 @@ import {
   restaurantTypes,
   tenants
 } from '@/lib/schema';
+import { ratingFromStorageValue, ratingToStorageValue } from '@/lib/ratings';
 import type { ResolvedTenant } from '@/lib/tenant';
 
 type Db = ReturnType<typeof getDb>;
@@ -203,7 +204,7 @@ const tenantBundleSchema = z.object({
       ),
       name: z.string().min(1),
       notes: z.string(),
-      rating: z.number().int().min(1).max(5).nullable().optional(),
+      rating: z.number().min(0.5).max(5).multipleOf(0.5).nullable().optional(),
       referredBy: z.string(),
       status: restaurantStatusSchema,
       triedAt: nullableTimestampSchema,
@@ -477,7 +478,7 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
       mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
       name: restaurant.name,
       notes: restaurant.notes,
-      rating: restaurant.rating,
+      rating: ratingFromStorageValue(restaurant.rating),
       referredBy: restaurant.referredBy,
       status: restaurant.status,
       triedAt: toIsoString(restaurant.triedAt),
@@ -598,7 +599,7 @@ const insertTenantBundleData = async (tx: DbLike, tenantId: string, bundle: Tena
       id: restaurantId,
       name: restaurant.name,
       notes: restaurant.notes,
-      rating: restaurant.rating ?? null,
+      rating: ratingToStorageValue(restaurant.rating ?? null),
       referredBy: restaurant.referredBy,
       status: restaurant.status,
       tenantId,

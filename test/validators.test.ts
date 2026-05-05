@@ -40,12 +40,14 @@ test('restaurantInputSchema accepts a single-area restaurant with a Google Maps 
   assert.equal(restaurantInputSchema.safeParse(baseRestaurantInput).success, true);
 });
 
-test('restaurantInputSchema accepts optional 1 to 5 star ratings', () => {
+test('restaurantInputSchema accepts optional 0.5 to 5 star ratings', () => {
   assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: null }).success, true);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 0.5 }).success, true);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 4.5 }).success, true);
   assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 5 }).success, true);
   assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 0 }).success, false);
   assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 6 }).success, false);
-  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 4.5 }).success, false);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'liked', rating: 4.25 }).success, false);
   assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, status: 'untried', rating: 5 }).success, false);
 });
 

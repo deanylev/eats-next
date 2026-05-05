@@ -109,9 +109,9 @@ export const restaurantInputSchema = z
     dislikedReason: z.string().trim().optional(),
     rating: z
       .number()
-      .int('Rating must be a whole number.')
-      .min(1, 'Rating must be at least 1 star.')
+      .min(0.5, 'Rating must be at least 0.5 stars.')
       .max(5, 'Rating must be at most 5 stars.')
+      .multipleOf(0.5, 'Rating must use half-star increments.')
       .nullable()
   })
   .superRefine((value, ctx) => {

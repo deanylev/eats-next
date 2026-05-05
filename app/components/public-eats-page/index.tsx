@@ -502,12 +502,48 @@ const getRestaurantStatusLabel = (status: PublicRestaurant['status']): string =>
   return 'Want to Try';
 };
 
-const getRestaurantRatingLabel = (rating: number | null): string | null => {
-  if (rating === null) {
-    return null;
+const getRatingStarFillPercent = (rating: number, star: number): number => {
+  if (rating >= star) {
+    return 100;
   }
 
-  return `${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}`;
+  if (rating >= star - 0.5) {
+    return 50;
+  }
+
+  return 0;
+};
+
+const renderRatingStars = (rating: number): JSX.Element => (
+  <>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <span className={styles.ratingStar} key={star} aria-hidden="true">
+        <span className={styles.ratingStarBase}>★</span>
+        <span className={styles.ratingStarFill} style={{ width: `${getRatingStarFillPercent(rating, star)}%` }}>
+          ★
+        </span>
+      </span>
+    ))}
+  </>
+);
+
+const renderMapRatingStars = (rating: number | null): string => {
+  if (rating === null) {
+    return '';
+  }
+
+  const stars = [1, 2, 3, 4, 5]
+    .map((star) => {
+      const width = getRatingStarFillPercent(rating, star);
+
+      return `<span style="display:inline-block;height:18px;position:relative;width:18px;" aria-hidden="true">
+        <span style="color:#9ca3af;left:0;line-height:1;position:absolute;top:0;">★</span>
+        <span style="color:#f5b301;left:0;line-height:1;overflow:hidden;position:absolute;text-shadow:0 1px 0 rgba(17,24,39,0.18);top:0;width:${width}%;">★</span>
+      </span>`;
+    })
+    .join('');
+
+  return `<div style="display:flex;font-size:17px;font-weight:900;gap:1px;letter-spacing:0;line-height:1;margin-top:7px;" aria-label="${rating} out of 5 stars">${stars}</div>`;
 };
 
 const renderMapInfoRow = (label: string, value: string): string => {
@@ -2978,7 +3014,7 @@ export function PublicEatsPage({
           const mealText = restaurant.mealTypes.map((mealType) => mealLabel(mealType)).join(', ');
           const detailText = getRestaurantDetailText(restaurant);
           const detailLabel = restaurant.status === 'disliked' ? 'Reason' : 'Notes';
-          const ratingText = getRestaurantRatingLabel(restaurant.rating);
+          const ratingMarkup = renderMapRatingStars(restaurant.rating);
           const chainText = chainLocationCount > 1
             ? renderMapInfoRow('Locations', `${chainLocationCount} visible on this map`)
             : '';
@@ -2990,8 +3026,8 @@ export function PublicEatsPage({
               <div style="font-size:15px;font-weight:700;line-height:1.25;padding-right:4px;">${escapeHtml(restaurant.name)}</div>
               ${locationLabel ? `<div style="color:#4b5563;font-size:12px;line-height:1.35;margin-top:4px;">${escapeHtml(locationLabel)}</div>` : ''}
               <div style="color:#111827;font-size:12px;font-weight:700;margin-top:5px;">${escapeHtml(getRestaurantStatusLabel(restaurant.status))}</div>
+              ${ratingMarkup}
               ${address}
-              ${renderMapInfoRow('Stars', ratingText ?? '')}
               ${renderMapInfoRow('Food', typeText)}
               ${renderMapInfoRow('Meals', mealText)}
               ${chainText}
@@ -3037,6 +3073,9 @@ export function PublicEatsPage({
       }
       updateMarkerSelection(selectedMapRestaurantIdRef.current);
       googleMarkerClustererRef.current = new MarkerClusterer({
+        algorithmOptions: {
+          maxZoom: 14
+        },
         map: googleMapRef.current,
         markers: googleMarkersRef.current,
         onClusterClick: (_event, cluster, map): void => {
@@ -3086,6 +3125,10 @@ export function PublicEatsPage({
             return metadata?.restaurantId === pendingMapRestaurantFocusId ? [{ marker, pinId }] : [];
           })
         : [];
+      const revealFocusedMarker = (marker: any): void => {
+        googleMarkerClustererRef.current?.removeMarker(marker);
+        marker.setMap(googleMapRef.current);
+      };
       const didFocusPendingRestaurant = pendingMapRestaurantFocusId !== null && pendingRestaurantMarkers.length > 0;
       if (didFocusPendingRestaurant) {
         const focusedBounds = new googleMaps.LatLngBounds();
@@ -3123,6 +3166,9 @@ export function PublicEatsPage({
               .sort((first, second) => first.distance - second.distance)[0]
           : pendingRestaurantMarkers[0];
         updateMarkerSelection(pendingMapRestaurantFocusId);
+        if (selectedRestaurantMarker?.marker) {
+          revealFocusedMarker(selectedRestaurantMarker.marker);
+        }
         googleMarkerOpenersByPinIdRef.current.get(
           selectedRestaurantMarker?.pinId ?? pendingRestaurantMarkers[0]?.pinId ?? ''
         )?.();
@@ -3138,6 +3184,7 @@ export function PublicEatsPage({
           googleMapRef.current.panTo(position);
           googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
         }
+        revealFocusedMarker(pendingMarker);
         googleMarkerOpenersByPinIdRef.current.get(pendingMapPinFocusId)?.();
         pendingMapPinFocusIdRef.current = null;
       }
@@ -3609,9 +3656,9 @@ export function PublicEatsPage({
               {options.distanceText}
             </span>
           ) : null}
-          {getRestaurantRatingLabel(place.rating) ? (
+          {place.rating !== null ? (
             <span className={styles.ratingMeta} aria-label={`${place.rating} out of 5 stars`}>
-              {getRestaurantRatingLabel(place.rating)}
+              {renderRatingStars(place.rating)}
             </span>
           ) : null}
           {options.showCity ? (

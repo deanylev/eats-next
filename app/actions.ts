@@ -48,6 +48,7 @@ import {
 import { flashCookieNames, type FlashCookieName } from '@/lib/flash-cookies';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
+import { ratingFromStorageValue } from '@/lib/ratings';
 import { clearFlashCookieServer, setFlashCookieServer } from '@/lib/server-flash-cookies';
 import {
   cities,
@@ -1333,6 +1334,7 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
 
   const fullRestaurants = restaurantRows.map((restaurant) => ({
     ...restaurant,
+    rating: ratingFromStorageValue(restaurant.rating),
     locations: locationsByRestaurant.get(restaurant.id) ?? [],
     areas: areasByRestaurant.get(restaurant.id) ?? [],
     mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],

@@ -92,6 +92,13 @@
       "when": 1777903200000,
       "tag": "0012_restaurant_ratings",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777989900000,
+      "tag": "0013_half_star_ratings",
+      "breakpoints": true
     }
   ]
 }

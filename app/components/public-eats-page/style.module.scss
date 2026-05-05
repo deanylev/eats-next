@@ -605,24 +605,61 @@
     gap: 1px;
   }
 
-  :global(.rating-star-button) {
-    background: transparent;
-    color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
-    font-size: 30px;
-    font-weight: 900;
+  :global(.rating-star-choice) {
+    display: inline-flex;
     height: 40px;
-    line-height: 1;
-    padding: 0 2px;
-    text-shadow: none;
-    transition: color 140ms ease, transform 140ms ease;
+    position: relative;
     width: 34px;
   }
 
-  :global(.rating-star-button:hover),
-  :global(.rating-star-button:focus-visible),
-  :global(.rating-star-button-filled) {
+  :global(.rating-star-choice::before),
+  :global(.rating-star-choice::after) {
+    content: '★';
+    font-size: 30px;
+    font-weight: 900;
+    left: 0;
+    line-height: 1;
+    pointer-events: none;
+    position: absolute;
+    top: 5px;
+    width: 34px;
+  }
+
+  :global(.rating-star-choice::before) {
+    color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+  }
+
+  :global(.rating-star-choice::after) {
     color: #f5b301;
+    opacity: 0;
+    overflow: hidden;
     text-shadow: 0 1px 0 color-mix(in srgb, #111827 18%, transparent);
+  }
+
+  :global(.rating-star-choice-filled::after) {
+    opacity: 1;
+  }
+
+  :global(.rating-star-choice-half-filled::after) {
+    opacity: 1;
+    width: 17px;
+  }
+
+  :global(.rating-star-button) {
+    background: transparent;
+    color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+    height: 40px;
+    padding: 0 2px;
+    position: relative;
+    transition: transform 140ms ease;
+    width: 34px;
+    z-index: 1;
+  }
+
+  :global(.rating-star-half-button) {
+    overflow: hidden;
+    padding: 0;
+    width: 17px;
   }
 
   :global(.rating-star-button:hover),
@@ -2793,12 +2830,38 @@
 }
 
 .ratingMeta {
+  align-items: center;
   align-self: flex-start;
-  color: #f5b301;
+  display: inline-flex;
   font-size: 18px;
   font-weight: 900;
+  gap: 1px;
   letter-spacing: 0;
   line-height: 1;
+}
+
+.ratingStar {
+  display: inline-block;
+  height: 18px;
+  position: relative;
+  width: 18px;
+}
+
+.ratingStarBase,
+.ratingStarFill {
+  left: 0;
+  line-height: 1;
+  position: absolute;
+  top: 0;
+}
+
+.ratingStarBase {
+  color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+}
+
+.ratingStarFill {
+  color: #f5b301;
+  overflow: hidden;
   text-shadow: 0 1px 0 color-mix(in srgb, #111827 18%, transparent);
 }
 

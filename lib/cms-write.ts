@@ -19,6 +19,7 @@ import {
   restaurantInputSchema,
   restaurantTypeInputSchema
 } from '@/lib/validators';
+import { ratingToStorageValue } from '@/lib/ratings';
 
 type Db = ReturnType<typeof getDb>;
 type RestaurantLocationWritableDb = Pick<Db, 'delete' | 'insert' | 'query' | 'update'>;
@@ -565,7 +566,7 @@ export const createRestaurantRecord = async (db: Db, tenantId: string, input: Re
         status: input.status,
         triedAt: input.status === 'untried' ? null : new Date(),
         dislikedReason: input.status === 'disliked' ? input.dislikedReason ?? null : null,
-        rating: input.rating
+        rating: ratingToStorageValue(input.rating)
       })
       .returning({ id: restaurants.id });
     const insertedRestaurant = insertedRestaurants[0];
@@ -672,7 +673,7 @@ export const updateRestaurantRecord = async (
         status: input.status,
         triedAt: nextTriedAt,
         dislikedReason: input.status === 'disliked' ? input.dislikedReason ?? null : null,
-        rating: input.rating
+        rating: ratingToStorageValue(input.rating)
       })
       .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId)));
 

@@ -198,6 +198,7 @@ export function RestaurantFormFields({
   const [newAreaValue, setNewAreaValue] = useState<string>('');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
   const [ratingValue, setRatingValue] = useState<string>(defaults?.rating ? String(defaults.rating) : '');
+  const [previewRatingValue, setPreviewRatingValue] = useState<string>('');
   const [isLocationCreatorOpen, setIsLocationCreatorOpen] = useState<boolean>(false);
   const [newCountryName, setNewCountryName] = useState<string>('');
   const [selectedCountryIdForNewCity, setSelectedCountryIdForNewCity] = useState<string>(() => {
@@ -1327,24 +1328,46 @@ export function RestaurantFormFields({
               >
                 No rating
               </button>
-              <div className="rating-star-buttons">
-                {[1, 2, 3, 4, 5].map((rating) => {
-                  const ratingString = String(rating);
-                  const isSelected = ratingValue === ratingString;
-                  const isFilled = Number(ratingValue || '0') >= rating;
+              <div className="rating-star-buttons" onMouseLeave={() => setPreviewRatingValue('')}>
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const selectedRating = Number(previewRatingValue || ratingValue || '0');
+                  const isFilled = selectedRating >= star;
+                  const isHalfFilled = !isFilled && selectedRating >= star - 0.5;
 
                   return (
-                    <button
-                      key={`${keyPrefix}-rating-${rating}`}
-                      type="button"
-                      className={`rating-star-button ${isFilled ? 'rating-star-button-filled' : ''}`}
-                      role="radio"
-                      aria-checked={isSelected}
-                      aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
-                      onClick={() => setRatingValue(ratingString)}
+                    <span
+                      className={`rating-star-choice ${
+                        isFilled
+                          ? 'rating-star-choice-filled'
+                          : isHalfFilled
+                            ? 'rating-star-choice-half-filled'
+                            : ''
+                      }`}
+                      key={`${keyPrefix}-rating-star-${star}`}
                     >
-                      ★
-                    </button>
+                      {[star - 0.5, star].map((rating) => {
+                        const ratingString = String(rating);
+                        const isSelected = ratingValue === ratingString;
+                        const isLeftHalf = rating % 1 !== 0;
+
+                        return (
+                          <button
+                            key={`${keyPrefix}-rating-${ratingString}`}
+                            type="button"
+                            className={`rating-star-button rating-star-half-button ${
+                              isLeftHalf ? 'rating-star-half-left' : 'rating-star-half-right'
+                            }`}
+                            role="radio"
+                            aria-checked={isSelected}
+                            aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
+                            onBlur={() => setPreviewRatingValue('')}
+                            onClick={() => setRatingValue(ratingString)}
+                            onFocus={() => setPreviewRatingValue(ratingString)}
+                            onMouseEnter={() => setPreviewRatingValue(ratingString)}
+                          />
+                        );
+                      })}
+                    </span>
                   );
                 })}
               </div>
