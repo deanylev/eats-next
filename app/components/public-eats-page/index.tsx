@@ -715,6 +715,7 @@ export function PublicEatsPage({
   const googleMarkerMetadataByPinIdRef = useRef<Map<string, { restaurantId: string; status: PublicRestaurant['status']; chainLocationCount: number }>>(new Map());
   const selectedMapRestaurantIdRef = useRef<string | null>(null);
   const googleUserMarkerRef = useRef<any>(null);
+  const pendingMapRestaurantFocusIdRef = useRef<string | null>(null);
   const pendingMapPinFocusIdRef = useRef<string | null>(null);
   const previousMapFitSignatureRef = useRef<string | null>(null);
   const shouldFocusUserLocationRef = useRef(false);
@@ -2304,12 +2305,11 @@ export function PublicEatsPage({
     });
   }, [scrollRestaurantCardIntoView]);
   const showRestaurantOnMap = useCallback((restaurant: PublicRestaurant): void => {
-    const location = restaurant.locations[0];
-    if (!location) {
+    if (restaurant.locations.length === 0) {
       return;
     }
 
-    pendingMapPinFocusIdRef.current = `${restaurant.id}:${location.id}`;
+    pendingMapRestaurantFocusIdRef.current = restaurant.id;
     setViewMode('map');
   }, []);
   const ensureNewRestaurantVisible = useCallback((restaurant: PublicRestaurant): boolean => {
@@ -2732,9 +2732,58 @@ export function PublicEatsPage({
 
       updateChainHighlight(selectedMapRestaurantIdRef.current);
 
+      const pendingMapRestaurantFocusId = pendingMapRestaurantFocusIdRef.current;
+      const pendingRestaurantMarkers = pendingMapRestaurantFocusId
+        ? [...googleMarkersByPinIdRef.current.entries()].flatMap(([pinId, marker]) => {
+            const metadata = googleMarkerMetadataByPinIdRef.current.get(pinId);
+            return metadata?.restaurantId === pendingMapRestaurantFocusId ? [{ marker, pinId }] : [];
+          })
+        : [];
+      const didFocusPendingRestaurant = pendingMapRestaurantFocusId !== null && pendingRestaurantMarkers.length > 0;
+      if (didFocusPendingRestaurant) {
+        const focusedBounds = new googleMaps.LatLngBounds();
+        for (const { marker } of pendingRestaurantMarkers) {
+          const markerPosition = marker.getPosition?.();
+          if (markerPosition) {
+            focusedBounds.extend(markerPosition);
+          }
+        }
+
+        if (pendingRestaurantMarkers.length > 1 && !focusedBounds.isEmpty()) {
+          googleMapRef.current.fitBounds(focusedBounds, 96);
+        } else {
+          const position = pendingRestaurantMarkers[0]?.marker.getPosition?.();
+          if (position) {
+            googleMapRef.current.panTo(position);
+            googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
+          }
+        }
+
+        const selectedRestaurantMarker = userLocation
+          ? pendingRestaurantMarkers
+              .map((entry) => {
+                const pin = mappedVisiblePins.find((mappedPin) => mappedPin.id === entry.pinId);
+                return {
+                  ...entry,
+                  distance: pin
+                    ? getDistanceInKm(userLocation, {
+                        latitude: pin.location.latitude,
+                        longitude: pin.location.longitude
+                      })
+                    : Number.POSITIVE_INFINITY
+                };
+              })
+              .sort((first, second) => first.distance - second.distance)[0]?.marker
+          : pendingRestaurantMarkers[0]?.marker;
+        updateChainHighlight(pendingMapRestaurantFocusId);
+        googleMaps.event.trigger(selectedRestaurantMarker ?? pendingRestaurantMarkers[0]?.marker, 'click');
+        pendingMapRestaurantFocusIdRef.current = null;
+        pendingMapPinFocusIdRef.current = null;
+      }
+
       const pendingMapPinFocusId = pendingMapPinFocusIdRef.current;
       const pendingMarker = pendingMapPinFocusId ? googleMarkersByPinIdRef.current.get(pendingMapPinFocusId) : null;
-      if (pendingMarker) {
+      if (!pendingMapRestaurantFocusId && pendingMarker) {
         const position = pendingMarker.getPosition?.();
         if (position) {
           googleMapRef.current.panTo(position);
@@ -2745,7 +2794,7 @@ export function PublicEatsPage({
       }
 
       googleMaps.event.trigger(googleMapRef.current, 'resize');
-      if (pendingMarker) {
+      if (didFocusPendingRestaurant || pendingMarker) {
         shouldFocusUserLocationRef.current = false;
       } else if (userLocation && shouldFocusUserLocationRef.current && shouldUseUserLocation) {
         shouldFocusUserLocationRef.current = false;
