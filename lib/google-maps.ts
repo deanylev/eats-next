@@ -44,6 +44,20 @@ type GoogleMapsPlaceDetailsApiResponse = {
     latitude?: number;
     longitude?: number;
   };
+  regularOpeningHours?: {
+    periods?: Array<{
+      open?: {
+        day?: number;
+        hour?: number;
+        minute?: number;
+      };
+      close?: {
+        day?: number;
+        hour?: number;
+        minute?: number;
+      };
+    }>;
+  };
   websiteUri?: string;
 };
 
@@ -66,6 +80,7 @@ export type GoogleMapsResolvedPlace = {
   label: string;
   latitude: number | null;
   longitude: number | null;
+  mealTypes: Array<'breakfast' | 'lunch' | 'dinner'>;
   placeId: string | null;
   url: string;
   websiteUrl: string | null;
@@ -85,6 +100,7 @@ const googleMapsPlaceDetailsFieldMask = [
   'formattedAddress',
   'googleMapsUri',
   'location',
+  'regularOpeningHours.periods',
   'websiteUri'
 ].join(',');
 const googleMapsTextSearchFieldMask = [
@@ -94,6 +110,7 @@ const googleMapsTextSearchFieldMask = [
   'places.formattedAddress',
   'places.googleMapsUri',
   'places.location',
+  'places.regularOpeningHours.periods',
   'places.websiteUri'
 ].join(',');
 const googleMapsIncludedPrimaryTypes = [
@@ -229,6 +246,92 @@ const findAddressComponentText = (
   return component?.longText?.trim() || component?.shortText?.trim() || null;
 };
 
+type OpeningHoursPeriod = NonNullable<
+  NonNullable<GoogleMapsPlaceDetailsApiResponse['regularOpeningHours']>['periods']
+>[number];
+
+type GoogleMapsMealType = GoogleMapsResolvedPlace['mealTypes'][number];
+
+const minutesPerDay = 24 * 60;
+const minutesPerWeek = 7 * minutesPerDay;
+const googleMapsMealWindows: Array<{ mealType: GoogleMapsMealType; startMinute: number; endMinute: number }> = [
+  { mealType: 'breakfast', startMinute: 6 * 60, endMinute: 11 * 60 },
+  { mealType: 'lunch', startMinute: 12 * 60, endMinute: 15 * 60 },
+  { mealType: 'dinner', startMinute: 17 * 60, endMinute: 22 * 60 }
+];
+
+const isValidGoogleMapsWeekday = (day: number | undefined): day is number =>
+  typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6;
+
+const getGoogleMapsPeriodMinute = (
+  point: OpeningHoursPeriod['open'] | OpeningHoursPeriod['close']
+): number | null => {
+  const day = point?.day;
+  const hour = point?.hour;
+  const minute = point?.minute;
+
+  if (
+    !isValidGoogleMapsWeekday(day) ||
+    typeof hour !== 'number' ||
+    !Number.isInteger(hour) ||
+    typeof minute !== 'number' ||
+    !Number.isInteger(minute)
+  ) {
+    return null;
+  }
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+
+  return day * minutesPerDay + hour * 60 + minute;
+};
+
+const rangesOverlap = (
+  left: { startMinute: number; endMinute: number },
+  right: { startMinute: number; endMinute: number }
+): boolean => left.startMinute < right.endMinute && right.startMinute < left.endMinute;
+
+export const inferGoogleMapsMealTypesFromOpeningHours = (
+  periods: NonNullable<GoogleMapsPlaceDetailsApiResponse['regularOpeningHours']>['periods']
+): GoogleMapsMealType[] => {
+  const inferredMealTypes = new Set<GoogleMapsMealType>();
+
+  for (const period of periods ?? []) {
+    const startMinute = getGoogleMapsPeriodMinute(period.open);
+    const rawEndMinute = getGoogleMapsPeriodMinute(period.close);
+    if (startMinute === null) {
+      continue;
+    }
+
+    const endMinute = rawEndMinute === null ? startMinute + minutesPerWeek : rawEndMinute;
+    const normalizedEndMinute = endMinute <= startMinute ? endMinute + minutesPerWeek : endMinute;
+
+    for (let cursor = startMinute; cursor < normalizedEndMinute; cursor += minutesPerWeek) {
+      const range = {
+        startMinute: cursor,
+        endMinute: Math.min(normalizedEndMinute, cursor + minutesPerWeek)
+      };
+
+      for (let day = 0; day < 14; day += 1) {
+        const dayOffset = day * minutesPerDay;
+        for (const mealWindow of googleMapsMealWindows) {
+          if (rangesOverlap(range, {
+            startMinute: dayOffset + mealWindow.startMinute,
+            endMinute: dayOffset + mealWindow.endMinute
+          })) {
+            inferredMealTypes.add(mealWindow.mealType);
+          }
+        }
+      }
+    }
+  }
+
+  return googleMapsMealWindows
+    .map((mealWindow) => mealWindow.mealType)
+    .filter((mealType) => inferredMealTypes.has(mealType));
+};
+
 export const resolveGoogleMapsPlaceUrl = async ({
   placeId,
   sessionToken
@@ -277,6 +380,7 @@ export const resolveGoogleMapsPlaceUrl = async ({
     label: payload.displayName?.text?.trim() ?? '',
     latitude: typeof payload.location?.latitude === 'number' ? payload.location.latitude : null,
     longitude: typeof payload.location?.longitude === 'number' ? payload.location.longitude : null,
+    mealTypes: inferGoogleMapsMealTypesFromOpeningHours(payload.regularOpeningHours?.periods),
     placeId,
     url,
     websiteUrl: payload.websiteUri?.trim() || null
@@ -396,6 +500,7 @@ const searchGoogleMapsPlace = async ({
     label: place.displayName?.text?.trim() ?? '',
     latitude: typeof place.location?.latitude === 'number' ? place.location.latitude : null,
     longitude: typeof place.location?.longitude === 'number' ? place.location.longitude : null,
+    mealTypes: inferGoogleMapsMealTypesFromOpeningHours(place.regularOpeningHours?.periods),
     placeId: place.id?.trim() || null,
     url: place.googleMapsUri?.trim() || '',
     websiteUrl: place.websiteUri?.trim() || null
@@ -434,6 +539,7 @@ export const resolveGoogleMapsLocationFromUrl = async ({
       label: placeName ?? name,
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
+      mealTypes: [],
       placeId: null,
       url: expandedUrl,
       websiteUrl: null

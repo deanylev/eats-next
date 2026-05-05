@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildGoogleMapsAutocompleteInput,
+  inferGoogleMapsMealTypesFromOpeningHours,
   resolveGoogleMapsPlaceUrl,
   searchGoogleMapsSuggestions
 } from '../lib/google-maps';
@@ -129,7 +130,7 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
     );
     assert.equal(
       (init?.headers as Record<string, string>)['X-Goog-FieldMask'],
-      'addressComponents,displayName,formattedAddress,googleMapsUri,location,websiteUri'
+      'addressComponents,displayName,formattedAddress,googleMapsUri,location,regularOpeningHours.periods,websiteUri'
     );
 
     return new Response(
@@ -146,6 +147,14 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
         location: {
           latitude: -37.7988,
           longitude: 144.9788
+        },
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: 1, hour: 12, minute: 0 },
+              close: { day: 1, hour: 23, minute: 0 }
+            }
+          ]
         }
       }),
       {
@@ -171,6 +180,7 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
       label: 'Bar Liberty',
       latitude: -37.7988,
       longitude: 144.9788,
+      mealTypes: ['lunch', 'dinner'],
       placeId: 'place-1',
       url: 'https://maps.google.com/?cid=123',
       websiteUrl: 'https://barliberty.com/'
@@ -183,4 +193,56 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
       process.env.GOOGLE_MAPS_API_KEY = originalApiKey;
     }
   }
+});
+
+test('inferGoogleMapsMealTypesFromOpeningHours maps opening periods to meals', () => {
+  assert.deepEqual(
+    inferGoogleMapsMealTypesFromOpeningHours([
+      {
+        open: { day: 1, hour: 7, minute: 30 },
+        close: { day: 1, hour: 14, minute: 0 }
+      },
+      {
+        open: { day: 1, hour: 17, minute: 30 },
+        close: { day: 1, hour: 22, minute: 30 }
+      }
+    ]),
+    ['breakfast', 'lunch', 'dinner']
+  );
+});
+
+test('inferGoogleMapsMealTypesFromOpeningHours does not treat 11am as lunch', () => {
+  assert.deepEqual(
+    inferGoogleMapsMealTypesFromOpeningHours([
+      {
+        open: { day: 1, hour: 11, minute: 0 },
+        close: { day: 1, hour: 12, minute: 0 }
+      }
+    ]),
+    []
+  );
+});
+
+test('inferGoogleMapsMealTypesFromOpeningHours handles overnight hours', () => {
+  assert.deepEqual(
+    inferGoogleMapsMealTypesFromOpeningHours([
+      {
+        open: { day: 5, hour: 18, minute: 0 },
+        close: { day: 6, hour: 2, minute: 0 }
+      }
+    ]),
+    ['dinner']
+  );
+});
+
+test('inferGoogleMapsMealTypesFromOpeningHours handles week-wrapping hours', () => {
+  assert.deepEqual(
+    inferGoogleMapsMealTypesFromOpeningHours([
+      {
+        open: { day: 6, hour: 18, minute: 0 },
+        close: { day: 0, hour: 10, minute: 0 }
+      }
+    ]),
+    ['breakfast', 'dinner']
+  );
 });

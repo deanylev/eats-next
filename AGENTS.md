@@ -17,7 +17,8 @@ This repo is a multi-tenant restaurant CMS and public listing site built with Ne
 - Use semicolons.
 - Prefer small, coherent changes over broad rewrites.
 - Do not add dependencies unless they materially simplify the code.
-- Do not run `pnpm build` or `tsc` unless explicitly asked.
+- Do not run `pnpm build` unless explicitly asked.
+- Run `pnpm exec tsc --noEmit --pretty false` after substantial TypeScript changes, including changes that touch shared types, schemas, validators, API payload shapes, database models, cross-module contracts, or more than one TypeScript module. For tiny text/style-only changes, skip it unless explicitly asked.
 - Do not start or keep a dev server running unless explicitly asked.
 
 ## Project Shape
@@ -47,6 +48,7 @@ This repo is a multi-tenant restaurant CMS and public listing site built with Ne
 
 ## Testing Guidance
 - Use `pnpm test` for the existing test suite.
+- For substantial TypeScript changes, run `pnpm exec tsc --noEmit --pretty false` in addition to relevant tests.
 - Keep DB-backed tests aligned with the real migrations.
 - Do not maintain a second hand-written schema for tests.
 

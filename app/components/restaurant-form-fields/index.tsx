@@ -61,6 +61,10 @@ type RestaurantFormLocation = {
   longitude: number;
 };
 
+type GoogleMapsResolvedLocation = RestaurantFormLocation & {
+  mealTypes: MealType[];
+};
+
 type RestaurantFormFieldsProps = {
   countries: Array<{ id: string; name: string }>;
   cities: Array<{ id: string; name: string; countryId: string; countryName: string }>;
@@ -736,7 +740,7 @@ export function RestaurantFormFields({
     locationGoogleMapsSessionTokenRef.current = '';
   };
 
-  const resolveLocationGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<RestaurantFormLocation> => {
+  const resolveLocationGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<GoogleMapsResolvedLocation> => {
     const sessionToken = locationGoogleMapsSessionTokenRef.current;
     const response = await fetch('/api/google-maps-place-details', {
       method: 'POST',
@@ -755,6 +759,7 @@ export function RestaurantFormFields({
           label?: string;
           latitude?: number | null;
           longitude?: number | null;
+          mealTypes?: string[];
           placeId?: string;
           url?: string;
         }
@@ -770,7 +775,10 @@ export function RestaurantFormFields({
       googlePlaceId: payload.placeId ?? suggestion.placeId,
       googleMapsUrl: payload.url,
       latitude: payload.latitude,
-      longitude: payload.longitude
+      longitude: payload.longitude,
+      mealTypes: (payload.mealTypes ?? []).filter((mealType): mealType is MealType =>
+        mealTypeChoices.includes(mealType as MealType)
+      )
     };
   };
 
@@ -786,13 +794,28 @@ export function RestaurantFormFields({
     setLocationGoogleMapsSearchError('');
 
     try {
-      const locations: RestaurantFormLocation[] = [];
+      const locations: GoogleMapsResolvedLocation[] = [];
       for (const suggestion of suggestionsToAdd) {
         locations.push(await resolveLocationGoogleMapsSuggestion(suggestion));
       }
 
-      setLocationRows((current) => [...current, ...locations]);
+      setLocationRows((current) => [
+        ...current,
+        ...locations.map((location) => ({
+          address: location.address,
+          googleMapsUrl: location.googleMapsUrl,
+          googlePlaceId: location.googlePlaceId,
+          label: location.label,
+          latitude: location.latitude,
+          longitude: location.longitude
+        }))
+      ]);
       setNameValue((current) => (current.trim().length === 0 ? locations[0]?.label ?? current : current));
+      setSelectedMealTypes((current) =>
+        current.length === 0 && locationRows.length === 0 && locations[0]?.mealTypes.length
+          ? locations[0].mealTypes
+          : current
+      );
       setLocationGoogleMapsSuggestions((current) =>
         current.filter((suggestion) => !suggestionsToAdd.some((added) => added.placeId === suggestion.placeId))
       );
