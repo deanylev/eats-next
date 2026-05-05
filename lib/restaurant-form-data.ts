@@ -10,6 +10,20 @@ const parseOptionalNumber = (value: FormDataEntryValue | null): number | null =>
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
+const parseLocations = (value: FormDataEntryValue | null): unknown[] => {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const parseRestaurantFormData = (formData: FormData) =>
   restaurantInputSchema.parse({
     cityId: formData.get('cityId'),
@@ -24,6 +38,7 @@ export const parseRestaurantFormData = (formData: FormData) =>
     address: formData.get('address') ?? undefined,
     latitude: parseOptionalNumber(formData.get('latitude')),
     longitude: parseOptionalNumber(formData.get('longitude')),
+    locations: parseLocations(formData.get('locations')),
     status: formData.get('status'),
     dislikedReason: formData.get('dislikedReason') ?? undefined
   });

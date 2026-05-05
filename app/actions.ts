@@ -53,6 +53,7 @@ import {
   cities,
   countries,
   restaurantAreas,
+  restaurantLocations,
   restaurantMeals,
   restaurants,
   restaurantToTypes,
@@ -1057,6 +1058,11 @@ export const backfillRestaurantLocations = async (): Promise<void> => {
         url: restaurants.url,
         latitude: restaurants.latitude,
         longitude: restaurants.longitude,
+        locationCount: sql<number>`(
+          select count(*)::int from ${restaurantLocations}
+          where ${restaurantLocations.restaurantId} = ${restaurants.id}
+            and ${restaurantLocations.tenantId} = ${tenant.id}
+        )`,
         cityName: cities.name,
         countryName: countries.name
       })
@@ -1118,6 +1124,11 @@ export const backfillRestaurantLocationFromRoot = async (formData: FormData): Pr
           url: restaurants.url,
           latitude: restaurants.latitude,
           longitude: restaurants.longitude,
+          locationCount: sql<number>`(
+            select count(*)::int from ${restaurantLocations}
+            where ${restaurantLocations.restaurantId} = ${restaurants.id}
+              and ${restaurantLocations.tenantId} = ${tenant.id}
+          )`,
           cityName: cities.name,
           countryName: countries.name
         })
@@ -1184,7 +1195,7 @@ export const permanentlyDeleteRestaurant = async (formData: FormData): Promise<v
 export const getCmsData = async (tenantId: string, options?: { includeDeleted?: boolean }) => {
   const includeDeleted = options?.includeDeleted ?? false;
   const db = getDb();
-  const [countryRows, cityRows, typeRows, restaurantRows, areaRows, mealRows, restaurantTypeRows] =
+  const [countryRows, cityRows, typeRows, restaurantRows, locationRows, areaRows, mealRows, restaurantTypeRows] =
     await Promise.all([
       db
         .select()
@@ -1235,6 +1246,11 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
         .orderBy(asc(countries.name), asc(cities.name), asc(restaurants.name)),
       db
         .select()
+        .from(restaurantLocations)
+        .where(eq(restaurantLocations.tenantId, tenantId))
+        .orderBy(asc(restaurantLocations.createdAt), asc(restaurantLocations.address)),
+      db
+        .select()
         .from(restaurantAreas)
         .where(
           sql`exists (
@@ -1274,6 +1290,32 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
     areasByRestaurant.set(area.restaurantId, existing);
   }
 
+  const locationsByRestaurant = new Map<
+    string,
+    Array<{
+      id: string;
+      label: string | null;
+      address: string | null;
+      googlePlaceId: string | null;
+      googleMapsUrl: string | null;
+      latitude: number;
+      longitude: number;
+    }>
+  >();
+  for (const location of locationRows) {
+    const existing = locationsByRestaurant.get(location.restaurantId) ?? [];
+    existing.push({
+      id: location.id,
+      label: location.label,
+      address: location.address,
+      googlePlaceId: location.googlePlaceId,
+      googleMapsUrl: location.googleMapsUrl,
+      latitude: location.latitude,
+      longitude: location.longitude
+    });
+    locationsByRestaurant.set(location.restaurantId, existing);
+  }
+
   const mealsByRestaurant = new Map<string, string[]>();
   for (const meal of mealRows) {
     const existing = mealsByRestaurant.get(meal.restaurantId) ?? [];
@@ -1290,6 +1332,7 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
 
   const fullRestaurants = restaurantRows.map((restaurant) => ({
     ...restaurant,
+    locations: locationsByRestaurant.get(restaurant.id) ?? [],
     areas: areasByRestaurant.get(restaurant.id) ?? [],
     mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
     types: typesByRestaurant.get(restaurant.id) ?? []

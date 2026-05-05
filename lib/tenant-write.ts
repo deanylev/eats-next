@@ -4,6 +4,7 @@ import {
   cities,
   countries,
   restaurantAreas,
+  restaurantLocations,
   restaurantMeals,
   restaurants,
   restaurantToTypes,
@@ -25,6 +26,7 @@ const clearTenantData = async (tx: DbLike, tenantId: string): Promise<void> => {
   await tx.delete(restaurantAreas).where(
     sql`${restaurantAreas.restaurantId} in (${tx.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.tenantId, tenantId))})`
   );
+  await tx.delete(restaurantLocations).where(eq(restaurantLocations.tenantId, tenantId));
   await tx.delete(restaurants).where(eq(restaurants.tenantId, tenantId));
   await tx.delete(cities).where(eq(cities.tenantId, tenantId));
   await tx.delete(countries).where(eq(countries.tenantId, tenantId));

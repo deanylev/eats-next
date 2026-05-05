@@ -115,7 +115,7 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
     );
     assert.equal(
       (init?.headers as Record<string, string>)['X-Goog-FieldMask'],
-      'addressComponents,displayName,formattedAddress,googleMapsUri,location'
+      'addressComponents,displayName,formattedAddress,googleMapsUri,location,websiteUri'
     );
 
     return new Response(
@@ -128,6 +128,7 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
         displayName: { text: 'Bar Liberty' },
         formattedAddress: '234 Johnston St, Fitzroy VIC 3065, Australia',
         googleMapsUri: 'https://maps.google.com/?cid=123',
+        websiteUri: 'https://barliberty.com/',
         location: {
           latitude: -37.7988,
           longitude: 144.9788
@@ -157,7 +158,8 @@ test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details',
       latitude: -37.7988,
       longitude: 144.9788,
       placeId: 'place-1',
-      url: 'https://maps.google.com/?cid=123'
+      url: 'https://maps.google.com/?cid=123',
+      websiteUrl: 'https://barliberty.com/'
     });
   } finally {
     global.fetch = originalFetch;

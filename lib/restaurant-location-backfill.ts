@@ -13,6 +13,7 @@ export type RestaurantLocationBackfillTarget = {
   url: string;
   cityName: string;
   countryName: string;
+  locationCount?: number;
   latitude: number | null;
   longitude: number | null;
 };
@@ -27,7 +28,7 @@ export const backfillRestaurantLocation = async (
     return 'skipped';
   }
 
-  if (!options?.force && restaurant.latitude !== null && restaurant.longitude !== null) {
+  if (!options?.force && (restaurant.locationCount ?? 0) > 0) {
     return 'skipped';
   }
 
@@ -44,6 +45,7 @@ export const backfillRestaurantLocation = async (
 
   await updateRestaurantLocationMetadataRecord(db, tenantId, restaurant.id, {
     address: location.address,
+    googleMapsUrl: location.url || restaurant.url,
     googlePlaceId: location.placeId,
     latitude: location.latitude,
     longitude: location.longitude

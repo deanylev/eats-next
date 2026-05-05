@@ -33,6 +33,7 @@ export type RestaurantFormDefaults = {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  locations?: RestaurantFormLocation[];
   status?: RestaurantStatus;
   dislikedReason?: string | null;
 };
@@ -50,17 +51,14 @@ type GoogleMapsSuggestion = {
   secondaryText: string;
 };
 
-type SelectedGoogleMapsPlace = {
-  address: string | null;
-  area: string | null;
-  cityName: string | null;
-  countryName: string | null;
+type RestaurantFormLocation = {
+  id?: string;
   label: string;
-  latitude: number | null;
-  longitude: number | null;
-  placeId: string;
-  secondaryText: string;
-  url: string;
+  address: string;
+  googlePlaceId: string;
+  googleMapsUrl: string;
+  latitude: number;
+  longitude: number;
 };
 
 type RestaurantFormFieldsProps = {
@@ -77,7 +75,75 @@ type RestaurantFormFieldsProps = {
   keyPrefix: string;
   preferGoogleMapsFirst?: boolean;
   showDevelopmentPopulateButton?: boolean;
+  validationErrorMessage?: string | null;
 };
+
+type RestaurantFormFieldErrorKey =
+  | 'city'
+  | 'locations'
+  | 'mealTypes'
+  | 'name'
+  | 'notes'
+  | 'referredBy'
+  | 'status'
+  | 'types'
+  | 'url';
+
+const restaurantFormFieldErrorOrder: RestaurantFormFieldErrorKey[] = [
+  'city',
+  'locations',
+  'mealTypes',
+  'name',
+  'notes',
+  'referredBy',
+  'types',
+  'url',
+  'status'
+];
+
+const getRestaurantFormFieldErrors = (message: string | null | undefined): Partial<Record<RestaurantFormFieldErrorKey, string>> => {
+  if (!message) {
+    return {};
+  }
+
+  const normalizedMessage = message.toLowerCase();
+  const errors: Partial<Record<RestaurantFormFieldErrorKey, string>> = {};
+
+  if (normalizedMessage.includes('city')) {
+    errors.city = message;
+  }
+  if (normalizedMessage.includes('map location')) {
+    errors.locations = message;
+  }
+  if (normalizedMessage.includes('meal type')) {
+    errors.mealTypes = message;
+  }
+  if (normalizedMessage.includes('restaurant name') || normalizedMessage.includes('with this name')) {
+    errors.name = message;
+  }
+  if (normalizedMessage.includes('notes')) {
+    errors.notes = message;
+  }
+  if (normalizedMessage.includes('referred by')) {
+    errors.referredBy = message;
+  }
+  if (normalizedMessage.includes('type')) {
+    errors.types = message;
+  }
+  if (normalizedMessage.includes('url')) {
+    errors.url = message;
+  }
+  if (normalizedMessage.includes('disliked reason')) {
+    errors.status = message;
+  }
+
+  return errors;
+};
+
+const getFirstRestaurantFormFieldErrorKey = (
+  errors: Partial<Record<RestaurantFormFieldErrorKey, string>>
+): RestaurantFormFieldErrorKey | null =>
+  restaurantFormFieldErrorOrder.find((field) => Boolean(errors[field])) ?? null;
 
 const normalizeSetValues = (values: string[] | undefined): string[] => [...(values ?? [])].sort();
 
@@ -105,7 +171,8 @@ export function RestaurantFormFields({
   disableSubmit = false,
   keyPrefix,
   preferGoogleMapsFirst = false,
-  showDevelopmentPopulateButton = false
+  showDevelopmentPopulateButton = false,
+  validationErrorMessage = null
 }: RestaurantFormFieldsProps) {
   const [availableCountries, setAvailableCountries] = useState(countries);
   const [availableCities, setAvailableCities] = useState(cities);
@@ -136,23 +203,17 @@ export function RestaurantFormFields({
   const [notesValue, setNotesValue] = useState<string>(defaults?.notes ?? '');
   const [referredByValue, setReferredByValue] = useState<string>(defaults?.referredBy ?? '');
   const [urlValue, setUrlValue] = useState<string>(defaults?.url ?? '');
-  const [googlePlaceIdValue, setGooglePlaceIdValue] = useState<string>(defaults?.googlePlaceId ?? '');
-  const [addressValue, setAddressValue] = useState<string>(defaults?.address ?? '');
-  const [latitudeValue, setLatitudeValue] = useState<string>(
-    typeof defaults?.latitude === 'number' ? String(defaults.latitude) : ''
-  );
-  const [longitudeValue, setLongitudeValue] = useState<string>(
-    typeof defaults?.longitude === 'number' ? String(defaults.longitude) : ''
-  );
+  const [locationRows, setLocationRows] = useState<RestaurantFormLocation[]>(defaults?.locations ?? []);
   const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
-  const [googleMapsSearchValue, setGoogleMapsSearchValue] = useState<string>('');
-  const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSuggestion[]>([]);
-  const [googleMapsSearchError, setGoogleMapsSearchError] = useState<string>('');
-  const [isSearchingGoogleMaps, setIsSearchingGoogleMaps] = useState<boolean>(false);
-  const [isResolvingGoogleMapsSelection, setIsResolvingGoogleMapsSelection] = useState<boolean>(false);
-  const [selectedGoogleMapsPlace, setSelectedGoogleMapsPlace] = useState<SelectedGoogleMapsPlace | null>(null);
+  const [locationGoogleMapsSearchValue, setLocationGoogleMapsSearchValue] = useState<string>('');
+  const [locationGoogleMapsSuggestions, setLocationGoogleMapsSuggestions] = useState<GoogleMapsSuggestion[]>([]);
+  const [locationGoogleMapsSearchError, setLocationGoogleMapsSearchError] = useState<string>('');
+  const [isSearchingLocationGoogleMaps, setIsSearchingLocationGoogleMaps] = useState<boolean>(false);
+  const [isResolvingLocationGoogleMapsSelection, setIsResolvingLocationGoogleMapsSelection] = useState<boolean>(false);
   const [areaSelectionError, setAreaSelectionError] = useState<string>('');
-  const googleMapsSessionTokenRef = useRef<string>('');
+  const locationGoogleMapsSessionTokenRef = useRef<string>('');
+  const fieldErrors = useMemo(() => getRestaurantFormFieldErrors(validationErrorMessage), [validationErrorMessage]);
+  const firstFieldErrorKey = useMemo(() => getFirstRestaurantFormFieldErrorKey(fieldErrors), [fieldErrors]);
   const cityGroups = useMemo(
     () =>
       buildCitySelectGroups(
@@ -193,7 +254,7 @@ export function RestaurantFormFields({
     return areaSuggestionsForCity.filter((area) => !selectedAreaLookup.has(area.trim().toLowerCase()));
   }, [areaSuggestionsForCity, selectedAreaLookup, selectedCityId]);
   const areasValue = useMemo(() => selectedAreas.join('\n'), [selectedAreas]);
-  const requiresGoogleMapsUrl = selectedAreas.length < 2;
+  const locationsValue = useMemo(() => JSON.stringify(locationRows), [locationRows]);
   const normalizedNewCountryName = newCountryName.trim().toLowerCase();
   const isDuplicateNewCountryName =
     normalizedNewCountryName.length > 0 &&
@@ -220,10 +281,7 @@ export function RestaurantFormFields({
       referredByValue !== (defaults?.referredBy ?? '') ||
       !areStringSetsEqual(selectedTypeIds, defaults?.typeIds) ||
       urlValue !== (defaults?.url ?? '') ||
-      googlePlaceIdValue !== (defaults?.googlePlaceId ?? '') ||
-      addressValue !== (defaults?.address ?? '') ||
-      latitudeValue !== (typeof defaults?.latitude === 'number' ? String(defaults.latitude) : '') ||
-      longitudeValue !== (typeof defaults?.longitude === 'number' ? String(defaults.longitude) : '') ||
+      locationsValue !== JSON.stringify(defaults?.locations ?? []) ||
       status !== (defaults?.status ?? 'untried') ||
       dislikedReasonValue !== (defaults?.dislikedReason ?? '') ||
       newCountryName.length > 0 ||
@@ -240,18 +298,12 @@ export function RestaurantFormFields({
     defaults?.name,
     defaults?.notes,
     defaults?.referredBy,
-    defaults?.address,
-    defaults?.googlePlaceId,
-    defaults?.latitude,
-    defaults?.longitude,
+    defaults?.locations,
     defaults?.status,
     defaults?.typeIds,
     defaults?.url,
     dislikedReasonValue,
-    addressValue,
-    googlePlaceIdValue,
-    latitudeValue,
-    longitudeValue,
+    locationsValue,
     nameValue,
     newCityName,
     newCountryName,
@@ -271,38 +323,35 @@ export function RestaurantFormFields({
   }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
-    if (requiresGoogleMapsUrl) {
+    if (!validationErrorMessage || !firstFieldErrorKey || typeof window === 'undefined') {
       return;
     }
 
-    setSelectedGoogleMapsPlace(null);
-    setGoogleMapsSuggestions([]);
-    setGoogleMapsSearchError('');
-    googleMapsSessionTokenRef.current = '';
-  }, [requiresGoogleMapsUrl]);
+    const frameId = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`${keyPrefix}-field-error-${firstFieldErrorKey}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [firstFieldErrorKey, keyPrefix, validationErrorMessage]);
 
   useEffect(() => {
-    if (!requiresGoogleMapsUrl) {
-      setGoogleMapsSuggestions([]);
-      setGoogleMapsSearchError('');
-      setIsSearchingGoogleMaps(false);
-      return;
-    }
-
-    const trimmedSearch = googleMapsSearchValue.trim();
+    const trimmedSearch = locationGoogleMapsSearchValue.trim();
     if (trimmedSearch.length < 2) {
-      setGoogleMapsSuggestions([]);
-      setGoogleMapsSearchError('');
-      setIsSearchingGoogleMaps(false);
+      setLocationGoogleMapsSuggestions([]);
+      setLocationGoogleMapsSearchError('');
+      setIsSearchingLocationGoogleMaps(false);
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
       const sessionToken =
-        googleMapsSessionTokenRef.current || (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`);
-      googleMapsSessionTokenRef.current = sessionToken;
-      setIsSearchingGoogleMaps(true);
-      setGoogleMapsSearchError('');
+        locationGoogleMapsSessionTokenRef.current ||
+        (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`);
+      locationGoogleMapsSessionTokenRef.current = sessionToken;
+      setIsSearchingLocationGoogleMaps(true);
+      setLocationGoogleMapsSearchError('');
 
       void fetch('/api/google-maps-autocomplete', {
         method: 'POST',
@@ -325,21 +374,21 @@ export function RestaurantFormFields({
             throw new Error(payload?.error ?? 'Something went wrong. Please try again.');
           }
 
-          setGoogleMapsSuggestions(payload?.suggestions ?? []);
+          setLocationGoogleMapsSuggestions(payload?.suggestions ?? []);
         })
         .catch((error: unknown) => {
-          setGoogleMapsSuggestions([]);
-          setGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+          setLocationGoogleMapsSuggestions([]);
+          setLocationGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
         })
         .finally(() => {
-          setIsSearchingGoogleMaps(false);
+          setIsSearchingLocationGoogleMaps(false);
         });
     }, 250);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [googleMapsSearchValue, requiresGoogleMapsUrl, selectedCity?.countryName, selectedCity?.name]);
+  }, [locationGoogleMapsSearchValue, selectedCity?.countryName, selectedCity?.name]);
 
   const toggleMealType = (mealType: MealType, checked: boolean): void => {
     setSelectedMealTypes((current) => {
@@ -620,11 +669,6 @@ export function RestaurantFormFields({
       return;
     }
 
-    if (selectedGoogleMapsPlace && selectedAreas.length >= 1) {
-      setAreaSelectionError('Clear the selected Google Maps place before adding a second area.');
-      return;
-    }
-
     setAreaSelectionError('');
     setSelectedAreas((current) => [...current, trimmedValue]);
   };
@@ -661,28 +705,37 @@ export function RestaurantFormFields({
     const fakeSuffix = Math.floor(Date.now() % 100000)
       .toString()
       .padStart(5, '0');
+    const fakeName = `Test Restaurant ${fakeSuffix}`;
 
     setSelectedCityId(fakeCityId);
     setSelectedAreas(populatedAreas);
     setSelectedMealTypes(['lunch', 'dinner']);
-    setNameValue(`Test Restaurant ${fakeSuffix}`);
+    setNameValue(fakeName);
     setNotesValue('Development-only seeded restaurant notes.');
     setReferredByValue('Local recommendation');
     setSelectedTypeIds(fakeTypeIds);
     setUrlValue(`https://example.com/restaurants/test-${fakeSuffix}/`);
-    setGooglePlaceIdValue('');
-    setAddressValue('');
-    setLatitudeValue('');
-    setLongitudeValue('');
+    setLocationRows([{
+      address: '123 Test Lane, Melbourne VIC 3000, Australia',
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fakeName)}`,
+      googlePlaceId: `dev-place-${fakeSuffix}`,
+      label: fakeName,
+      latitude: -37.8136,
+      longitude: 144.9631
+    }]);
     setStatus('untried');
     setDislikedReasonValue('');
     setNewAreaValue('');
+    setLocationGoogleMapsSearchValue('');
+    setLocationGoogleMapsSuggestions([]);
+    setLocationGoogleMapsSearchError('');
+    locationGoogleMapsSessionTokenRef.current = '';
   };
 
-  const handleSelectGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<void> => {
-    const sessionToken = googleMapsSessionTokenRef.current;
-    setIsResolvingGoogleMapsSelection(true);
-    setGoogleMapsSearchError('');
+  const handleSelectLocationGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<void> => {
+    const sessionToken = locationGoogleMapsSessionTokenRef.current;
+    setIsResolvingLocationGoogleMapsSelection(true);
+    setLocationGoogleMapsSearchError('');
 
     try {
       const response = await fetch('/api/google-maps-place-details', {
@@ -698,9 +751,6 @@ export function RestaurantFormFields({
       const payload = (await response.json().catch(() => null)) as
         | {
             address?: string | null;
-            area?: string | null;
-            cityName?: string | null;
-            countryName?: string | null;
             error?: string;
             label?: string;
             latitude?: number | null;
@@ -710,58 +760,28 @@ export function RestaurantFormFields({
           }
         | null;
 
-      if (!response.ok || !payload?.url) {
-        throw new Error(payload?.error ?? 'Something went wrong. Please try again.');
+      if (!response.ok || !payload?.url || typeof payload.latitude !== 'number' || typeof payload.longitude !== 'number') {
+        throw new Error(payload?.error ?? 'Google Maps did not return coordinates for that place.');
       }
 
-      const selectedPlace = {
-        address: payload.address ?? null,
-        area: payload.area ?? null,
-        cityName: payload.cityName ?? null,
-        countryName: payload.countryName ?? null,
+      const location: RestaurantFormLocation = {
         label: payload.label?.trim() || suggestion.primaryText,
-        latitude: payload.latitude ?? null,
-        longitude: payload.longitude ?? null,
-        placeId: payload.placeId ?? suggestion.placeId,
-        secondaryText: suggestion.secondaryText,
-        url: payload.url
+        address: payload.address ?? '',
+        googlePlaceId: payload.placeId ?? suggestion.placeId,
+        googleMapsUrl: payload.url,
+        latitude: payload.latitude,
+        longitude: payload.longitude
       };
 
-      setUrlValue(payload.url);
-      setGooglePlaceIdValue(selectedPlace.placeId);
-      setAddressValue(selectedPlace.address ?? '');
-      setLatitudeValue(typeof selectedPlace.latitude === 'number' ? String(selectedPlace.latitude) : '');
-      setLongitudeValue(typeof selectedPlace.longitude === 'number' ? String(selectedPlace.longitude) : '');
-      setNameValue((current) => (current.trim().length === 0 ? selectedPlace.label : current));
-      let inferredArea = selectedPlace.area;
-      if (!lockedFields?.city && selectedPlace.cityName && selectedPlace.countryName) {
-        const selectedPlaceCityName = selectedPlace.cityName.trim().toLowerCase();
-        const selectedPlaceCountryName = selectedPlace.countryName.trim().toLowerCase();
-        const matchingCity = availableCities.find(
-          (city) =>
-            city.name.trim().toLowerCase() === selectedPlaceCityName &&
-            city.countryName.trim().toLowerCase() === selectedPlaceCountryName
-        );
-
-        if (matchingCity && matchingCity.id !== selectedCityId) {
-          setSelectedCityId(matchingCity.id);
-          setSelectedCountryIdForNewCity(matchingCity.countryId);
-        } else if (!matchingCity && selectedCity && selectedPlaceCityName !== selectedCity.name.trim().toLowerCase()) {
-          inferredArea = selectedPlace.cityName;
-        }
-      }
-      if (!lockedFields?.areas && inferredArea && selectedAreas.length === 0) {
-        setSelectedAreas([inferredArea]);
-        setAreaSelectionError('');
-      }
-      setGoogleMapsSearchValue(payload.label?.trim() || suggestion.fullText);
-      setGoogleMapsSuggestions([]);
-      setSelectedGoogleMapsPlace(selectedPlace);
-      googleMapsSessionTokenRef.current = '';
+      setLocationRows((current) => [...current, location]);
+      setNameValue((current) => (current.trim().length === 0 ? location.label : current));
+      setLocationGoogleMapsSearchValue('');
+      setLocationGoogleMapsSuggestions([]);
+      locationGoogleMapsSessionTokenRef.current = '';
     } catch (error) {
-      setGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+      setLocationGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
     } finally {
-      setIsResolvingGoogleMapsSelection(false);
+      setIsResolvingLocationGoogleMapsSelection(false);
     }
   };
 
@@ -781,6 +801,11 @@ export function RestaurantFormFields({
             disabled={lockedFields?.city}
           />
         </label>
+        {fieldErrors.city ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-city`}>
+            {fieldErrors.city}
+          </div>
+        ) : null}
         {!lockedFields?.city && (
           <div className="inline-location-toggle">
             <button
@@ -942,12 +967,104 @@ export function RestaurantFormFields({
         </div>
       </div>
       <small id={`${keyPrefix}-areas-help`}>
-        If fewer than 2 areas are entered, URL must be Google Maps. If 2+ areas, URL must not be Google Maps.
+        Areas are tags for filtering and grouping. Add precise map pins under Map locations.
       </small>
       {areaSelectionError ? <div className="inline-type-warning">{areaSelectionError}</div> : null}
 
+      <div className="field-group restaurant-form-locations-section">
+        <div className="field-group-label">Map Locations (required)</div>
+        <input type="hidden" name="locations" value={locationsValue} />
+        {fieldErrors.locations ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-locations`}>
+            {fieldErrors.locations}
+          </div>
+        ) : null}
+        {locationRows.length > 0 ? (
+          <div className="google-maps-suggestion-list">
+            {locationRows.map((location, index) => (
+              <div key={`${keyPrefix}-location-${location.googlePlaceId || location.googleMapsUrl}-${index}`} className="google-maps-selected-place">
+                <div className="google-maps-selected-place-copy">
+                  <div className="google-maps-selected-place-name">{location.label || location.address || location.googleMapsUrl}</div>
+                  {location.address ? (
+                    <div className="google-maps-selected-place-secondary">{location.address}</div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="secondary-action-button"
+                  onClick={() => setLocationRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="area-picker-empty">Add at least one map location</div>
+        )}
+        <div className="google-maps-search">
+            <div className="area-picker-row">
+              <input
+                type="text"
+                value={locationGoogleMapsSearchValue}
+                placeholder="Search Google Maps for a location"
+                onChange={(event) => setLocationGoogleMapsSearchValue(event.target.value)}
+              />
+              <button
+                type="button"
+                className="secondary-action-button"
+                onClick={() => {
+                  setLocationGoogleMapsSearchValue('');
+                  setLocationGoogleMapsSuggestions([]);
+                  setLocationGoogleMapsSearchError('');
+                  locationGoogleMapsSessionTokenRef.current = '';
+                }}
+                disabled={
+                  locationGoogleMapsSearchValue.trim().length === 0 &&
+                  locationGoogleMapsSuggestions.length === 0 &&
+                  locationGoogleMapsSearchError.length === 0
+                }
+              >
+                Clear
+              </button>
+            </div>
+            {isSearchingLocationGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
+            {locationGoogleMapsSearchError ? <div className="inline-type-warning">{locationGoogleMapsSearchError}</div> : null}
+            {locationGoogleMapsSuggestions.length > 0 ? (
+              <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps location suggestions">
+                {locationGoogleMapsSuggestions.map((suggestion) => (
+                  <button
+                    key={`${keyPrefix}-location-google-maps-${suggestion.placeId}`}
+                    type="button"
+                    className="google-maps-suggestion"
+                    onClick={() => {
+                      void handleSelectLocationGoogleMapsSuggestion(suggestion);
+                    }}
+                    disabled={isResolvingLocationGoogleMapsSelection}
+                  >
+                    <span className="google-maps-suggestion-copy">
+                      <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
+                      {suggestion.secondaryText ? (
+                        <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {isResolvingLocationGoogleMapsSelection ? (
+              <div className="inline-type-warning">Adding map location…</div>
+            ) : null}
+        </div>
+      </div>
+
       <fieldset>
         <legend>Meal Types (pick 1 to 4)</legend>
+        {fieldErrors.mealTypes ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-mealTypes`}>
+            {fieldErrors.mealTypes}
+          </div>
+        ) : null}
         <div className="inline-options">
           {mealTypeChoices.map((mealType) => (
             <label key={`${keyPrefix}-meal-${mealType}`}>
@@ -968,6 +1085,11 @@ export function RestaurantFormFields({
         Name
         <input name="name" required value={nameValue} onChange={(event) => setNameValue(event.target.value)} />
       </label>
+      {fieldErrors.name ? (
+        <div className="inline-type-warning" id={`${keyPrefix}-field-error-name`}>
+          {fieldErrors.name}
+        </div>
+      ) : null}
 
       <label>
         Notes
@@ -979,11 +1101,21 @@ export function RestaurantFormFields({
           onChange={(event) => setNotesValue(event.target.value)}
         />
       </label>
+      {fieldErrors.notes ? (
+        <div className="inline-type-warning" id={`${keyPrefix}-field-error-notes`}>
+          {fieldErrors.notes}
+        </div>
+      ) : null}
 
       <label>
         Referred by (URL or free text)
         <input name="referredBy" value={referredByValue} onChange={(event) => setReferredByValue(event.target.value)} />
       </label>
+      {fieldErrors.referredBy ? (
+        <div className="inline-type-warning" id={`${keyPrefix}-field-error-referredBy`}>
+          {fieldErrors.referredBy}
+        </div>
+      ) : null}
 
       <fieldset>
         <legend>Restaurant Types (pick at least 1)</legend>
@@ -1017,6 +1149,11 @@ export function RestaurantFormFields({
           </div>
           {isDuplicateNewTypeName ? <div className="inline-type-warning">That type already exists.</div> : null}
         </div>
+        {fieldErrors.types ? (
+          <div className="inline-type-warning" id={`${keyPrefix}-field-error-types`}>
+            {fieldErrors.types}
+          </div>
+        ) : null}
         <div className="inline-options">
           {availableTypes.map((type) => (
             <label key={`${keyPrefix}-type-${type.id}`}>
@@ -1037,167 +1174,19 @@ export function RestaurantFormFields({
         </div>
       </fieldset>
 
-      {requiresGoogleMapsUrl ? (
-        <div className={`google-maps-choice ${preferGoogleMapsFirst ? 'google-maps-choice-first' : ''}`}>
-          <div className="field-group-label">{preferGoogleMapsFirst ? 'Google Maps place' : 'Google Maps URL'}</div>
-          <small id={`${keyPrefix}-google-maps-help`} className="google-maps-search-help">
-            {preferGoogleMapsFirst
-              ? 'Search Google Maps first. The form will fill the name, area, URL, and map details when it can.'
-              : 'Pick a place from Google Maps or paste the URL manually.'}
-          </small>
-          <div className="google-maps-choice-grid" aria-describedby={`${keyPrefix}-google-maps-help`}>
-            <div className="google-maps-choice-panel">
-              <div className="google-maps-choice-heading">Search and pick a place</div>
-              <div className="google-maps-search">
-                {selectedGoogleMapsPlace ? (
-                  <div className="google-maps-selected-place" aria-live="polite">
-                    <div className="google-maps-selected-place-copy">
-                      <div className="google-maps-selected-place-label">Selected place</div>
-                      <div className="google-maps-selected-place-name">{selectedGoogleMapsPlace.label}</div>
-                      {selectedGoogleMapsPlace.secondaryText ? (
-                        <div className="google-maps-selected-place-secondary">
-                          {selectedGoogleMapsPlace.secondaryText}
-                        </div>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="secondary-action-button"
-                      onClick={() => {
-                        setSelectedGoogleMapsPlace(null);
-                        setGoogleMapsSearchValue('');
-                        setGoogleMapsSuggestions([]);
-                        setGoogleMapsSearchError('');
-                        setAreaSelectionError('');
-                        setUrlValue('');
-                        setGooglePlaceIdValue('');
-                        setAddressValue('');
-                        setLatitudeValue('');
-                        setLongitudeValue('');
-                        googleMapsSessionTokenRef.current = '';
-                      }}
-                    >
-                      Clear selected place
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="area-picker-row">
-                      <input
-                        type="text"
-                        value={googleMapsSearchValue}
-                        placeholder="Search Google Maps"
-                        onChange={(event) => setGoogleMapsSearchValue(event.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="secondary-action-button"
-                        onClick={() => {
-                          setGoogleMapsSearchValue('');
-                          setGoogleMapsSuggestions([]);
-                          setGoogleMapsSearchError('');
-                          googleMapsSessionTokenRef.current = '';
-                        }}
-                        disabled={
-                          googleMapsSearchValue.trim().length === 0 &&
-                          googleMapsSuggestions.length === 0 &&
-                          googleMapsSearchError.length === 0
-                        }
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    {isSearchingGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
-                    {googleMapsSearchError ? <div className="inline-type-warning">{googleMapsSearchError}</div> : null}
-                    {!isSearchingGoogleMaps &&
-                    !googleMapsSearchError &&
-                    googleMapsSearchValue.trim().length >= 2 &&
-                    googleMapsSuggestions.length === 0 ? (
-                      <div className="inline-type-warning">No matching places found</div>
-                    ) : null}
-                    {googleMapsSuggestions.length > 0 ? (
-                      <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps suggestions">
-                        {googleMapsSuggestions.map((suggestion) => (
-                          <button
-                            key={`${keyPrefix}-google-maps-${suggestion.placeId}`}
-                            type="button"
-                            className="google-maps-suggestion"
-                            onClick={() => {
-                              void handleSelectGoogleMapsSuggestion(suggestion);
-                            }}
-                            disabled={isResolvingGoogleMapsSelection}
-                          >
-                            <span className="google-maps-suggestion-icon" aria-hidden="true">
-                              <svg viewBox="0 0 24 24" focusable="false">
-                                <path
-                                  d="M12 2.75a6.75 6.75 0 0 1 6.75 6.75c0 4.65-5.08 10.37-6.27 11.64a.65.65 0 0 1-.96 0C10.33 19.87 5.25 14.15 5.25 9.5A6.75 6.75 0 0 1 12 2.75Zm0 2A4.75 4.75 0 0 0 7.25 9.5c0 2.97 2.98 6.99 4.75 8.98 1.77-1.99 4.75-6.01 4.75-8.98A4.75 4.75 0 0 0 12 4.75Zm0 2.25a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
-                                  fill="currentColor"
-                                />
-                              </svg>
-                            </span>
-                            <span className="google-maps-suggestion-copy">
-                              <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
-                              {suggestion.secondaryText ? (
-                                <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
-                              ) : null}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                    {isResolvingGoogleMapsSelection ? (
-                      <div className="inline-type-warning">Filling Google Maps URL…</div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="google-maps-choice-divider" aria-hidden="true">
-              <span>OR</span>
-            </div>
-            <div className="google-maps-choice-panel">
-              <div className="google-maps-choice-heading">Paste the URL manually</div>
-              {selectedGoogleMapsPlace ? <input type="hidden" name="url" value={urlValue} /> : null}
-              <input type="hidden" name="googlePlaceId" value={googlePlaceIdValue} />
-              <input type="hidden" name="address" value={addressValue} />
-              <input type="hidden" name="latitude" value={latitudeValue} />
-              <input type="hidden" name="longitude" value={longitudeValue} />
-              <input
-                name={selectedGoogleMapsPlace ? undefined : 'url'}
-                type="url"
-                required
-                value={selectedGoogleMapsPlace ? '' : urlValue}
-                onChange={(event) => {
-                  setUrlValue(event.target.value);
-                  setGooglePlaceIdValue('');
-                  setAddressValue('');
-                  setLatitudeValue('');
-                  setLongitudeValue('');
-                  if (selectedGoogleMapsPlace) {
-                    setSelectedGoogleMapsPlace(null);
-                  }
-                }}
-                disabled={selectedGoogleMapsPlace !== null}
-                placeholder={selectedGoogleMapsPlace ? 'Using the selected Google Maps place' : 'https://maps.app.goo.gl/...'}
-              />
-              {selectedGoogleMapsPlace ? (
-                <small className="google-maps-manual-disabled">
-                  Clear the selected place on the left to paste a different Google Maps URL manually.
-                </small>
-              ) : null}
-            </div>
-          </div>
+      <label>
+        URL
+        <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
+        <input type="hidden" name="googlePlaceId" value="" />
+        <input type="hidden" name="address" value="" />
+        <input type="hidden" name="latitude" value="" />
+        <input type="hidden" name="longitude" value="" />
+      </label>
+      {fieldErrors.url ? (
+        <div className="inline-type-warning" id={`${keyPrefix}-field-error-url`}>
+          {fieldErrors.url}
         </div>
-      ) : (
-        <label>
-          URL
-          <input name="url" type="url" required value={urlValue} onChange={(event) => setUrlValue(event.target.value)} />
-          <input type="hidden" name="googlePlaceId" value="" />
-          <input type="hidden" name="address" value="" />
-          <input type="hidden" name="latitude" value="" />
-          <input type="hidden" name="longitude" value="" />
-        </label>
-      )}
+      ) : null}
 
       <label>
         Status
@@ -1218,16 +1207,23 @@ export function RestaurantFormFields({
       </label>
 
       {status === 'disliked' ? (
-        <label>
-          Not Recommended Reason
-          <textarea
-            name="dislikedReason"
-            rows={3}
-            required
-            value={dislikedReasonValue}
-            onChange={(event) => setDislikedReasonValue(event.target.value)}
-          />
-        </label>
+        <>
+          <label>
+            Not Recommended Reason
+            <textarea
+              name="dislikedReason"
+              rows={3}
+              required
+              value={dislikedReasonValue}
+              onChange={(event) => setDislikedReasonValue(event.target.value)}
+            />
+          </label>
+          {fieldErrors.status ? (
+            <div className="inline-type-warning" id={`${keyPrefix}-field-error-status`}>
+              {fieldErrors.status}
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       <div className="form-actions">

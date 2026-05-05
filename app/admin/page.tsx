@@ -37,10 +37,12 @@ import { isGoogleMapsUrl } from '@/lib/url';
 
 import styles from './style.module.scss';
 import { LocationBackfillProgressButton } from './location-backfill-progress-button';
+import { MultiAreaLocationTool } from './multi-area-location-tool';
+import { SingleAreaUrlCleanupTool } from './single-area-url-cleanup-tool';
 
 export const dynamic = 'force-dynamic';
 
-type AdminTabId = 'settings' | 'subdomains' | 'countries' | 'cities' | 'types' | 'deleted' | 'backup';
+type AdminTabId = 'settings' | 'subdomains' | 'countries' | 'cities' | 'types' | 'locations' | 'deleted' | 'backup';
 
 type AdminTab = {
   count?: number;
@@ -51,12 +53,26 @@ type AdminTab = {
 
 type AdminPageProps = {
   searchParams?: {
+    locationTab?: string | string[];
     tab?: string | string[];
   };
 };
 
 const getRequestedTab = (searchParams?: AdminPageProps['searchParams']): string | undefined => {
   const requestedTab = searchParams?.tab;
+  return Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
+};
+
+type LocationAdminTabId = 'backfill' | 'multiArea' | 'singleAreaUrls';
+
+type LocationAdminTab = {
+  count: number;
+  id: LocationAdminTabId;
+  label: string;
+};
+
+const getRequestedLocationTab = (searchParams?: AdminPageProps['searchParams']): string | undefined => {
+  const requestedTab = searchParams?.locationTab;
   return Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
 };
 
@@ -75,10 +91,40 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
     const data = await getCmsData(tenant.id, { includeDeleted: true });
     const missingLocationBackfillCount = data.restaurants.filter(
       (restaurant) =>
-        restaurant.areas.length < 2 &&
         isGoogleMapsUrl(restaurant.url) &&
-        (restaurant.latitude === null || restaurant.longitude === null)
+        restaurant.locations.length === 0
     ).length;
+    const multiAreaLocationAuditRestaurants = data.restaurants
+      .filter((restaurant) => restaurant.areas.length > 1 && restaurant.locations.length < 2)
+      .map((restaurant) => ({
+        id: restaurant.id,
+        name: restaurant.name,
+        cityName: restaurant.cityName,
+        countryName: restaurant.countryName,
+        areas: restaurant.areas,
+        locations: restaurant.locations.map((location) => ({
+          id: location.id,
+          label: location.label,
+          address: location.address,
+          googlePlaceId: location.googlePlaceId
+        }))
+      }));
+    const singleAreaGoogleUrlRestaurants = data.restaurants
+      .filter((restaurant) => restaurant.areas.length <= 1 && restaurant.locations.length > 0 && isGoogleMapsUrl(restaurant.url))
+      .map((restaurant) => ({
+        id: restaurant.id,
+        name: restaurant.name,
+        cityName: restaurant.cityName,
+        countryName: restaurant.countryName,
+        areas: restaurant.areas,
+        url: restaurant.url,
+        locations: restaurant.locations.map((location) => ({
+          id: location.id,
+          label: location.label,
+          address: location.address,
+          googlePlaceId: location.googlePlaceId
+        }))
+      }));
     const subdomainTenants = tenant.isRoot
       ? await db.query.tenants.findMany({
           where: (table, { and, eq }) => and(eq(table.isRoot, false)),
@@ -135,6 +181,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
             label: 'Restaurant Types'
           },
           {
+            description: 'Audit map locations, backfill coordinates, and clean up migrated Google Maps URLs.',
+            id: 'locations',
+            label: 'Location Tools'
+          },
+          {
             count: deletedRestaurantCount,
             description: 'Restore deleted restaurants or remove them permanently.',
             id: 'deleted',
@@ -171,6 +222,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
             label: 'Restaurant Types'
           },
           {
+            description: 'Audit map locations, backfill coordinates, and clean up migrated Google Maps URLs.',
+            id: 'locations',
+            label: 'Location Tools'
+          },
+          {
             count: deletedRestaurantCount,
             description: 'Restore deleted restaurants or remove them permanently.',
             id: 'deleted',
@@ -187,6 +243,42 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
       ? (requestedTab as AdminTabId)
       : tabs[0].id;
     const activeTabConfig = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+    const locationTabs: LocationAdminTab[] = [
+      {
+        count: missingLocationBackfillCount,
+        id: 'backfill',
+        label: 'Location Backfill'
+      },
+      {
+        count: multiAreaLocationAuditRestaurants.length,
+        id: 'multiArea',
+        label: 'Multi-Area Map Locations'
+      },
+      {
+        count: singleAreaGoogleUrlRestaurants.length,
+        id: 'singleAreaUrls',
+        label: 'Single-Area Google Maps URLs'
+      }
+    ];
+    const requestedLocationTab = getRequestedLocationTab(searchParams);
+    const activeLocationTab = locationTabs.some((tab) => tab.id === requestedLocationTab)
+      ? (requestedLocationTab as LocationAdminTabId)
+      : locationTabs[0].id;
+    const renderLocationSubtabs = () => (
+      <nav className={`${styles.tabsList} ${styles.subtabsList}`} aria-label="Location tools">
+        {locationTabs.map((tab) => (
+          <Link
+            key={tab.id}
+            href={`/admin?tab=locations&locationTab=${tab.id}`}
+            className={`${styles.tabLink} ${activeLocationTab === tab.id ? styles.tabLinkActive : ''}`}
+            aria-current={activeLocationTab === tab.id ? 'page' : undefined}
+          >
+            <span>{tab.label}</span>
+            <span className={styles.tabCount}>{tab.count}</span>
+          </Link>
+        ))}
+      </nav>
+    );
 
     const renderActiveTab = () => {
       if (activeTab === 'settings') {
@@ -601,19 +693,45 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
               </ConfirmingActionForm>
             </AdminPanelSection>
 
-            <AdminPanelSection className={styles.panel} title="Location Data">
-              <p className={styles.importHint}>
-                Uses existing Google Maps URLs, including shortened maps.app.goo.gl links, and skips restaurants that already have coordinates.
-              </p>
-              <p className={styles.importHint}>
-                {missingLocationBackfillCount === 1
-                  ? '1 eligible place is missing map data.'
-                  : `${missingLocationBackfillCount} eligible places are missing map data.`}
-              </p>
-              <div className={styles.manageActions}>
-                <LocationBackfillProgressButton />
-              </div>
-            </AdminPanelSection>
+          </div>
+        );
+      }
+
+      if (activeTab === 'locations') {
+        return (
+          <div className={styles.resourceGrid}>
+            <div className={styles.subtabsPanel}>{renderLocationSubtabs()}</div>
+            {activeLocationTab === 'backfill' ? (
+              <AdminPanelSection className={styles.panel} title="Location Backfill">
+                <p className={styles.importHint}>
+                  Uses existing Google Maps URLs, including shortened maps.app.goo.gl links, and skips restaurants that already have location rows.
+                </p>
+                <p className={styles.importHint}>
+                  {missingLocationBackfillCount === 1
+                    ? '1 eligible place is missing map data.'
+                    : `${missingLocationBackfillCount} eligible places are missing map data.`}
+                </p>
+                <div className={styles.manageActions}>
+                  <LocationBackfillProgressButton />
+                </div>
+              </AdminPanelSection>
+            ) : null}
+            {activeLocationTab === 'multiArea' ? (
+              <AdminPanelSection className={styles.panel} title="Multi-Area Map Locations">
+                <p className={styles.importHint}>
+                  Finds places with 2+ area tags and fewer than 2 map locations, then lets you add locations quickly.
+                </p>
+                <MultiAreaLocationTool restaurants={multiAreaLocationAuditRestaurants} />
+              </AdminPanelSection>
+            ) : null}
+            {activeLocationTab === 'singleAreaUrls' ? (
+              <AdminPanelSection className={styles.panel} title="Single-Area Google Maps URLs">
+                <p className={styles.importHint}>
+                  Finds single-area places whose map data has been migrated but whose restaurant URL is still Google Maps.
+                </p>
+                <SingleAreaUrlCleanupTool restaurants={singleAreaGoogleUrlRestaurants} />
+              </AdminPanelSection>
+            ) : null}
           </div>
         );
       }

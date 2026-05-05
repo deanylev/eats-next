@@ -14,6 +14,14 @@ const baseRestaurantInput = {
   referredBy: undefined,
   typeIds: [otherUuid],
   url: 'https://www.google.com/maps/place/Kelso',
+  locations: [{
+    address: '123 Smith St, Fitzroy',
+    googleMapsUrl: 'https://maps.google.com/?cid=11885663895765773631',
+    googlePlaceId: 'places/abc123',
+    label: 'Kelso Fitzroy',
+    latitude: -37.8,
+    longitude: 144.97
+  }],
   status: 'untried' as const,
   dislikedReason: undefined
 };
@@ -31,24 +39,33 @@ test('restaurantInputSchema accepts a single-area restaurant with a Google Maps 
   assert.equal(restaurantInputSchema.safeParse(baseRestaurantInput).success, true);
 });
 
-test('restaurantInputSchema accepts a selected-place Google Maps cid URL', () => {
-  const result = restaurantInputSchema.safeParse({
-    ...baseRestaurantInput,
-    url: 'https://maps.google.com/?cid=11885663895765773631'
-  });
-
-  assert.equal(result.success, true);
-});
-
-test('restaurantInputSchema rejects a single-area restaurant with a non-Google URL', () => {
+test('restaurantInputSchema accepts a single-area restaurant with a non-Google URL', () => {
   const result = restaurantInputSchema.safeParse({
     ...baseRestaurantInput,
     url: 'https://kelso.example.com/'
   });
 
+  assert.equal(result.success, true);
+});
+
+test('restaurantInputSchema accepts a selected-place Google Maps location row', () => {
+  const result = restaurantInputSchema.safeParse({
+    ...baseRestaurantInput,
+    url: 'https://kelso.example.com/'
+  });
+
+  assert.equal(result.success, true);
+});
+
+test('restaurantInputSchema requires at least one map location', () => {
+  const result = restaurantInputSchema.safeParse({
+    ...baseRestaurantInput,
+    locations: []
+  });
+
   assert.equal(result.success, false);
   if (!result.success) {
-    assert.match(result.error.issues[0]?.message ?? '', /Google Maps URL/);
+    assert.match(result.error.issues[0]?.message ?? '', /at least one map location/);
   }
 });
 
@@ -57,6 +74,16 @@ test('restaurantInputSchema accepts multi-area restaurants with a non-Google URL
     ...baseRestaurantInput,
     areas: ['CBD', 'Fitzroy'],
     url: 'https://kelso.example.com/'
+  });
+
+  assert.equal(result.success, true);
+});
+
+test('restaurantInputSchema accepts multi-area restaurants with a Google Maps URL', () => {
+  const result = restaurantInputSchema.safeParse({
+    ...baseRestaurantInput,
+    areas: ['CBD', 'Fitzroy'],
+    url: 'https://www.google.com/maps/place/Kelso'
   });
 
   assert.equal(result.success, true);

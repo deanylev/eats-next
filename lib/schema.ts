@@ -126,11 +126,40 @@ export const restaurants = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull()
   },
   (table) => ({
+    tenantIdIdUnique: unique().on(table.tenantId, table.id),
     tenantCityFk: foreignKey({
       columns: [table.tenantId, table.cityId],
       foreignColumns: [cities.tenantId, cities.id],
       name: 'restaurants_tenant_city_fk'
     }).onDelete('restrict')
+  })
+);
+
+export const restaurantLocations = pgTable(
+  'restaurant_locations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull(),
+    restaurantId: uuid('restaurant_id').notNull(),
+    label: text('label'),
+    address: text('address'),
+    googlePlaceId: text('google_place_id'),
+    googleMapsUrl: text('google_maps_url'),
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull()
+  },
+  (table) => ({
+    tenantRestaurantFk: foreignKey({
+      columns: [table.tenantId, table.restaurantId],
+      foreignColumns: [restaurants.tenantId, restaurants.id],
+      name: 'restaurant_locations_tenant_restaurant_fk'
+    }).onDelete('cascade'),
+    tenantPlaceUnique: unique().on(table.tenantId, table.restaurantId, table.googlePlaceId),
+    tenantRestaurantIdUnique: unique().on(table.tenantId, table.restaurantId, table.id)
   })
 );
 

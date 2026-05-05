@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { mealTypeEnum, restaurantStatusEnum } from '@/lib/schema';
-import { isGoogleMapsUrl } from '@/lib/url';
 
 const httpUrlSchema = z
   .string()
@@ -21,6 +20,18 @@ const optionalCoordinateSchema = z
   .nullable()
   .optional()
   .transform((value) => value ?? null);
+
+const restaurantLocationInputSchema = z.object({
+  id: z.string().uuid('Invalid location id.').optional(),
+  label: z.string().trim().optional(),
+  address: z.string().trim().optional(),
+  googlePlaceId: z.string().trim().optional(),
+  googleMapsUrl: z.string().trim().optional().default('').refine((value) => value.length === 0 || httpUrlSchema.safeParse(value).success, {
+    message: 'Location Google Maps URL must start with http:// or https://.'
+  }),
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180)
+});
 
 export const countryInputSchema = z.object({
   name: z.string().trim().min(1, 'Country name is required.')
@@ -90,6 +101,10 @@ export const restaurantInputSchema = z
     longitude: optionalCoordinateSchema.refine((value) => value === null || (value >= -180 && value <= 180), {
       message: 'Longitude must be between -180 and 180.'
     }),
+    locations: z
+      .array(restaurantLocationInputSchema)
+      .min(1, 'Add at least one map location.')
+      .max(50),
     status: z.enum(restaurantStatusEnum.enumValues),
     dislikedReason: z.string().trim().optional()
   })
@@ -110,39 +125,12 @@ export const restaurantInputSchema = z
       });
     }
 
-    const hasLessThanTwoAreas = value.areas.length < 2;
-    const googleMaps = isGoogleMapsUrl(value.url);
-
-    if (hasLessThanTwoAreas && !googleMaps) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['url'],
-        message: 'When there are fewer than two areas, URL must be a Google Maps URL.'
-      });
-    }
-
-    if (!hasLessThanTwoAreas && googleMaps) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['url'],
-        message: 'When there are two or more areas, URL must not be a Google Maps URL.'
-      });
-    }
-
     const hasOnlyOneCoordinate = (value.latitude === null) !== (value.longitude === null);
     if (hasOnlyOneCoordinate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['latitude'],
         message: 'Latitude and longitude must be provided together.'
-      });
-    }
-
-    if (!googleMaps && (value.googlePlaceId || value.address || value.latitude !== null || value.longitude !== null)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['url'],
-        message: 'Location metadata can only be saved for Google Maps URLs.'
       });
     }
   });

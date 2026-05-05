@@ -7,6 +7,7 @@ import {
   countries,
   mealTypeEnum,
   restaurantAreas,
+  restaurantLocations,
   restaurantMeals,
   restaurants,
   restaurantStatusEnum,
@@ -66,6 +67,16 @@ type ExportRestaurantRecord = {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  locations?: Array<{
+    address: string | null;
+    createdAt: string;
+    googleMapsUrl: string | null;
+    googlePlaceId: string | null;
+    label: string | null;
+    latitude: number;
+    longitude: number;
+    updatedAt: string;
+  }>;
   mealTypes: Array<{
     createdAt: string;
     mealType: (typeof mealTypeEnum.enumValues)[number];
@@ -170,6 +181,18 @@ const tenantBundleSchema = z.object({
       address: z.string().nullable().optional(),
       latitude: z.number().nullable().optional(),
       longitude: z.number().nullable().optional(),
+      locations: z.array(
+        z.object({
+          address: z.string().nullable(),
+          createdAt: timestampSchema,
+          googleMapsUrl: z.string().nullable(),
+          googlePlaceId: z.string().nullable(),
+          label: z.string().nullable(),
+          latitude: z.number(),
+          longitude: z.number(),
+          updatedAt: timestampSchema
+        })
+      ).optional(),
       mealTypes: z.array(
         z.object({
           createdAt: timestampSchema,
@@ -249,7 +272,7 @@ const getTenantRecord = async (db: DbLike, tenantId: string): Promise<ExportTena
 };
 
 const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantBundle> => {
-  const [tenantRecord, countryRows, cityRows, typeRows, restaurantRows, areaRows, mealRows, joinRows] =
+  const [tenantRecord, countryRows, cityRows, typeRows, restaurantRows, locationRows, areaRows, mealRows, joinRows] =
     await Promise.all([
       getTenantRecord(db, tenantId),
       db.select().from(countries).where(eq(countries.tenantId, tenantId)).orderBy(asc(countries.name)),
@@ -293,6 +316,10 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
         .orderBy(asc(countries.name), asc(cities.name), asc(restaurants.name)),
       db
         .select()
+        .from(restaurantLocations)
+        .where(eq(restaurantLocations.tenantId, tenantId)),
+      db
+        .select()
         .from(restaurantAreas)
         .where(
           sql`exists (
@@ -332,6 +359,22 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
       updatedAt: area.updatedAt.toISOString()
     });
     areasByRestaurant.set(area.restaurantId, existing);
+  }
+
+  const locationsByRestaurant = new Map<string, NonNullable<ExportRestaurantRecord['locations']>>();
+  for (const location of locationRows) {
+    const existing = locationsByRestaurant.get(location.restaurantId) ?? [];
+    existing.push({
+      address: location.address,
+      createdAt: location.createdAt.toISOString(),
+      googleMapsUrl: location.googleMapsUrl,
+      googlePlaceId: location.googlePlaceId,
+      label: location.label,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      updatedAt: location.updatedAt.toISOString()
+    });
+    locationsByRestaurant.set(location.restaurantId, existing);
   }
 
   const mealsByRestaurant = new Map<string, ExportRestaurantRecord['mealTypes']>();
@@ -427,6 +470,7 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
       address: restaurant.address,
       latitude: restaurant.latitude,
       longitude: restaurant.longitude,
+      locations: locationsByRestaurant.get(restaurant.id) ?? [],
       mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
       name: restaurant.name,
       notes: restaurant.notes,
@@ -476,6 +520,7 @@ const clearTenantData = async (tx: DbLike, tenantId: string): Promise<void> => {
   await tx.delete(restaurantAreas).where(
     sql`${restaurantAreas.restaurantId} in (${tx.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.tenantId, tenantId))})`
   );
+  await tx.delete(restaurantLocations).where(eq(restaurantLocations.tenantId, tenantId));
   await tx.delete(restaurants).where(eq(restaurants.tenantId, tenantId));
   await tx.delete(cities).where(eq(cities.tenantId, tenantId));
   await tx.delete(countries).where(eq(countries.tenantId, tenantId));
@@ -565,6 +610,38 @@ const insertTenantBundleData = async (tx: DbLike, tenantId: string, bundle: Tena
           id: randomUUID(),
           restaurantId,
           updatedAt: toDate(area.updatedAt) ?? new Date()
+        }))
+      );
+    }
+
+    const locations = restaurant.locations ?? (
+      typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+        ? [{
+            address: restaurant.address ?? null,
+            createdAt: restaurant.createdAt,
+            googleMapsUrl: restaurant.url,
+            googlePlaceId: restaurant.googlePlaceId ?? null,
+            label: null,
+            latitude: restaurant.latitude,
+            longitude: restaurant.longitude,
+            updatedAt: restaurant.updatedAt
+          }]
+        : []
+    );
+    if (locations.length > 0) {
+      await tx.insert(restaurantLocations).values(
+        locations.map((location) => ({
+          address: location.address,
+          createdAt: toDate(location.createdAt) ?? new Date(),
+          googleMapsUrl: location.googleMapsUrl,
+          googlePlaceId: location.googlePlaceId,
+          id: randomUUID(),
+          label: location.label,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          restaurantId,
+          tenantId,
+          updatedAt: toDate(location.updatedAt) ?? new Date()
         }))
       );
     }

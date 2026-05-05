@@ -44,6 +44,7 @@ type GoogleMapsPlaceDetailsApiResponse = {
     latitude?: number;
     longitude?: number;
   };
+  websiteUri?: string;
 };
 
 type GoogleMapsTextSearchApiResponse = {
@@ -67,6 +68,7 @@ export type GoogleMapsResolvedPlace = {
   longitude: number | null;
   placeId: string | null;
   url: string;
+  websiteUrl: string | null;
 };
 
 const googleMapsAutocompleteEndpoint = 'https://places.googleapis.com/v1/places:autocomplete';
@@ -82,7 +84,8 @@ const googleMapsPlaceDetailsFieldMask = [
   'displayName',
   'formattedAddress',
   'googleMapsUri',
-  'location'
+  'location',
+  'websiteUri'
 ].join(',');
 const googleMapsTextSearchFieldMask = [
   'places.addressComponents',
@@ -90,7 +93,8 @@ const googleMapsTextSearchFieldMask = [
   'places.displayName',
   'places.formattedAddress',
   'places.googleMapsUri',
-  'places.location'
+  'places.location',
+  'places.websiteUri'
 ].join(',');
 const googleMapsIncludedPrimaryTypes = [
   'restaurant',
@@ -256,7 +260,8 @@ export const resolveGoogleMapsPlaceUrl = async ({
     latitude: typeof payload.location?.latitude === 'number' ? payload.location.latitude : null,
     longitude: typeof payload.location?.longitude === 'number' ? payload.location.longitude : null,
     placeId,
-    url
+    url,
+    websiteUrl: payload.websiteUri?.trim() || null
   };
 };
 
@@ -374,7 +379,8 @@ const searchGoogleMapsPlace = async ({
     latitude: typeof place.location?.latitude === 'number' ? place.location.latitude : null,
     longitude: typeof place.location?.longitude === 'number' ? place.location.longitude : null,
     placeId: place.id?.trim() || null,
-    url: place.googleMapsUri?.trim() || ''
+    url: place.googleMapsUri?.trim() || '',
+    websiteUrl: place.websiteUri?.trim() || null
   };
 };
 
@@ -411,7 +417,8 @@ export const resolveGoogleMapsLocationFromUrl = async ({
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
       placeId: null,
-      url: expandedUrl
+      url: expandedUrl,
+      websiteUrl: null
     };
   }
 

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { getDb } from '@/lib/db';
 import { backfillRestaurantLocation } from '@/lib/restaurant-location-backfill';
 import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
-import { cities, countries, restaurants } from '@/lib/schema';
+import { cities, countries, restaurantLocations, restaurants } from '@/lib/schema';
 import { isGoogleMapsUrl } from '@/lib/url';
 
 const requestSchema = z.object({
@@ -45,6 +45,11 @@ const getBackfillTargets = (tenantId: string) =>
       url: restaurants.url,
       latitude: restaurants.latitude,
       longitude: restaurants.longitude,
+      locationCount: sql<number>`(
+        select count(*)::int from ${restaurantLocations}
+        where ${restaurantLocations.restaurantId} = ${restaurants.id}
+          and ${restaurantLocations.tenantId} = ${tenantId}
+      )`,
       cityName: cities.name,
       countryName: countries.name
     })
@@ -67,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
   const targets = (await getBackfillTargets(auth.tenantId)).filter(
     (restaurant) =>
       isGoogleMapsUrl(restaurant.url) &&
-      (restaurant.latitude === null || restaurant.longitude === null)
+      restaurant.locationCount === 0
   );
 
   return NextResponse.json({

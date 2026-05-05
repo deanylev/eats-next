@@ -41,6 +41,14 @@ const buildRestaurantInput = (overrides?: Partial<Parameters<typeof createRestau
   referredBy: overrides?.referredBy,
   typeIds: overrides?.typeIds ?? [randomUUID()],
   url: overrides?.url ?? 'https://www.google.com/maps/place/Kelso',
+  locations: overrides?.locations ?? [{
+    address: '123 Smith St, Fitzroy',
+    googleMapsUrl: 'https://maps.google.com/?cid=11885663895765773631',
+    googlePlaceId: 'places/abc123',
+    label: 'Kelso Fitzroy',
+    latitude: -37.8,
+    longitude: 144.97
+  }],
   status: overrides?.status ?? 'untried',
   dislikedReason: overrides?.dislikedReason
 });

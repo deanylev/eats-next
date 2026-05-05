@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { getDb } from '@/lib/db';
-import { resolveGoogleMapsLocationFromUrl } from '@/lib/google-maps';
 import {
   cities,
   countries,
   restaurantAreas,
+  restaurantLocations,
   restaurantMeals,
   restaurants,
   restaurantToTypes,
@@ -19,9 +19,9 @@ import {
   restaurantInputSchema,
   restaurantTypeInputSchema
 } from '@/lib/validators';
-import { isGoogleMapsUrl } from '@/lib/url';
 
 type Db = ReturnType<typeof getDb>;
+type RestaurantLocationWritableDb = Pick<Db, 'delete' | 'insert' | 'query' | 'update'>;
 
 export type CountryInput = z.infer<typeof countryInputSchema>;
 export type CityInput = z.infer<typeof cityInputSchema> & {
@@ -35,8 +35,10 @@ type RestaurantWritableInput = Omit<RestaurantInput, 'address' | 'googlePlaceId'
   latitude: number | null;
   longitude: number | null;
 };
+type RestaurantLocationInput = RestaurantInput['locations'][number];
 export type RestaurantLocationMetadataInput = {
   address: string | null;
+  googleMapsUrl?: string | null;
   googlePlaceId: string | null;
   latitude: number;
   longitude: number;
@@ -436,81 +438,76 @@ const validateRestaurantRefs = async (db: Db, tenantId: string, input: Restauran
   }
 };
 
-const getRestaurantCityContext = async (
-  db: Db,
-  tenantId: string,
-  cityId: string
-): Promise<{ cityName: string; countryName: string } | null> => {
-  const rows = await db
-    .select({
-      cityName: cities.name,
-      countryName: countries.name
-    })
-    .from(cities)
-    .innerJoin(countries, eq(countries.id, cities.countryId))
-    .where(and(eq(cities.id, cityId), eq(cities.tenantId, tenantId), eq(countries.tenantId, tenantId)))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    return null;
-  }
-
-  return {
-    cityName: row.cityName,
-    countryName: row.countryName
-  };
-};
-
-const resolveRestaurantLocationInput = async (
-  db: Db,
-  tenantId: string,
-  input: RestaurantInput
-): Promise<RestaurantWritableInput> => {
-  const resolvedInput: RestaurantWritableInput = {
+const resolveRestaurantLocationInput = (input: RestaurantInput): RestaurantWritableInput => ({
     ...input,
     address: input.address || null,
     googlePlaceId: input.googlePlaceId || null
-  };
+});
 
-  if (
-    resolvedInput.latitude !== null ||
-    resolvedInput.longitude !== null ||
-    input.areas.length > 1 ||
-    !isGoogleMapsUrl(input.url) ||
-    !process.env.GOOGLE_MAPS_API_KEY?.trim()
-  ) {
-    return resolvedInput;
+const upsertRestaurantLocationRecord = async (
+  db: RestaurantLocationWritableDb,
+  tenantId: string,
+  restaurantId: string,
+  input: RestaurantLocationMetadataInput
+): Promise<void> => {
+  const existingLocation = await db.query.restaurantLocations.findFirst({
+    where: and(eq(restaurantLocations.restaurantId, restaurantId), eq(restaurantLocations.tenantId, tenantId)),
+    orderBy: (table, { asc }) => [asc(table.createdAt)]
+  });
+
+  if (existingLocation) {
+    await db
+      .update(restaurantLocations)
+      .set({
+        address: input.address,
+        googlePlaceId: input.googlePlaceId,
+        googleMapsUrl: input.googleMapsUrl ?? existingLocation.googleMapsUrl,
+        latitude: input.latitude,
+        longitude: input.longitude
+      })
+      .where(and(eq(restaurantLocations.id, existingLocation.id), eq(restaurantLocations.tenantId, tenantId)));
+    return;
   }
 
-  const cityContext = await getRestaurantCityContext(db, tenantId, input.cityId);
-  if (!cityContext) {
-    return resolvedInput;
+  await db.insert(restaurantLocations).values({
+    id: randomUUID(),
+    tenantId,
+    restaurantId,
+    address: input.address,
+    googlePlaceId: input.googlePlaceId,
+    googleMapsUrl: input.googleMapsUrl ?? null,
+    latitude: input.latitude,
+    longitude: input.longitude
+  });
+};
+
+const replaceRestaurantLocationRecords = async (
+  db: RestaurantLocationWritableDb,
+  tenantId: string,
+  restaurantId: string,
+  locations: RestaurantLocationInput[]
+): Promise<void> => {
+  await db
+    .delete(restaurantLocations)
+    .where(and(eq(restaurantLocations.restaurantId, restaurantId), eq(restaurantLocations.tenantId, tenantId)));
+
+  if (locations.length === 0) {
+    return;
   }
 
-  try {
-    const location = await resolveGoogleMapsLocationFromUrl({
-      cityName: cityContext.cityName,
-      countryName: cityContext.countryName,
-      name: input.name,
-      url: input.url
-    });
-
-    if (!location || location.latitude === null || location.longitude === null) {
-      return resolvedInput;
-    }
-
-    return {
-      ...resolvedInput,
-      address: location.address ?? resolvedInput.address,
-      googlePlaceId: location.placeId ?? resolvedInput.googlePlaceId,
+  await db.insert(restaurantLocations).values(
+    locations.map((location) => ({
+      id: location.id ?? randomUUID(),
+      tenantId,
+      restaurantId,
+      label: location.label || null,
+      address: location.address || null,
+      googlePlaceId: location.googlePlaceId || null,
+      googleMapsUrl: location.googleMapsUrl || null,
       latitude: location.latitude,
       longitude: location.longitude
-    };
-  } catch (error) {
-    console.error('Could not resolve restaurant Google Maps metadata', error);
-    return resolvedInput;
-  }
+    }))
+  );
 };
 
 const getRestaurantAreaValues = async (db: Db, restaurantId: string): Promise<string[]> => {
@@ -535,7 +532,7 @@ const getRestaurantTypeIds = async (db: Db, restaurantId: string): Promise<strin
 
 export const createRestaurantRecord = async (db: Db, tenantId: string, input: RestaurantInput): Promise<string> => {
   await validateRestaurantRefs(db, tenantId, input);
-  const writableInput = await resolveRestaurantLocationInput(db, tenantId, input);
+  const writableInput = resolveRestaurantLocationInput(input);
 
   const duplicateRestaurant = await db.query.restaurants.findFirst({
     where: and(
@@ -600,6 +597,19 @@ export const createRestaurantRecord = async (db: Db, tenantId: string, input: Re
       }))
     );
 
+    const explicitLocations = input.locations.length > 0
+      ? input.locations
+      : writableInput.latitude !== null && writableInput.longitude !== null
+        ? [{
+            address: writableInput.address ?? undefined,
+            googleMapsUrl: input.url,
+            googlePlaceId: writableInput.googlePlaceId ?? undefined,
+            latitude: writableInput.latitude,
+            longitude: writableInput.longitude
+          }]
+        : [];
+    await replaceRestaurantLocationRecords(tx, tenantId, restaurantId, explicitLocations);
+
     return restaurantId;
   });
 
@@ -621,7 +631,7 @@ export const updateRestaurantRecord = async (
   const existingRestaurant = foundRestaurant ?? fail('Restaurant not found.');
 
   await validateRestaurantRefs(db, tenantId, input);
-  const writableInput = await resolveRestaurantLocationInput(db, tenantId, input);
+  const writableInput = resolveRestaurantLocationInput(input);
 
   const uniqueTypeIds = Array.from(new Set(input.typeIds));
   const duplicateRestaurant = await db.query.restaurants.findFirst({
@@ -691,6 +701,19 @@ export const updateRestaurantRecord = async (
         restaurantTypeId
       }))
     );
+
+    const explicitLocations = input.locations.length > 0
+      ? input.locations
+      : writableInput.latitude !== null && writableInput.longitude !== null
+        ? [{
+            address: writableInput.address ?? undefined,
+            googleMapsUrl: input.url,
+            googlePlaceId: writableInput.googlePlaceId ?? undefined,
+            latitude: writableInput.latitude,
+            longitude: writableInput.longitude
+          }]
+        : [];
+    await replaceRestaurantLocationRecords(tx, tenantId, restaurantId, explicitLocations);
   });
 
   return restaurantId;
@@ -709,15 +732,19 @@ export const updateRestaurantLocationMetadataRecord = async (
     fail('Restaurant not found.');
   }
 
-  await db
-    .update(restaurants)
-    .set({
-      address: input.address,
-      googlePlaceId: input.googlePlaceId,
-      latitude: input.latitude,
-      longitude: input.longitude
-    })
-    .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(restaurants)
+      .set({
+        address: input.address,
+        googlePlaceId: input.googlePlaceId,
+        latitude: input.latitude,
+        longitude: input.longitude
+      })
+      .where(and(eq(restaurants.id, restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
+
+    await upsertRestaurantLocationRecord(tx, tenantId, restaurantId, input);
+  });
 };
 
 export const moveRestaurantRecord = async (
