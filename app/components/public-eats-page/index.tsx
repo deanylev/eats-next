@@ -557,10 +557,12 @@ const buildRestaurantMapMarkerIcon = (
   isSelected: boolean
 ): string => {
   const colors = getRestaurantMapMarkerColors(status, themeSecondaryColor);
+  const markerPath = 'M19 56C16 49 4 37 4 23C4 14.716 10.716 8 19 8C27.284 8 34 14.716 34 23C34 37 22 49 19 56Z';
+  const markerHaloTransform = 'translate(19 32) scale(1.18) translate(-19 -32)';
   const selectedRing = isSelected
     ? `<g>
-        <circle cx="19" cy="23" r="23" fill="#fff" fill-opacity="0.92" stroke="${themePrimaryColor}" stroke-width="5" />
-        <circle cx="19" cy="23" r="18" fill="none" stroke="#111827" stroke-opacity="0.34" stroke-width="2" />
+        <path d="${markerPath}" fill="none" stroke="#fff" stroke-opacity="0.96" stroke-linejoin="round" stroke-width="8" transform="${markerHaloTransform}" />
+        <path d="${markerPath}" fill="none" stroke="${themePrimaryColor}" stroke-opacity="0.86" stroke-linejoin="round" stroke-width="4" transform="${markerHaloTransform}" />
       </g>`
     : '';
   const chainBadge = chainLocationCount > 1
@@ -569,9 +571,10 @@ const buildRestaurantMapMarkerIcon = (
         <text x="34" y="16" fill="#fff" font-family="Arial, sans-serif" font-size="${chainLocationCount > 99 ? '8' : '10'}" font-weight="700" text-anchor="middle">${chainLocationCount > 99 ? '99+' : chainLocationCount}</text>
       </g>`
     : '';
-  const highlightRing = isChainHighlighted
+  const highlightRing = isChainHighlighted && !isSelected
     ? `<g>
-        <circle cx="19" cy="23" r="20" fill="${themePrimaryColor}" fill-opacity="0.2" stroke="${themePrimaryColor}" stroke-opacity="0.78" stroke-width="4" />
+        <path d="${markerPath}" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-linejoin="round" stroke-width="7" transform="${markerHaloTransform}" />
+        <path d="${markerPath}" fill="none" stroke="${themePrimaryColor}" stroke-opacity="0.66" stroke-linejoin="round" stroke-width="3" transform="${markerHaloTransform}" />
       </g>`
     : '';
 
@@ -579,7 +582,7 @@ const buildRestaurantMapMarkerIcon = (
     `<svg xmlns="http://www.w3.org/2000/svg" width="50" height="62" viewBox="0 0 50 62">
       ${selectedRing}
       ${highlightRing}
-      <path d="M19 56C16 49 4 37 4 23C4 14.716 10.716 8 19 8C27.284 8 34 14.716 34 23C34 37 22 49 19 56Z" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3" />
+      <path d="${markerPath}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3" />
       <circle cx="19" cy="23" r="7" fill="#fff" fill-opacity="0.92" />
       ${chainBadge}
     </svg>`
