@@ -1,5 +1,5 @@
 export type RestaurantStatusFilter = 'liked' | 'untried' | 'disliked';
-export type CategoryFilter = 'area' | 'type' | 'recentlyAdded' | 'distance';
+export type CategoryFilter = 'area' | 'type' | 'rating' | 'recentlyAdded' | 'distance';
 export type UrlState = {
   city: string;
   hasCategoryQuery: boolean;
@@ -12,7 +12,7 @@ export type UrlState = {
 };
 
 export const restaurantStatusFilterSet = new Set<RestaurantStatusFilter>(['liked', 'untried', 'disliked']);
-export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded', 'distance']);
+export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'rating', 'recentlyAdded', 'distance']);
 export const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 export const defaultRestaurantStatuses: RestaurantStatusFilter[] = ['untried', 'liked'];
 export const unassignedAreaLaneId = '__unassigned-area__';

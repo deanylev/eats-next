@@ -2867,6 +2867,41 @@
   text-shadow: 0 1px 0 color-mix(in srgb, #111827 18%, transparent);
 }
 
+.ratingHeading {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: -0.08em;
+}
+
+.ratingHeading .ratingStar {
+  height: 28px;
+  width: 28px;
+}
+
+.kanbanRatingHeading .ratingHeading {
+  align-items: center;
+  gap: 1px;
+  line-height: 1;
+  transform: translateY(-1px);
+  vertical-align: middle;
+}
+
+.kanbanRatingHeading .ratingStar {
+  height: 18px;
+  width: 18px;
+}
+
+.eatsRoot button.kanbanLaneToggle:has(.kanbanRatingHeading)::before,
+.embeddedRoot button.kanbanLaneToggle:has(.kanbanRatingHeading)::before {
+  transform: rotate(-45deg);
+}
+
+.eatsRoot button.kanbanLaneToggleExpanded:has(.kanbanRatingHeading)::before,
+.embeddedRoot button.kanbanLaneToggleExpanded:has(.kanbanRatingHeading)::before {
+  transform: translateY(-1px) rotate(45deg);
+}
+
 .compactStatusLabel {
   border: 0;
   clip: rect(0 0 0 0);

@@ -68,6 +68,14 @@ export type RestaurantBoardMoveInput =
       restaurantId: string;
       status: RestaurantStatus;
       targetTypeId: string;
+    }
+  | {
+      boardCategory: 'rating';
+      dislikedReason?: string;
+      notes?: string;
+      restaurantId: string;
+      status: RestaurantStatus;
+      targetRating: number | null;
     };
 
 const fail = (message: string): never => {
@@ -802,6 +810,12 @@ export const moveRestaurantRecord = async (
     nextTypeIds = [input.targetTypeId, ...remainingTypeIds.filter((typeId) => typeId !== input.targetTypeId)];
   }
 
+  const nextRating = input.status === 'untried'
+    ? null
+    : input.boardCategory === 'rating'
+      ? ratingToStorageValue(input.targetRating)
+      : foundRestaurant.rating;
+
   const nextDislikedReason =
     input.status === 'disliked'
       ? input.dislikedReason?.trim() || foundRestaurant.dislikedReason?.trim() || null
@@ -842,7 +856,8 @@ export const moveRestaurantRecord = async (
         status: input.status,
         triedAt: nextTriedAt,
         notes: nextNotes,
-        dislikedReason: nextDislikedReason
+        dislikedReason: nextDislikedReason,
+        rating: nextRating
       })
       .where(and(eq(restaurants.id, input.restaurantId), eq(restaurants.tenantId, tenantId), isNull(restaurants.deletedAt)));
 

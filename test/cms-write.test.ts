@@ -590,6 +590,50 @@ dbTest('moveRestaurantRecord updates primary type while preserving secondary typ
   }
 });
 
+dbTest('moveRestaurantRecord updates rating lane using half-star storage units', async () => {
+  const { db, cleanup, tenantId, cityId, typeId } = await createTenantFixture();
+
+  try {
+    const restaurantId = await createRestaurantRecord(
+      db,
+      tenantId,
+      buildRestaurantInput({
+        cityId,
+        notes: 'Worth rating',
+        status: 'liked',
+        typeIds: [typeId],
+        url: 'https://kelso.example.com/'
+      })
+    );
+
+    await moveRestaurantRecord(db, tenantId, {
+      boardCategory: 'rating',
+      restaurantId,
+      status: 'liked',
+      targetRating: 4.5
+    });
+
+    const ratedRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.id, restaurantId)
+    });
+    assert.equal(ratedRestaurant?.rating, 9);
+
+    await moveRestaurantRecord(db, tenantId, {
+      boardCategory: 'rating',
+      restaurantId,
+      status: 'liked',
+      targetRating: null
+    });
+
+    const unratedRestaurant = await db.query.restaurants.findFirst({
+      where: eq(restaurants.id, restaurantId)
+    });
+    assert.equal(unratedRestaurant?.rating, null);
+  } finally {
+    await cleanup();
+  }
+});
+
 dbTest('moveRestaurantRecord requires a disliked reason when moving to disliked', async () => {
   const { db, cleanup, tenantId, cityId, typeId } = await createTenantFixture();
 

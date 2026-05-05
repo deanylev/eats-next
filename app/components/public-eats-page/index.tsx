@@ -38,6 +38,7 @@ import styles from './style.module.scss';
 import { LocationBackfillDebugForm } from './location-backfill-debug-form';
 
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
+const ratedRestaurantStatusChoices: RestaurantStatusFilter[] = ['liked', 'disliked'];
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
 const categoryStorageKey = 'publicEatsCategory';
@@ -84,7 +85,7 @@ const readStoredCategory = (): CategoryFilter | null => {
 
   try {
     const stored = window.localStorage.getItem(categoryStorageKey);
-    return stored === 'area' || stored === 'type' || stored === 'recentlyAdded' || stored === 'distance'
+    return stored === 'area' || stored === 'type' || stored === 'rating' || stored === 'recentlyAdded' || stored === 'distance'
       ? stored
       : null;
   } catch {
@@ -262,7 +263,7 @@ type RestaurantLocationPin = {
 
 type ViewMode = 'list' | 'kanban' | 'map';
 type MapClusterStatusCounts = Record<PublicRestaurant['status'], number>;
-type BoardCategory = 'city' | 'area' | 'type';
+type BoardCategory = 'city' | 'area' | 'type' | 'rating';
 type BoardLane = {
   boardCategory: BoardCategory;
   id: string;
@@ -306,6 +307,10 @@ const escapeHtml = (value: string): string =>
     .replaceAll("'", '&#39;');
 
 const getBoardCategory = (category: CategoryFilter, isAllCitiesSelected: boolean): BoardCategory | null => {
+  if (category === 'rating') {
+    return 'rating';
+  }
+
   if (category === 'type') {
     return 'type';
   }
@@ -321,6 +326,24 @@ const getPrimaryType = (restaurant: PublicRestaurant): RestaurantType | null => 
 
 const getRestaurantTypeSummary = (restaurant: PublicRestaurant): string =>
   restaurant.types.map((type) => `${type.emoji} ${type.name}`).join(', ');
+
+const unratedLaneId = '__unrated__';
+const ratingLaneValues = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
+
+const getRatingHeading = (rating: number | null): string =>
+  rating === null ? 'No rating' : `${rating} ${rating === 1 ? 'star' : 'stars'}`;
+
+const getRatingLaneId = (rating: number | null): string =>
+  rating === null ? unratedLaneId : `rating-${rating}`;
+
+const getRatingFromLaneId = (laneId: string): number | null => {
+  if (laneId === unratedLaneId) {
+    return null;
+  }
+
+  const rating = Number(laneId.replace(/^rating-/, ''));
+  return Number.isFinite(rating) ? rating : null;
+};
 
 const updateRestaurantCardPointerTint = (element: HTMLDivElement, clientX: number, clientY: number): void => {
   const bounds = element.getBoundingClientRect();
@@ -390,6 +413,21 @@ const buildBoardLanes = (
     return ordered;
   }
 
+  if (boardCategory === 'rating') {
+    return [
+      ...ratingLaneValues.map((rating) => ({
+        boardCategory,
+        id: getRatingLaneId(rating),
+        label: getRatingHeading(rating)
+      })),
+      {
+        boardCategory,
+        id: unratedLaneId,
+        label: getRatingHeading(null)
+      }
+    ];
+  }
+
   const lanes = new Map<string, BoardLane>();
   for (const restaurant of restaurants) {
     const primaryType = getPrimaryType(restaurant);
@@ -414,6 +452,10 @@ const getRestaurantBoardLaneId = (restaurant: PublicRestaurant, boardCategory: B
 
   if (boardCategory === 'area') {
     return getPrimaryArea(restaurant) ?? unassignedAreaLaneId;
+  }
+
+  if (boardCategory === 'rating') {
+    return getRatingLaneId(restaurant.rating);
   }
 
   return getPrimaryType(restaurant)?.id ?? '';
@@ -470,7 +512,7 @@ type BoardMoveResolution = {
 } | {
   status: 'liked' | 'untried';
   dislikedReason?: never;
-  notes: string;
+  notes?: string;
 };
 
 type BoardCreatePreset = {
@@ -478,6 +520,7 @@ type BoardCreatePreset = {
   lockedFields: {
     areas?: boolean;
     city?: boolean;
+    rating?: boolean;
     status?: boolean;
   };
 };
@@ -526,6 +569,23 @@ const renderRatingStars = (rating: number): JSX.Element => (
     ))}
   </>
 );
+
+const renderRatingHeading = (heading: string): JSX.Element | string => {
+  const rating = heading === getRatingHeading(null) ? null : Number(heading.split(' ')[0]);
+  if (rating === null) {
+    return 'No rating';
+  }
+
+  if (!Number.isFinite(rating)) {
+    return heading;
+  }
+
+  return (
+    <span className={styles.ratingHeading} aria-label={heading}>
+      {renderRatingStars(rating)}
+    </span>
+  );
+};
 
 const renderMapRatingStars = (rating: number | null): string => {
   if (rating === null) {
@@ -1369,7 +1429,7 @@ export function PublicEatsPage({
       description: 'Use these to show places I want to try, places I recommend, or places I would skip.'
     });
 
-    if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && headings.length > 1) {
+    if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && filterCategory !== 'rating' && headings.length > 1) {
       steps.push({
         id: 'filters',
         title: 'Narrow it down',
@@ -1551,7 +1611,7 @@ export function PublicEatsPage({
       return;
     }
 
-    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance') {
+    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance' || filterCategory === 'rating') {
       return;
     }
 
@@ -1587,7 +1647,7 @@ export function PublicEatsPage({
   }, [filterCategory, hasInitializedFilters, selectedCity]);
 
   useEffect(() => {
-    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance') {
+    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance' || filterCategory === 'rating') {
       setIsFilterPopoverOpen(false);
       setFilterPopoverDirection('up');
     }
@@ -1853,12 +1913,16 @@ export function PublicEatsPage({
         headingValues.push(...restaurant.types.map((type) => type.name));
       }
 
+      if (filterCategory === 'rating') {
+        headingValues.push(getRatingHeading(restaurant.rating));
+      }
+
       if (filterCategory === 'recentlyAdded') {
         headingValues.push(getMonthHeadingKey(restaurant.createdAt));
       }
 
       for (const heading of headingValues) {
-        if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && excluded.includes(heading)) {
+        if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && filterCategory !== 'rating' && excluded.includes(heading)) {
           continue;
         }
 
@@ -1874,6 +1938,14 @@ export function PublicEatsPage({
 
     if (filterCategory === 'distance') {
       return new Map(sortDistanceHeadings([...map.keys()]).map((heading) => [heading, map.get(heading) ?? []]));
+    }
+
+    if (filterCategory === 'rating') {
+      const ratingHeadingOrder = [...ratingLaneValues.map((rating) => getRatingHeading(rating)), getRatingHeading(null)];
+      return new Map(ratingHeadingOrder.flatMap((heading) => {
+        const places = map.get(heading);
+        return places ? [[heading, places] as const] : [];
+      }));
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
@@ -1902,6 +1974,10 @@ export function PublicEatsPage({
 
       if (boardCategory === 'area') {
         return getIncludedRestaurantAreaLaneIds(restaurant, excluded).length > 0;
+      }
+
+      if (boardCategory === 'rating') {
+        return true;
       }
 
       const primaryType = getPrimaryType(restaurant);
@@ -1989,15 +2065,25 @@ export function PublicEatsPage({
   }, [boardLanes]);
 
   useEffect(() => {
-    const areAllStatusesSelected = restaurantStatusChoices.every((status) => selectedStatuses.includes(status));
+    const requiredStatuses = category === 'rating' ? ratedRestaurantStatusChoices : restaurantStatusChoices;
+    const areRequiredStatusesSelected =
+      selectedStatuses.length === requiredStatuses.length &&
+      requiredStatuses.every((status) => selectedStatuses.includes(status));
 
     if (effectiveViewMode === 'kanban') {
       if (listStatusSelectionBeforeKanban.current === null) {
         listStatusSelectionBeforeKanban.current = selectedStatuses;
       }
 
-      if (!areAllStatusesSelected) {
-        setSelectedStatuses([...restaurantStatusChoices]);
+      if (!areRequiredStatusesSelected) {
+        setSelectedStatuses([...requiredStatuses]);
+      }
+      return;
+    }
+
+    if (category === 'rating') {
+      if (selectedStatuses.includes('untried')) {
+        setSelectedStatuses((current) => current.filter((status) => status !== 'untried'));
       }
       return;
     }
@@ -2007,7 +2093,7 @@ export function PublicEatsPage({
       listStatusSelectionBeforeKanban.current = null;
       setSelectedStatuses(previousStatuses);
     }
-  }, [effectiveViewMode, selectedStatuses]);
+  }, [category, effectiveViewMode, selectedStatuses]);
   const visibleRestaurantIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -2460,6 +2546,11 @@ export function PublicEatsPage({
         lockedFields.areas = true;
       }
 
+      if (boardCategory === 'rating') {
+        defaults.rating = getRatingFromLaneId(lane.id);
+        lockedFields.rating = true;
+      }
+
       setBoardCreatePreset({
         defaults,
         lockedFields
@@ -2470,7 +2561,7 @@ export function PublicEatsPage({
     [boardCategory, createDefaultCityId, createDefaultMealTypes, createTools]
   );
   const toggleSelectedStatus = (status: RestaurantStatusFilter, checked: boolean): void => {
-    if (effectiveViewMode === 'kanban') {
+    if (effectiveViewMode === 'kanban' || (filterCategory === 'rating' && status === 'untried')) {
       return;
     }
 
@@ -3357,6 +3448,20 @@ export function PublicEatsPage({
   }, []);
   const resolveBoardMove = useCallback(
     (restaurant: PublicRestaurant, { status }: BoardDropTarget): BoardMoveResolution => {
+      if (status === restaurant.status) {
+        if (status === 'disliked') {
+          return {
+            status,
+            dislikedReason: restaurant.dislikedReason?.trim() ?? ''
+          };
+        }
+
+        return {
+          status,
+          notes: restaurant.notes
+        };
+      }
+
       if (status !== 'disliked') {
         const newNotes = window.prompt('New notes:', restaurant.notes)?.trim() ?? '';
         if (newNotes.length === 0) {
@@ -3407,7 +3512,7 @@ export function PublicEatsPage({
           cityName: targetCity.name,
           countryName: targetCity.countryName,
           dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
-          notes: move.status === 'disliked' ? restaurant.notes : move.notes,
+          notes: move.status === 'disliked' ? restaurant.notes : move.notes ?? restaurant.notes,
           status: target.status
         };
       }
@@ -3421,7 +3526,19 @@ export function PublicEatsPage({
           ...restaurant,
           areas: nextAreas,
           dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
-          notes: move.status === 'disliked' ? restaurant.notes : move.notes,
+          notes: move.status === 'disliked' ? restaurant.notes : move.notes ?? restaurant.notes,
+          status: target.status
+        };
+      }
+
+      if (boardCategory === 'rating') {
+        const targetRating = target.status === 'untried' ? null : getRatingFromLaneId(target.laneId);
+
+        return {
+          ...restaurant,
+          dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
+          notes: move.status === 'disliked' ? restaurant.notes : move.notes ?? restaurant.notes,
+          rating: targetRating,
           status: target.status
         };
       }
@@ -3434,7 +3551,7 @@ export function PublicEatsPage({
       return {
         ...restaurant,
         dislikedReason: move.status === 'disliked' ? move.dislikedReason : null,
-        notes: move.status === 'disliked' ? restaurant.notes : move.notes,
+        notes: move.status === 'disliked' ? restaurant.notes : move.notes ?? restaurant.notes,
         status: target.status,
         types: [targetType, ...restaurant.types.filter((type, index) => index !== 0 && type.id !== targetType.id)]
       };
@@ -3462,6 +3579,9 @@ export function PublicEatsPage({
         formData.set('targetCityId', target.laneId);
       } else if (boardCategory === 'area') {
         formData.set('targetArea', target.laneId === unassignedAreaLaneId ? '' : target.laneId);
+      } else if (boardCategory === 'rating') {
+        const targetRating = target.status === 'untried' ? null : getRatingFromLaneId(target.laneId);
+        formData.set('targetRating', targetRating === null ? '' : String(targetRating));
       } else {
         formData.set('targetTypeId', target.laneId);
       }
@@ -3885,8 +4005,9 @@ export function PublicEatsPage({
                         {categoryOptionAreaLabel}
                       </option>
                       <option value="type">Type of Food</option>
-                      <option value="recentlyAdded">Date Added</option>
+                      <option value="rating">Rating</option>
                       <option value="distance">Nearest</option>
+                      <option value="recentlyAdded">Date Added</option>
                     </select>
                   </div>
                 </>
@@ -3948,8 +4069,8 @@ export function PublicEatsPage({
                   <label className={`${styles.statusFilterChip} ${styles.untriedStatusFilterChip}`}>
                     <input
                       type="checkbox"
-                      checked={effectiveViewMode === 'kanban' || selectedStatuses.includes('untried')}
-                      disabled={effectiveViewMode === 'kanban' || statusCount('untried') === 0}
+                      checked={filterCategory === 'rating' ? false : effectiveViewMode === 'kanban' || selectedStatuses.includes('untried')}
+                      disabled={filterCategory === 'rating' || effectiveViewMode === 'kanban' || statusCount('untried') === 0}
                       onChange={(event) => toggleSelectedStatus('untried', event.target.checked)}
                     />
                     <span>Want to Try ({statusCount('untried')})</span>
@@ -3976,7 +4097,7 @@ export function PublicEatsPage({
               </div>
               {!isSearchActive ? (
                 <div className={styles.filterControls} ref={filterControlsRef}>
-                  {filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && headings.length > 1 ? (
+                  {filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && filterCategory !== 'rating' && headings.length > 1 ? (
                     <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
                       <button
                         type="button"
@@ -4165,7 +4286,11 @@ export function PublicEatsPage({
                               toggleKanbanLaneCollapse(lane.id);
                             }}
                           >
-                            {lane.label}
+                            {lane.boardCategory === 'rating' ? (
+                              <span className={styles.kanbanRatingHeading}>
+                                {renderRatingHeading(lane.label)}
+                              </span>
+                            ) : lane.label}
                           </button>
                           <span className={styles.kanbanLaneCount}>
                             {visibleBoardStatuses.reduce(
@@ -4309,7 +4434,11 @@ export function PublicEatsPage({
                     <Fragment key={heading}>
                       <span className={styles.heading}>
                         {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                        {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
+                        {category === 'rating'
+                          ? renderRatingHeading(heading)
+                          : category === 'recentlyAdded'
+                            ? getMonthHeadingLabel(heading)
+                            : heading}
                       </span>
                       {category === 'distance' && !userLocation ? (
                         <div className={styles.inlineMapError}>

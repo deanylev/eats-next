@@ -42,6 +42,7 @@ export type RestaurantFormDefaults = {
 type RestaurantFormLockedFields = {
   areas?: boolean;
   city?: boolean;
+  rating?: boolean;
   status?: boolean;
 };
 

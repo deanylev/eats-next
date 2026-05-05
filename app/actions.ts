@@ -377,6 +377,23 @@ const parseBoardMoveInput = (formData: FormData) => {
     } as const;
   }
 
+  if (boardCategory === 'rating') {
+    const rawRating = String(formData.get('targetRating') ?? '').trim();
+    const targetRating = rawRating.length > 0 ? Number(rawRating) : null;
+    if (targetRating !== null && (!Number.isFinite(targetRating) || targetRating < 0.5 || targetRating > 5 || targetRating * 2 % 1 !== 0)) {
+      throw userFacingError('Invalid rating.');
+    }
+
+    return {
+      boardCategory,
+      dislikedReason,
+      notes,
+      restaurantId,
+      status: statusValue,
+      targetRating
+    } as const;
+  }
+
   throw userFacingError('Invalid board category.');
 };
 
