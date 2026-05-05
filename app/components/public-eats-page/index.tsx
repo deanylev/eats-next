@@ -712,8 +712,10 @@ export function PublicEatsPage({
   const googleMapRef = useRef<any>(null);
   const googleMarkersRef = useRef<any[]>([]);
   const googleMarkersByPinIdRef = useRef<Map<string, any>>(new Map());
+  const googleMarkerOpenersByPinIdRef = useRef<Map<string, () => void>>(new Map());
   const googleMarkerMetadataByPinIdRef = useRef<Map<string, { restaurantId: string; status: PublicRestaurant['status']; chainLocationCount: number }>>(new Map());
   const selectedMapRestaurantIdRef = useRef<string | null>(null);
+  const selectedMapPinIdRef = useRef<string | null>(null);
   const googleUserMarkerRef = useRef<any>(null);
   const pendingMapRestaurantFocusIdRef = useRef<string | null>(null);
   const pendingMapPinFocusIdRef = useRef<string | null>(null);
@@ -2508,7 +2510,10 @@ export function PublicEatsPage({
         googleMapRef.current = null;
         googleMarkersRef.current = [];
         googleMarkersByPinIdRef.current.clear();
+        googleMarkerOpenersByPinIdRef.current.clear();
         googleMarkerMetadataByPinIdRef.current.clear();
+        selectedMapPinIdRef.current = null;
+        selectedMapRestaurantIdRef.current = null;
         previousMapFitSignatureRef.current = null;
         googleUserMarkerRef.current = null;
         return;
@@ -2529,6 +2534,7 @@ export function PublicEatsPage({
       }
       googleMarkersRef.current = [];
       googleMarkersByPinIdRef.current.clear();
+      googleMarkerOpenersByPinIdRef.current.clear();
       googleMarkerMetadataByPinIdRef.current.clear();
       if (googleUserMarkerRef.current) {
         googleUserMarkerRef.current.setMap(null);
@@ -2591,6 +2597,10 @@ export function PublicEatsPage({
         selectedMapRestaurantIdRef.current = null;
       }
       const updateChainHighlight = (restaurantId: string | null): void => {
+        if (restaurantId === null) {
+          selectedMapPinIdRef.current = null;
+        }
+
         selectedMapRestaurantIdRef.current = restaurantId;
 
         for (const [pinId, marker] of googleMarkersByPinIdRef.current) {
@@ -2671,7 +2681,8 @@ export function PublicEatsPage({
           title: restaurant.name,
           zIndex: isChainHighlighted ? 500 : chainLocationCount > 1 ? 200 : undefined
         });
-        marker.addListener('click', () => {
+        const openMarkerInfoWindow = (): void => {
+          selectedMapPinIdRef.current = pin.id;
           updateChainHighlight(restaurant.id);
           const mapsUrl = location.googlePlaceId
             ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.name)}&query_place_id=${encodeURIComponent(location.googlePlaceId)}`
@@ -2718,9 +2729,11 @@ export function PublicEatsPage({
             anchor: marker,
             map: googleMapRef.current
           });
-        });
+        };
+        marker.addListener('click', openMarkerInfoWindow);
         googleMarkersRef.current.push(marker);
         googleMarkersByPinIdRef.current.set(pin.id, marker);
+        googleMarkerOpenersByPinIdRef.current.set(pin.id, openMarkerInfoWindow);
         googleMarkerMetadataByPinIdRef.current.set(pin.id, {
           restaurantId: restaurant.id,
           status: restaurant.status,
@@ -2731,6 +2744,12 @@ export function PublicEatsPage({
       }
 
       updateChainHighlight(selectedMapRestaurantIdRef.current);
+      if (
+        selectedMapPinIdRef.current &&
+        !googleMarkerOpenersByPinIdRef.current.has(selectedMapPinIdRef.current)
+      ) {
+        selectedMapPinIdRef.current = null;
+      }
 
       const pendingMapRestaurantFocusId = pendingMapRestaurantFocusIdRef.current;
       const pendingRestaurantMarkers = pendingMapRestaurantFocusId
@@ -2773,24 +2792,30 @@ export function PublicEatsPage({
                     : Number.POSITIVE_INFINITY
                 };
               })
-              .sort((first, second) => first.distance - second.distance)[0]?.marker
-          : pendingRestaurantMarkers[0]?.marker;
+              .sort((first, second) => first.distance - second.distance)[0]
+          : pendingRestaurantMarkers[0];
         updateChainHighlight(pendingMapRestaurantFocusId);
-        googleMaps.event.trigger(selectedRestaurantMarker ?? pendingRestaurantMarkers[0]?.marker, 'click');
+        googleMarkerOpenersByPinIdRef.current.get(
+          selectedRestaurantMarker?.pinId ?? pendingRestaurantMarkers[0]?.pinId ?? ''
+        )?.();
         pendingMapRestaurantFocusIdRef.current = null;
         pendingMapPinFocusIdRef.current = null;
       }
 
       const pendingMapPinFocusId = pendingMapPinFocusIdRef.current;
       const pendingMarker = pendingMapPinFocusId ? googleMarkersByPinIdRef.current.get(pendingMapPinFocusId) : null;
-      if (!pendingMapRestaurantFocusId && pendingMarker) {
+      if (!pendingMapRestaurantFocusId && pendingMapPinFocusId && pendingMarker) {
         const position = pendingMarker.getPosition?.();
         if (position) {
           googleMapRef.current.panTo(position);
           googleMapRef.current.setZoom(Math.max(googleMapRef.current.getZoom() ?? 14, 15));
         }
-        googleMaps.event.trigger(pendingMarker, 'click');
+        googleMarkerOpenersByPinIdRef.current.get(pendingMapPinFocusId)?.();
         pendingMapPinFocusIdRef.current = null;
+      }
+
+      if (!didFocusPendingRestaurant && !pendingMarker && selectedMapPinIdRef.current) {
+        googleMarkerOpenersByPinIdRef.current.get(selectedMapPinIdRef.current)?.();
       }
 
       googleMaps.event.trigger(googleMapRef.current, 'resize');
