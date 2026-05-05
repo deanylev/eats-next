@@ -2558,6 +2558,13 @@ export function PublicEatsPage({
     pendingMapRestaurantFocusIdRef.current = restaurant.id;
     setViewMode('map');
   }, []);
+  const handleViewModeChange = (nextViewMode: ViewMode): void => {
+    if (nextViewMode !== 'list' && (category === 'recentlyAdded' || category === 'distance')) {
+      setCategory('area');
+    }
+
+    setViewMode(nextViewMode);
+  };
   const ensureNewRestaurantVisible = useCallback((restaurant: PublicRestaurant): boolean => {
     let hasUpdatedFilters = false;
 
@@ -3798,6 +3805,13 @@ export function PublicEatsPage({
                       disabled={effectiveViewMode === 'map'}
                       onChange={(event) => {
                         const nextCategory = event.target.value as CategoryFilter;
+                        if (
+                          effectiveViewMode !== 'list' &&
+                          (nextCategory === 'recentlyAdded' || nextCategory === 'distance')
+                        ) {
+                          setViewMode('list');
+                        }
+
                         setCategory(nextCategory);
                         if (nextCategory === 'distance') {
                           requestUserLocation('visible-area');
@@ -3808,8 +3822,8 @@ export function PublicEatsPage({
                         {categoryOptionAreaLabel}
                       </option>
                       <option value="type">Type of Food</option>
-                      {effectiveViewMode === 'list' ? <option value="recentlyAdded">Date Added</option> : null}
-                      {effectiveViewMode === 'list' ? <option value="distance">Nearest</option> : null}
+                      <option value="recentlyAdded">Date Added</option>
+                      <option value="distance">Nearest</option>
                     </select>
                   </div>
                 </>
@@ -3825,13 +3839,13 @@ export function PublicEatsPage({
                   <select
                     id="viewMode"
                     value={effectiveViewMode === 'map' && !hasMappedVisibleRestaurants ? 'list' : effectiveViewMode}
-                    onChange={(event) => setViewMode(event.target.value as ViewMode)}
+                    onChange={(event) => handleViewModeChange(event.target.value as ViewMode)}
                   >
                     <option value="list">List</option>
                     <option value="map" disabled={!hasMappedVisibleRestaurants}>
                       Map
                     </option>
-                    {boardCategory !== null ? <option value="kanban">Kanban</option> : null}
+                    <option value="kanban">Kanban</option>
                   </select>
                   {effectiveViewMode === 'map' && hasMappedVisibleRestaurants ? (
                     <>
