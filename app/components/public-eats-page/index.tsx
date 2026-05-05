@@ -39,6 +39,8 @@ import { LocationBackfillDebugForm } from './location-backfill-debug-form';
 const restaurantStatusChoices: RestaurantStatusFilter[] = ['untried', 'liked', 'disliked'];
 const allCitiesUrlValue = 'all';
 const compactCardsStorageKey = 'publicEatsCompactCards';
+const categoryStorageKey = 'publicEatsCategory';
+const cityStorageKey = 'publicEatsCity';
 const viewModeStorageKey = 'publicEatsViewMode';
 const mapLabelModeStorageKey = 'publicEatsMapLabelMode';
 const controlsWalkthroughStorageKey = 'publicEatsControlsWalkthroughSeen';
@@ -70,6 +72,38 @@ const readStoredViewMode = (): ViewMode => {
     return stored === 'kanban' || stored === 'map' ? stored : 'list';
   } catch {
     return 'list';
+  }
+};
+
+const readStoredCategory = (): CategoryFilter | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(categoryStorageKey);
+    return stored === 'area' || stored === 'type' || stored === 'recentlyAdded' || stored === 'distance'
+      ? stored
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const readStoredCity = (): string | null | undefined => {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(cityStorageKey);
+    if (stored === null) {
+      return undefined;
+    }
+
+    return stored === allCitiesUrlValue ? null : stored;
+  } catch {
+    return undefined;
   }
 };
 
@@ -415,6 +449,7 @@ type WalkthroughCardPosition = {
 };
 
 type RestaurantCardRenderOptions = {
+  distanceText?: string | null;
   draggable?: boolean;
   extraClassName?: string;
   keyPrefix: string;
@@ -576,6 +611,89 @@ const getDistanceInKm = (
 
   return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
+
+const getRestaurantDistanceInKm = (restaurant: PublicRestaurant, userLocation: UserLocation | null): number | null => {
+  if (!userLocation) {
+    return null;
+  }
+
+  const coordinates = restaurant.locations.length > 0
+    ? restaurant.locations.map((location) => ({
+        latitude: location.latitude,
+        longitude: location.longitude
+      }))
+    : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+      ? [{
+          latitude: restaurant.latitude,
+          longitude: restaurant.longitude
+        }]
+      : [];
+
+  if (coordinates.length === 0) {
+    return null;
+  }
+
+  return Math.min(...coordinates.map((coordinate) => getDistanceInKm(userLocation, coordinate)));
+};
+
+const formatDistance = (distanceInKm: number | null): string | null => {
+  if (distanceInKm === null || !Number.isFinite(distanceInKm)) {
+    return null;
+  }
+
+  if (distanceInKm < 1) {
+    return `${Math.max(1, Math.round(distanceInKm * 1000))} m away`;
+  }
+
+  return `${distanceInKm.toFixed(distanceInKm < 10 ? 1 : 0)} km away`;
+};
+
+const distanceHeadingOrder = [
+  'Under 1 km',
+  '1-5 km',
+  '5-10 km',
+  '10-25 km',
+  '25-50 km',
+  '50+ km',
+  'Unknown distance'
+];
+
+const getDistanceHeading = (distanceInKm: number | null): string => {
+  if (distanceInKm === null || !Number.isFinite(distanceInKm)) {
+    return 'Unknown distance';
+  }
+
+  if (distanceInKm < 1) {
+    return 'Under 1 km';
+  }
+
+  if (distanceInKm < 5) {
+    return '1-5 km';
+  }
+
+  if (distanceInKm < 10) {
+    return '5-10 km';
+  }
+
+  if (distanceInKm < 25) {
+    return '10-25 km';
+  }
+
+  if (distanceInKm < 50) {
+    return '25-50 km';
+  }
+
+  return '50+ km';
+};
+
+const sortDistanceHeadings = (headings: string[]): string[] =>
+  headings.sort((headingA, headingB) => {
+    const indexA = distanceHeadingOrder.indexOf(headingA);
+    const indexB = distanceHeadingOrder.indexOf(headingB);
+
+    return (indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA)
+      - (indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB);
+  });
 
 const isUserLocationNearMappedRestaurants = (
   userLocation: UserLocation,
@@ -786,18 +904,35 @@ export function PublicEatsPage({
     setViewMode(readStoredViewMode());
 
     const urlState = readUrlState();
+    const storedCity = readStoredCity();
+    const storedCategory = readStoredCategory();
+    const initialCity = urlState.hasCityQuery
+      ? urlState.city === allCitiesUrlValue ? null : urlState.city
+      : storedCity !== undefined ? storedCity : urlState.city;
     hasExplicitCityQuery.current = urlState.hasCityQuery;
     skipNextExcludeReset.current = urlState.excluded.length > 0;
     skipNextExcludePrune.current = urlState.excluded.length > 0;
     setSelectedStatuses(urlState.statuses);
-    setSelectedCity(urlState.city === allCitiesUrlValue ? null : urlState.city);
+    setSelectedCity(initialCity);
     setSelectedMealType(urlState.mealType);
-    setCategory(urlState.category);
+    setCategory(urlState.hasCategoryQuery ? urlState.category : storedCategory ?? urlState.category);
     setSearchQuery(urlState.search);
     setExcluded(urlState.excluded);
     preservedIncludedHeadings.current = null;
     setHasInitializedFilters(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hasInitializedFilters) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(categoryStorageKey, category);
+    } catch {
+      // Ignore storage failures; arrange-by still works for the current page session.
+    }
+  }, [category, hasInitializedFilters]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !hasInitializedFilters) {
@@ -935,6 +1070,18 @@ export function PublicEatsPage({
   const savedGroupCategoryLabel = isCityGrouping ? 'city' : 'area';
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !hasInitializedFilters || !hasResolvedCitySelection) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(cityStorageKey, selectedCity === null ? allCitiesUrlValue : selectedCity);
+    } catch {
+      // Ignore storage failures; city selection still works for the current page session.
+    }
+  }, [hasInitializedFilters, hasResolvedCitySelection, selectedCity]);
+
+  useEffect(() => {
     if (!hasInitializedFilters) {
       return;
     }
@@ -1030,6 +1177,18 @@ export function PublicEatsPage({
   const headings = useMemo(() => {
     const values = new Set<string>();
 
+    if (filterCategory === 'distance') {
+      if (!userLocation) {
+        return ['Nearest to you'];
+      }
+
+      for (const restaurant of mealFilteredRestaurants) {
+        values.add(getDistanceHeading(getRestaurantDistanceInKm(restaurant, userLocation)));
+      }
+
+      return sortDistanceHeadings([...values]);
+    }
+
     for (const restaurant of mealFilteredRestaurants) {
       if (filterCategory === 'area') {
         if (isAllCitiesSelected || restaurant.areas.length === 0) {
@@ -1058,7 +1217,7 @@ export function PublicEatsPage({
     }
 
     return headingList.sort((a, b) => byAlpha(a, b));
-  }, [filterCategory, isAllCitiesSelected, mealFilteredRestaurants, selectedCity]);
+  }, [filterCategory, isAllCitiesSelected, mealFilteredRestaurants, selectedCity, userLocation]);
 
   const controlsWalkthroughSteps = useMemo((): WalkthroughStep[] => {
     const steps: WalkthroughStep[] = [];
@@ -1086,7 +1245,7 @@ export function PublicEatsPage({
       description: 'Use these to show places I want to try, places I recommend, or places I would skip.'
     });
 
-    if (filterCategory !== 'recentlyAdded' && headings.length > 1) {
+    if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && headings.length > 1) {
       steps.push({
         id: 'filters',
         title: 'Narrow it down',
@@ -1268,7 +1427,7 @@ export function PublicEatsPage({
       return;
     }
 
-    if (filterCategory === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance') {
       return;
     }
 
@@ -1304,7 +1463,7 @@ export function PublicEatsPage({
   }, [filterCategory, hasInitializedFilters, selectedCity]);
 
   useEffect(() => {
-    if (filterCategory === 'recentlyAdded') {
+    if (filterCategory === 'recentlyAdded' || filterCategory === 'distance') {
       setIsFilterPopoverOpen(false);
       setFilterPopoverDirection('up');
     }
@@ -1552,6 +1711,12 @@ export function PublicEatsPage({
 
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
+      if (filterCategory === 'distance') {
+        headingValues.push(userLocation
+          ? getDistanceHeading(getRestaurantDistanceInKm(restaurant, userLocation))
+          : 'Nearest to you');
+      }
+
       if (filterCategory === 'area') {
         headingValues.push(
           ...(isAllCitiesSelected || restaurant.areas.length === 0
@@ -1569,7 +1734,7 @@ export function PublicEatsPage({
       }
 
       for (const heading of headingValues) {
-        if (filterCategory !== 'recentlyAdded' && excluded.includes(heading)) {
+        if (filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && excluded.includes(heading)) {
           continue;
         }
 
@@ -1583,8 +1748,12 @@ export function PublicEatsPage({
       return new Map([...map.entries()].sort(([headingA], [headingB]) => headingB.localeCompare(headingA)));
     }
 
+    if (filterCategory === 'distance') {
+      return new Map(sortDistanceHeadings([...map.keys()]).map((heading) => [heading, map.get(heading) ?? []]));
+    }
+
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
-  }, [excluded, filterCategory, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity]);
+  }, [excluded, filterCategory, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity, userLocation]);
   const boardCategory = useMemo(() => getBoardCategory(category, isAllCitiesSelected), [category, isAllCitiesSelected]);
   const boardRestaurants = useMemo(() => {
     if (isSearchActive) {
@@ -2186,7 +2355,7 @@ export function PublicEatsPage({
     }
 
     statusFilterSnapshot.current =
-      filterCategory !== 'recentlyAdded'
+      filterCategory !== 'recentlyAdded' && filterCategory !== 'distance'
         ? {
             preservedIncludedHeadings:
               preservedIncludedHeadings.current ?? getPreservedIncludedHeadings(headings, excluded)
@@ -2479,6 +2648,13 @@ export function PublicEatsPage({
       }
     );
   }, []);
+  useEffect(() => {
+    if (category !== 'distance' || userLocation || isLocatingUser) {
+      return;
+    }
+
+    requestUserLocation('visible-area');
+  }, [category, isLocatingUser, requestUserLocation, userLocation]);
   useEffect(() => {
     if (effectiveViewMode !== 'map' || isAllCitiesSelected || isSearchActive) {
       autoRequestedLocationContextRef.current = null;
@@ -3270,6 +3446,11 @@ export function PublicEatsPage({
               {place.name}
             </a>
           </span>
+          {options.distanceText ? (
+            <span className={styles.distanceMeta} aria-label={`Distance: ${options.distanceText}`}>
+              {options.distanceText}
+            </span>
+          ) : null}
           {options.showCity ? (
             <span className={styles.cardCity}>
               {place.cityName}, {place.countryName}
@@ -3471,17 +3652,24 @@ export function PublicEatsPage({
                     </select>
                   </div>
                   <div className={`${styles.sortingField} ${styles.categoryField}`}>
-                    <label htmlFor="category">{effectiveViewMode === 'kanban' ? 'Group By:' : 'Categorise By:'}</label>
+                    <label htmlFor="category">{effectiveViewMode === 'kanban' ? 'Group By:' : 'Arrange By:'}</label>
                     <select
                       value={filterCategory}
                       disabled={effectiveViewMode === 'map'}
-                      onChange={(event) => setCategory(event.target.value as CategoryFilter)}
+                      onChange={(event) => {
+                        const nextCategory = event.target.value as CategoryFilter;
+                        setCategory(nextCategory);
+                        if (nextCategory === 'distance') {
+                          requestUserLocation('visible-area');
+                        }
+                      }}
                     >
                       <option value="area">
                         {categoryOptionAreaLabel}
                       </option>
                       <option value="type">Type of Food</option>
                       {effectiveViewMode === 'list' ? <option value="recentlyAdded">Date Added</option> : null}
+                      {effectiveViewMode === 'list' ? <option value="distance">Nearest</option> : null}
                     </select>
                   </div>
                 </>
@@ -3571,7 +3759,7 @@ export function PublicEatsPage({
               </div>
               {!isSearchActive ? (
                 <div className={styles.filterControls} ref={filterControlsRef}>
-                  {filterCategory !== 'recentlyAdded' && headings.length > 1 ? (
+                  {filterCategory !== 'recentlyAdded' && filterCategory !== 'distance' && headings.length > 1 ? (
                     <div className={styles.filterPickerGroup} ref={filterPopoverRef}>
                       <button
                         type="button"
@@ -3906,6 +4094,11 @@ export function PublicEatsPage({
                         {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
                         {category === 'recentlyAdded' ? getMonthHeadingLabel(heading) : heading}
                       </span>
+                      {category === 'distance' && !userLocation ? (
+                        <div className={styles.inlineMapError}>
+                          Share your location to sort places by distance.
+                        </div>
+                      ) : null}
                       <div>
                         {places
                           .slice()
@@ -3914,10 +4107,31 @@ export function PublicEatsPage({
                               return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                             }
 
+                            if (category === 'distance') {
+                              const distanceA = getRestaurantDistanceInKm(a, userLocation);
+                              const distanceB = getRestaurantDistanceInKm(b, userLocation);
+                              if (distanceA === null && distanceB === null) {
+                                return a.name.localeCompare(b.name);
+                              }
+
+                              if (distanceA === null) {
+                                return 1;
+                              }
+
+                              if (distanceB === null) {
+                                return -1;
+                              }
+
+                              return distanceA - distanceB || a.name.localeCompare(b.name);
+                            }
+
                             return a.name.localeCompare(b.name);
                           })
                           .map((place) =>
                             renderRestaurantCard(place, {
+                              distanceText: category === 'distance'
+                                ? formatDistance(getRestaurantDistanceInKm(place, userLocation))
+                                : null,
                               keyPrefix: heading,
                               showCity: isAllCitiesSelected && !isCityGrouping,
                               summaryText: `${

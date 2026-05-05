@@ -1,7 +1,8 @@
 export type RestaurantStatusFilter = 'liked' | 'untried' | 'disliked';
-export type CategoryFilter = 'area' | 'type' | 'recentlyAdded';
+export type CategoryFilter = 'area' | 'type' | 'recentlyAdded' | 'distance';
 export type UrlState = {
   city: string;
+  hasCategoryQuery: boolean;
   hasCityQuery: boolean;
   mealType: string;
   category: CategoryFilter;
@@ -11,7 +12,7 @@ export type UrlState = {
 };
 
 export const restaurantStatusFilterSet = new Set<RestaurantStatusFilter>(['liked', 'untried', 'disliked']);
-export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded']);
+export const categoryFilterSet = new Set<CategoryFilter>(['area', 'type', 'recentlyAdded', 'distance']);
 export const confettiPieceIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 export const defaultRestaurantStatuses: RestaurantStatusFilter[] = ['untried', 'liked'];
 export const unassignedAreaLaneId = '__unassigned-area__';
@@ -146,6 +147,7 @@ export const readUrlState = (): UrlState => {
   if (typeof window === 'undefined') {
     return {
       city: '',
+      hasCategoryQuery: false,
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
@@ -160,6 +162,7 @@ export const readUrlState = (): UrlState => {
   const mealTypeFromUrl = params.get('mealType');
   const cityFromUrl = params.get('city');
   const searchFromUrl = params.get('q');
+  const hasCategoryQuery = params.has('category');
   const hasCityQuery = params.has('city');
   const excludedFromUrl = params.getAll('exclude');
   const parsedStatuses = params
@@ -191,6 +194,7 @@ export const readUrlState = (): UrlState => {
 
   return {
     city: cityFromUrl?.trim() ?? '',
+    hasCategoryQuery,
     hasCityQuery,
     mealType: mealTypeFromUrl?.trim() || 'Any',
     category: categoryFromUrl && categoryFilterSet.has(categoryFromUrl as CategoryFilter)

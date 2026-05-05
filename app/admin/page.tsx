@@ -38,6 +38,7 @@ import { isGoogleMapsUrl } from '@/lib/url';
 import styles from './style.module.scss';
 import { LocationBackfillProgressButton } from './location-backfill-progress-button';
 import { MultiAreaLocationTool } from './multi-area-location-tool';
+import { NoLocationTool } from './no-location-tool';
 import { SingleAreaUrlCleanupTool } from './single-area-url-cleanup-tool';
 
 export const dynamic = 'force-dynamic';
@@ -63,7 +64,7 @@ const getRequestedTab = (searchParams?: AdminPageProps['searchParams']): string 
   return Array.isArray(requestedTab) ? requestedTab[0] : requestedTab;
 };
 
-type LocationAdminTabId = 'backfill' | 'multiArea' | 'singleAreaUrls';
+type LocationAdminTabId = 'backfill' | 'noLocations' | 'multiArea' | 'singleAreaUrls';
 
 type LocationAdminTab = {
   count: number;
@@ -94,6 +95,16 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
         isGoogleMapsUrl(restaurant.url) &&
         restaurant.locations.length === 0
     ).length;
+    const noLocationRestaurants = data.restaurants
+      .filter((restaurant) => restaurant.locations.length === 0)
+      .map((restaurant) => ({
+        id: restaurant.id,
+        name: restaurant.name,
+        cityName: restaurant.cityName,
+        countryName: restaurant.countryName,
+        areas: restaurant.areas,
+        url: restaurant.url
+      }));
     const multiAreaLocationAuditRestaurants = data.restaurants
       .filter((restaurant) => restaurant.areas.length > 1 && restaurant.locations.length < 2)
       .map((restaurant) => ({
@@ -248,6 +259,11 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
         count: missingLocationBackfillCount,
         id: 'backfill',
         label: 'Location Backfill'
+      },
+      {
+        count: noLocationRestaurants.length,
+        id: 'noLocations',
+        label: 'No Map Locations'
       },
       {
         count: multiAreaLocationAuditRestaurants.length,
@@ -714,6 +730,14 @@ export default async function HomePage({ searchParams }: AdminPageProps) {
                 <div className={styles.manageActions}>
                   <LocationBackfillProgressButton />
                 </div>
+              </AdminPanelSection>
+            ) : null}
+            {activeLocationTab === 'noLocations' ? (
+              <AdminPanelSection className={styles.panel} title="No Map Locations">
+                <p className={styles.importHint}>
+                  Finds active places with no saved map locations, then lets you search Google Maps and add the matching listing.
+                </p>
+                <NoLocationTool restaurants={noLocationRestaurants} />
               </AdminPanelSection>
             ) : null}
             {activeLocationTab === 'multiArea' ? (

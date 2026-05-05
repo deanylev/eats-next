@@ -2648,6 +2648,15 @@
   color: var(--theme-on-primary-muted);
 }
 
+.distanceMeta {
+  align-self: flex-start;
+  color: color-mix(in srgb, var(--theme-on-primary-strong) 84%, var(--theme-secondary) 16%);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  margin-top: -1px;
+}
+
 .compactStatusLabel {
   border: 0;
   clip: rect(0 0 0 0);

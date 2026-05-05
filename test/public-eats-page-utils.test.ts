@@ -41,6 +41,7 @@ test('readUrlState returns sensible defaults without window', () => {
   try {
     assert.deepEqual(readUrlState(), {
       city: '',
+      hasCategoryQuery: false,
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
@@ -67,6 +68,7 @@ test('readUrlState parses query params from window.location.search', () => {
   try {
     assert.deepEqual(readUrlState(), {
       city: 'Melbourne',
+      hasCategoryQuery: true,
       hasCityQuery: true,
       mealType: 'Lunch',
       category: 'type',
@@ -74,6 +76,27 @@ test('readUrlState parses query params from window.location.search', () => {
       search: '',
       excluded: ['CBD', 'Fitzroy']
     });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow
+    });
+  }
+});
+
+test('readUrlState accepts distance arrangement from query params', () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      location: {
+        search: '?category=distance'
+      }
+    }
+  });
+
+  try {
+    assert.equal(readUrlState().category, 'distance');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -96,6 +119,7 @@ test('readUrlState supports multiple status params and legacy combined status', 
   try {
     assert.deepEqual(readUrlState(), {
       city: '',
+      hasCategoryQuery: false,
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
@@ -125,6 +149,7 @@ test('readUrlState preserves an explicitly empty status filter', () => {
   try {
     assert.deepEqual(readUrlState(), {
       city: '',
+      hasCategoryQuery: false,
       hasCityQuery: false,
       mealType: 'Any',
       category: 'area',
