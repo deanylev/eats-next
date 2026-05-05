@@ -103,6 +103,9 @@ const googleMapsIncludedPrimaryTypes = [
   'bar',
   'meal_takeaway'
 ];
+const googleMapsSupplementalIncludedPrimaryTypes = [
+  'food_store'
+];
 
 const getGoogleMapsApiKey = (): string => {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
@@ -155,34 +158,35 @@ export const searchGoogleMapsSuggestions = async ({
   sessionToken
 }: GoogleMapsAutocompleteRequest): Promise<GoogleMapsSuggestion[]> => {
   const apiKey = getGoogleMapsApiKey();
-  const response = await fetch(googleMapsAutocompleteEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': googleMapsAutocompleteFieldMask
-    },
-    body: JSON.stringify({
-      input: buildGoogleMapsAutocompleteInput({
-        cityName,
-        countryName,
-        input
-      }),
-      includedPrimaryTypes: googleMapsIncludedPrimaryTypes,
-      includeQueryPredictions: false,
-      ...(sessionToken ? { sessionToken } : {})
-    }),
-    cache: 'no-store'
+  const autocompleteInput = buildGoogleMapsAutocompleteInput({
+    cityName,
+    countryName,
+    input
   });
+  const fetchSuggestions = async (includedPrimaryTypes: string[]): Promise<GoogleMapsSuggestion[]> => {
+    const response = await fetch(googleMapsAutocompleteEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': googleMapsAutocompleteFieldMask
+      },
+      body: JSON.stringify({
+        input: autocompleteInput,
+        includedPrimaryTypes,
+        includeQueryPredictions: false,
+        ...(sessionToken ? { sessionToken } : {})
+      }),
+      cache: 'no-store'
+    });
 
-  if (!response.ok) {
-    throw new Error(await getGoogleMapsErrorMessage(response));
-  }
+    if (!response.ok) {
+      throw new Error(await getGoogleMapsErrorMessage(response));
+    }
 
-  const payload = (await response.json()) as GoogleMapsAutocompleteApiResponse;
+    const payload = (await response.json()) as GoogleMapsAutocompleteApiResponse;
 
-  return (payload.suggestions ?? [])
-    .flatMap((suggestion): GoogleMapsSuggestion[] => {
+    return (payload.suggestions ?? []).flatMap((suggestion): GoogleMapsSuggestion[] => {
       const placePrediction = suggestion.placePrediction;
       const placeId = placePrediction?.placeId?.trim() ?? '';
       const fullText = placePrediction?.text?.text?.trim() ?? '';
@@ -198,8 +202,22 @@ export const searchGoogleMapsSuggestions = async ({
           secondaryText: placePrediction?.structuredFormat?.secondaryText?.text?.trim() ?? ''
         }
       ];
-    })
-    .slice(0, 5);
+    });
+  };
+
+  const suggestionGroups = await Promise.all([
+    fetchSuggestions(googleMapsIncludedPrimaryTypes),
+    fetchSuggestions(googleMapsSupplementalIncludedPrimaryTypes)
+  ]);
+  const suggestionsByPlaceId = new Map<string, GoogleMapsSuggestion>();
+
+  for (const suggestion of suggestionGroups.flat()) {
+    if (!suggestionsByPlaceId.has(suggestion.placeId)) {
+      suggestionsByPlaceId.set(suggestion.placeId, suggestion);
+    }
+  }
+
+  return [...suggestionsByPlaceId.values()].slice(0, 5);
 };
 
 const findAddressComponentText = (

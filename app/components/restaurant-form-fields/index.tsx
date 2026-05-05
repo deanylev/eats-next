@@ -207,6 +207,7 @@ export function RestaurantFormFields({
   const [dislikedReasonValue, setDislikedReasonValue] = useState<string>(defaults?.dislikedReason ?? '');
   const [locationGoogleMapsSearchValue, setLocationGoogleMapsSearchValue] = useState<string>('');
   const [locationGoogleMapsSuggestions, setLocationGoogleMapsSuggestions] = useState<GoogleMapsSuggestion[]>([]);
+  const [selectedLocationGoogleMapsSuggestionIds, setSelectedLocationGoogleMapsSuggestionIds] = useState<string[]>([]);
   const [locationGoogleMapsSearchError, setLocationGoogleMapsSearchError] = useState<string>('');
   const [isSearchingLocationGoogleMaps, setIsSearchingLocationGoogleMaps] = useState<boolean>(false);
   const [isResolvingLocationGoogleMapsSelection, setIsResolvingLocationGoogleMapsSelection] = useState<boolean>(false);
@@ -375,9 +376,11 @@ export function RestaurantFormFields({
           }
 
           setLocationGoogleMapsSuggestions(payload?.suggestions ?? []);
+          setSelectedLocationGoogleMapsSuggestionIds([]);
         })
         .catch((error: unknown) => {
           setLocationGoogleMapsSuggestions([]);
+          setSelectedLocationGoogleMapsSuggestionIds([]);
           setLocationGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
         })
         .finally(() => {
@@ -728,61 +731,90 @@ export function RestaurantFormFields({
     setNewAreaValue('');
     setLocationGoogleMapsSearchValue('');
     setLocationGoogleMapsSuggestions([]);
+    setSelectedLocationGoogleMapsSuggestionIds([]);
     setLocationGoogleMapsSearchError('');
     locationGoogleMapsSessionTokenRef.current = '';
   };
 
-  const handleSelectLocationGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<void> => {
+  const resolveLocationGoogleMapsSuggestion = async (suggestion: GoogleMapsSuggestion): Promise<RestaurantFormLocation> => {
     const sessionToken = locationGoogleMapsSessionTokenRef.current;
+    const response = await fetch('/api/google-maps-place-details', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        placeId: suggestion.placeId,
+        sessionToken: sessionToken || undefined
+      })
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          address?: string | null;
+          error?: string;
+          label?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+          placeId?: string;
+          url?: string;
+        }
+      | null;
+
+    if (!response.ok || !payload?.url || typeof payload.latitude !== 'number' || typeof payload.longitude !== 'number') {
+      throw new Error(payload?.error ?? 'Google Maps did not return coordinates for that place.');
+    }
+
+    return {
+      label: payload.label?.trim() || suggestion.primaryText,
+      address: payload.address ?? '',
+      googlePlaceId: payload.placeId ?? suggestion.placeId,
+      googleMapsUrl: payload.url,
+      latitude: payload.latitude,
+      longitude: payload.longitude
+    };
+  };
+
+  const handleAddLocationGoogleMapsSuggestions = async (suggestions: GoogleMapsSuggestion[]): Promise<void> => {
+    const existingPlaceIds = new Set(locationRows.map((location) => location.googlePlaceId).filter(Boolean));
+    const suggestionsToAdd = suggestions.filter((suggestion) => !existingPlaceIds.has(suggestion.placeId));
+    if (suggestionsToAdd.length === 0) {
+      setLocationGoogleMapsSearchError('Choose at least one new map location.');
+      return;
+    }
+
     setIsResolvingLocationGoogleMapsSelection(true);
     setLocationGoogleMapsSearchError('');
 
     try {
-      const response = await fetch('/api/google-maps-place-details', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          placeId: suggestion.placeId,
-          sessionToken: sessionToken || undefined
-        })
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            address?: string | null;
-            error?: string;
-            label?: string;
-            latitude?: number | null;
-            longitude?: number | null;
-            placeId?: string;
-            url?: string;
-          }
-        | null;
-
-      if (!response.ok || !payload?.url || typeof payload.latitude !== 'number' || typeof payload.longitude !== 'number') {
-        throw new Error(payload?.error ?? 'Google Maps did not return coordinates for that place.');
+      const locations: RestaurantFormLocation[] = [];
+      for (const suggestion of suggestionsToAdd) {
+        locations.push(await resolveLocationGoogleMapsSuggestion(suggestion));
       }
 
-      const location: RestaurantFormLocation = {
-        label: payload.label?.trim() || suggestion.primaryText,
-        address: payload.address ?? '',
-        googlePlaceId: payload.placeId ?? suggestion.placeId,
-        googleMapsUrl: payload.url,
-        latitude: payload.latitude,
-        longitude: payload.longitude
-      };
-
-      setLocationRows((current) => [...current, location]);
-      setNameValue((current) => (current.trim().length === 0 ? location.label : current));
-      setLocationGoogleMapsSearchValue('');
-      setLocationGoogleMapsSuggestions([]);
+      setLocationRows((current) => [...current, ...locations]);
+      setNameValue((current) => (current.trim().length === 0 ? locations[0]?.label ?? current : current));
+      setLocationGoogleMapsSuggestions((current) =>
+        current.filter((suggestion) => !suggestionsToAdd.some((added) => added.placeId === suggestion.placeId))
+      );
+      setSelectedLocationGoogleMapsSuggestionIds((current) =>
+        current.filter((placeId) => !suggestionsToAdd.some((added) => added.placeId === placeId))
+      );
       locationGoogleMapsSessionTokenRef.current = '';
     } catch (error) {
       setLocationGoogleMapsSearchError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
     } finally {
       setIsResolvingLocationGoogleMapsSelection(false);
     }
+  };
+
+  const toggleLocationGoogleMapsSuggestion = (placeId: string, checked: boolean): void => {
+    setSelectedLocationGoogleMapsSuggestionIds((current) => {
+      if (checked) {
+        return current.includes(placeId) ? current : [...current, placeId];
+      }
+
+      return current.filter((selectedPlaceId) => selectedPlaceId !== placeId);
+    });
   };
 
   return (
@@ -971,6 +1003,16 @@ export function RestaurantFormFields({
       </small>
       {areaSelectionError ? <div className="inline-type-warning">{areaSelectionError}</div> : null}
 
+      {(() => {
+        const existingLocationPlaceIds = new Set(locationRows.map((location) => location.googlePlaceId).filter(Boolean));
+        const availableLocationGoogleMapsSuggestions = locationGoogleMapsSuggestions.filter(
+          (suggestion) => !existingLocationPlaceIds.has(suggestion.placeId)
+        );
+        const selectedLocationGoogleMapsSuggestions = availableLocationGoogleMapsSuggestions.filter((suggestion) =>
+          selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)
+        );
+
+        return (
       <div className="field-group restaurant-form-locations-section">
         <div className="field-group-label">Map Locations (required)</div>
         <input type="hidden" name="locations" value={locationsValue} />
@@ -980,7 +1022,7 @@ export function RestaurantFormFields({
           </div>
         ) : null}
         {locationRows.length > 0 ? (
-          <div className="google-maps-suggestion-list">
+          <div className="google-maps-selected-place-list">
             {locationRows.map((location, index) => (
               <div key={`${keyPrefix}-location-${location.googlePlaceId || location.googleMapsUrl}-${index}`} className="google-maps-selected-place">
                 <div className="google-maps-selected-place-copy">
@@ -1016,6 +1058,7 @@ export function RestaurantFormFields({
                 onClick={() => {
                   setLocationGoogleMapsSearchValue('');
                   setLocationGoogleMapsSuggestions([]);
+                  setSelectedLocationGoogleMapsSuggestionIds([]);
                   setLocationGoogleMapsSearchError('');
                   locationGoogleMapsSessionTokenRef.current = '';
                 }}
@@ -1030,26 +1073,53 @@ export function RestaurantFormFields({
             </div>
             {isSearchingLocationGoogleMaps ? <div className="inline-type-warning">Searching Google Maps…</div> : null}
             {locationGoogleMapsSearchError ? <div className="inline-type-warning">{locationGoogleMapsSearchError}</div> : null}
-            {locationGoogleMapsSuggestions.length > 0 ? (
+            {availableLocationGoogleMapsSuggestions.length > 0 ? (
               <div className="google-maps-suggestion-list" role="listbox" aria-label="Google Maps location suggestions">
-                {locationGoogleMapsSuggestions.map((suggestion) => (
-                  <button
+                {availableLocationGoogleMapsSuggestions.map((suggestion) => (
+                  <label
                     key={`${keyPrefix}-location-google-maps-${suggestion.placeId}`}
-                    type="button"
                     className="google-maps-suggestion"
-                    onClick={() => {
-                      void handleSelectLocationGoogleMapsSuggestion(suggestion);
-                    }}
-                    disabled={isResolvingLocationGoogleMapsSelection}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedLocationGoogleMapsSuggestionIds.includes(suggestion.placeId)}
+                      disabled={isResolvingLocationGoogleMapsSelection}
+                      onChange={(event) => toggleLocationGoogleMapsSuggestion(suggestion.placeId, event.target.checked)}
+                    />
                     <span className="google-maps-suggestion-copy">
                       <span className="google-maps-suggestion-primary">{suggestion.primaryText}</span>
                       {suggestion.secondaryText ? (
                         <span className="google-maps-suggestion-secondary">{suggestion.secondaryText}</span>
                       ) : null}
                     </span>
-                  </button>
+                  </label>
                 ))}
+                <div className="google-maps-suggestion-actions">
+                  <button
+                    type="button"
+                    className="secondary-action-button"
+                    disabled={isResolvingLocationGoogleMapsSelection || availableLocationGoogleMapsSuggestions.length === 0}
+                    onClick={() => {
+                      void handleAddLocationGoogleMapsSuggestions(availableLocationGoogleMapsSuggestions);
+                    }}
+                  >
+                    {availableLocationGoogleMapsSuggestions.length === 1
+                      ? 'Add location'
+                      : `Add all ${availableLocationGoogleMapsSuggestions.length} locations`}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-action-button"
+                    disabled={isResolvingLocationGoogleMapsSelection || selectedLocationGoogleMapsSuggestions.length === 0}
+                    onClick={() => {
+                      void handleAddLocationGoogleMapsSuggestions(selectedLocationGoogleMapsSuggestions);
+                    }}
+                  >
+                    {selectedLocationGoogleMapsSuggestions.length === 1
+                      ? 'Add 1 selected location'
+                      : `Add ${selectedLocationGoogleMapsSuggestions.length} selected locations`}
+                  </button>
+                </div>
               </div>
             ) : null}
             {isResolvingLocationGoogleMapsSelection ? (
@@ -1057,6 +1127,8 @@ export function RestaurantFormFields({
             ) : null}
         </div>
       </div>
+        );
+      })()}
 
       <fieldset>
         <legend>Meal Types (pick 1 to 4)</legend>

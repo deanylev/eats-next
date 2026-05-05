@@ -710,6 +710,11 @@
     line-height: 1.4;
   }
 
+  :global(.google-maps-selected-place-list) {
+    display: grid;
+    gap: 8px;
+  }
+
   :global(.google-maps-selected-place) {
     align-items: start;
     backdrop-filter: blur(10px) saturate(140%);
@@ -780,18 +785,25 @@
 
   :global(.google-maps-suggestion) {
     align-items: center;
-    appearance: none;
     background: transparent;
     border: 0;
     color: #202124;
     cursor: pointer;
     display: grid;
     gap: 12px;
-    grid-template-columns: 20px minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 54px;
     padding: 12px 14px;
     text-align: left;
-    transition: background-color 120ms ease;
+    transition: background-color 120ms ease, box-shadow 120ms ease;
     width: 100%;
+
+    input {
+      accent-color: var(--theme-primary);
+      height: 18px;
+      margin: 0;
+      width: 18px;
+    }
   }
 
   :global(.google-maps-suggestion + .google-maps-suggestion) {
@@ -804,7 +816,12 @@
     outline: none;
   }
 
-  :global(.google-maps-suggestion:disabled) {
+  :global(.google-maps-suggestion:has(input:checked)) {
+    background: color-mix(in srgb, var(--theme-secondary) 18%, white 82%);
+    box-shadow: inset 4px 0 0 var(--theme-secondary);
+  }
+
+  :global(.google-maps-suggestion:has(input:disabled)) {
     cursor: progress;
     opacity: 0.7;
   }
@@ -841,6 +858,33 @@
     color: #5f6368;
     font-size: 13px;
     line-height: 1.35;
+  }
+
+  :global(.google-maps-suggestion-actions) {
+    align-items: center;
+    background: #fff;
+    border-top: 1px solid rgba(232, 234, 237, 0.95);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+
+    :global(.secondary-action-button) {
+      background: var(--theme-secondary);
+      border-color: color-mix(in srgb, var(--theme-on-secondary) 14%, transparent);
+      color: var(--theme-on-secondary);
+    }
+
+    :global(.secondary-action-button:hover:not(:disabled)) {
+      background: color-mix(in srgb, var(--theme-secondary) 88%, white 12%);
+    }
+
+    :global(.secondary-action-button:disabled) {
+      background: color-mix(in srgb, #e8eaed 82%, white 18%);
+      border-color: rgba(95, 99, 104, 0.18);
+      color: #5f6368;
+      opacity: 1;
+    }
   }
 
   :global(.google-maps-manual-disabled) {

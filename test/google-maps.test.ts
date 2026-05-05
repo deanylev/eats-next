@@ -32,8 +32,10 @@ test('searchGoogleMapsSuggestions maps Google autocomplete results into compact 
   const originalFetch = global.fetch;
   const originalApiKey = process.env.GOOGLE_MAPS_API_KEY;
   process.env.GOOGLE_MAPS_API_KEY = 'test-key';
+  let fetchCount = 0;
 
   global.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    fetchCount += 1;
     assert.equal(String(input), 'https://places.googleapis.com/v1/places:autocomplete');
     assert.equal(init?.method, 'POST');
     assert.equal((init?.headers as Record<string, string>)['X-Goog-Api-Key'], 'test-key');
@@ -45,25 +47,30 @@ test('searchGoogleMapsSuggestions maps Google autocomplete results into compact 
     };
     assert.equal(body.input, 'Bar Liberty Melbourne Australia');
     assert.equal(body.sessionToken, 'session-123');
-    assert.deepEqual(body.includedPrimaryTypes, [
-      'restaurant',
-      'cafe',
-      'bakery',
-      'bar',
-      'meal_takeaway'
-    ]);
+    assert.deepEqual(
+      body.includedPrimaryTypes,
+      fetchCount === 1
+        ? [
+            'restaurant',
+            'cafe',
+            'bakery',
+            'bar',
+            'meal_takeaway'
+          ]
+        : ['food_store']
+    );
 
     return new Response(
       JSON.stringify({
         suggestions: [
           {
             placePrediction: {
-              placeId: 'place-1',
+              placeId: fetchCount === 1 ? 'place-1' : 'place-2',
               structuredFormat: {
-                mainText: { text: 'Bar Liberty' },
-                secondaryText: { text: 'Melbourne VIC, Australia' }
+                mainText: { text: fetchCount === 1 ? 'Bar Liberty' : 'Bar Liberty Grocer' },
+                secondaryText: { text: fetchCount === 1 ? 'Melbourne VIC, Australia' : 'Fitzroy VIC, Australia' }
               },
-              text: { text: 'Bar Liberty, Melbourne VIC, Australia' }
+              text: { text: fetchCount === 1 ? 'Bar Liberty, Melbourne VIC, Australia' : 'Bar Liberty Grocer, Fitzroy VIC, Australia' }
             }
           }
         ]
@@ -91,8 +98,15 @@ test('searchGoogleMapsSuggestions maps Google autocomplete results into compact 
         placeId: 'place-1',
         primaryText: 'Bar Liberty',
         secondaryText: 'Melbourne VIC, Australia'
+      },
+      {
+        fullText: 'Bar Liberty Grocer, Fitzroy VIC, Australia',
+        placeId: 'place-2',
+        primaryText: 'Bar Liberty Grocer',
+        secondaryText: 'Fitzroy VIC, Australia'
       }
     ]);
+    assert.equal(fetchCount, 2);
   } finally {
     global.fetch = originalFetch;
     if (originalApiKey === undefined) {
