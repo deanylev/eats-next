@@ -36,6 +36,7 @@ export type RestaurantFormDefaults = {
   locations?: RestaurantFormLocation[];
   status?: RestaurantStatus;
   dislikedReason?: string | null;
+  rating?: number | null;
 };
 
 type RestaurantFormLockedFields = {
@@ -90,6 +91,7 @@ type RestaurantFormFieldErrorKey =
   | 'notes'
   | 'referredBy'
   | 'status'
+  | 'rating'
   | 'types'
   | 'url';
 
@@ -102,7 +104,8 @@ const restaurantFormFieldErrorOrder: RestaurantFormFieldErrorKey[] = [
   'referredBy',
   'types',
   'url',
-  'status'
+  'status',
+  'rating'
 ];
 
 const getRestaurantFormFieldErrors = (message: string | null | undefined): Partial<Record<RestaurantFormFieldErrorKey, string>> => {
@@ -139,6 +142,9 @@ const getRestaurantFormFieldErrors = (message: string | null | undefined): Parti
   }
   if (normalizedMessage.includes('disliked reason')) {
     errors.status = message;
+  }
+  if (normalizedMessage.includes('rating') || normalizedMessage.includes('star')) {
+    errors.rating = message;
   }
 
   return errors;
@@ -191,6 +197,7 @@ export function RestaurantFormFields({
   const [selectedAreas, setSelectedAreas] = useState<string[]>(defaults?.areas ?? []);
   const [newAreaValue, setNewAreaValue] = useState<string>('');
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
+  const [ratingValue, setRatingValue] = useState<string>(defaults?.rating ? String(defaults.rating) : '');
   const [isLocationCreatorOpen, setIsLocationCreatorOpen] = useState<boolean>(false);
   const [newCountryName, setNewCountryName] = useState<string>('');
   const [selectedCountryIdForNewCity, setSelectedCountryIdForNewCity] = useState<string>(() => {
@@ -289,6 +296,7 @@ export function RestaurantFormFields({
       locationsValue !== JSON.stringify(defaults?.locations ?? []) ||
       status !== (defaults?.status ?? 'untried') ||
       dislikedReasonValue !== (defaults?.dislikedReason ?? '') ||
+      ratingValue !== (defaults?.rating ? String(defaults.rating) : '') ||
       newCountryName.length > 0 ||
       newCityName.length > 0 ||
       newTypeName.length > 0 ||
@@ -302,6 +310,7 @@ export function RestaurantFormFields({
     defaults?.mealTypes,
     defaults?.name,
     defaults?.notes,
+    defaults?.rating,
     defaults?.referredBy,
     defaults?.locations,
     defaults?.status,
@@ -315,6 +324,7 @@ export function RestaurantFormFields({
     newTypeEmoji,
     newTypeName,
     notesValue,
+    ratingValue,
     referredByValue,
     selectedCityId,
     selectedMealTypes,
@@ -1152,6 +1162,51 @@ export function RestaurantFormFields({
       </div>
         );
       })()}
+
+      <div className="field-group restaurant-form-rating-section">
+        <div className="field-group-label">Stars</div>
+        <input type="hidden" name="rating" value={ratingValue} />
+        <div
+          className="rating-picker"
+          role="radiogroup"
+          aria-label="Restaurant star rating"
+          aria-describedby={fieldErrors.rating ? `${keyPrefix}-field-error-rating` : undefined}
+        >
+          <button
+            type="button"
+            className={`rating-clear-button ${ratingValue.length === 0 ? 'rating-clear-button-active' : ''}`}
+            onClick={() => setRatingValue('')}
+          >
+            No rating
+          </button>
+          <div className="rating-star-buttons">
+            {[1, 2, 3, 4, 5].map((rating) => {
+              const ratingString = String(rating);
+              const isSelected = ratingValue === ratingString;
+              const isFilled = Number(ratingValue || '0') >= rating;
+
+              return (
+                <button
+                  key={`${keyPrefix}-rating-${rating}`}
+                  type="button"
+                  className={`rating-star-button ${isFilled ? 'rating-star-button-filled' : ''}`}
+                  role="radio"
+                  aria-checked={isSelected}
+                  aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
+                  onClick={() => setRatingValue(ratingString)}
+                >
+                  ★
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {fieldErrors.rating ? (
+        <div className="inline-type-warning" id={`${keyPrefix}-field-error-rating`}>
+          {fieldErrors.rating}
+        </div>
+      ) : null}
 
       <fieldset>
         <legend>Meal Types (pick 1 to 4)</legend>

@@ -84,6 +84,7 @@ type ExportRestaurantRecord = {
   }>;
   name: string;
   notes: string;
+  rating?: number | null;
   referredBy: string;
   status: (typeof restaurantStatusEnum.enumValues)[number];
   triedAt: string | null;
@@ -202,6 +203,7 @@ const tenantBundleSchema = z.object({
       ),
       name: z.string().min(1),
       notes: z.string(),
+      rating: z.number().int().min(1).max(5).nullable().optional(),
       referredBy: z.string(),
       status: restaurantStatusSchema,
       triedAt: nullableTimestampSchema,
@@ -299,6 +301,7 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
           id: restaurants.id,
           name: restaurants.name,
           notes: restaurants.notes,
+          rating: restaurants.rating,
           referredBy: restaurants.referredBy,
           googlePlaceId: restaurants.googlePlaceId,
           address: restaurants.address,
@@ -474,6 +477,7 @@ const exportTenantBundle = async (db: DbLike, tenantId: string): Promise<TenantB
       mealTypes: mealsByRestaurant.get(restaurant.id) ?? [],
       name: restaurant.name,
       notes: restaurant.notes,
+      rating: restaurant.rating,
       referredBy: restaurant.referredBy,
       status: restaurant.status,
       triedAt: toIsoString(restaurant.triedAt),
@@ -594,6 +598,7 @@ const insertTenantBundleData = async (tx: DbLike, tenantId: string, bundle: Tena
       id: restaurantId,
       name: restaurant.name,
       notes: restaurant.notes,
+      rating: restaurant.rating ?? null,
       referredBy: restaurant.referredBy,
       status: restaurant.status,
       tenantId,

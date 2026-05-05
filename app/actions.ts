@@ -1236,6 +1236,7 @@ export const getCmsData = async (tenantId: string, options?: { includeDeleted?: 
           triedAt: restaurants.triedAt,
           deletedAt: restaurants.deletedAt,
           dislikedReason: restaurants.dislikedReason,
+          rating: restaurants.rating,
           cityName: cities.name,
           countryName: countries.name
         })

@@ -40,5 +40,6 @@ export const parseRestaurantFormData = (formData: FormData) =>
     longitude: parseOptionalNumber(formData.get('longitude')),
     locations: parseLocations(formData.get('locations')),
     status: formData.get('status'),
-    dislikedReason: formData.get('dislikedReason') ?? undefined
+    dislikedReason: formData.get('dislikedReason') ?? undefined,
+    rating: parseOptionalNumber(formData.get('rating'))
   });

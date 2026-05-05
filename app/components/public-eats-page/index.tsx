@@ -241,6 +241,7 @@ type PublicRestaurant = {
   mealTypes: string[];
   types: RestaurantType[];
   locations: RestaurantLocation[];
+  rating: number | null;
 };
 
 type RestaurantLocation = {
@@ -499,6 +500,14 @@ const getRestaurantStatusLabel = (status: PublicRestaurant['status']): string =>
   }
 
   return 'Want to Try';
+};
+
+const getRestaurantRatingLabel = (rating: number | null): string | null => {
+  if (rating === null) {
+    return null;
+  }
+
+  return `${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}`;
 };
 
 const renderMapInfoRow = (label: string, value: string): string => {
@@ -2969,6 +2978,7 @@ export function PublicEatsPage({
           const mealText = restaurant.mealTypes.map((mealType) => mealLabel(mealType)).join(', ');
           const detailText = getRestaurantDetailText(restaurant);
           const detailLabel = restaurant.status === 'disliked' ? 'Reason' : 'Notes';
+          const ratingText = getRestaurantRatingLabel(restaurant.rating);
           const chainText = chainLocationCount > 1
             ? renderMapInfoRow('Locations', `${chainLocationCount} visible on this map`)
             : '';
@@ -2981,6 +2991,7 @@ export function PublicEatsPage({
               ${locationLabel ? `<div style="color:#4b5563;font-size:12px;line-height:1.35;margin-top:4px;">${escapeHtml(locationLabel)}</div>` : ''}
               <div style="color:#111827;font-size:12px;font-weight:700;margin-top:5px;">${escapeHtml(getRestaurantStatusLabel(restaurant.status))}</div>
               ${address}
+              ${renderMapInfoRow('Stars', ratingText ?? '')}
               ${renderMapInfoRow('Food', typeText)}
               ${renderMapInfoRow('Meals', mealText)}
               ${chainText}
@@ -3596,6 +3607,11 @@ export function PublicEatsPage({
           {options.distanceText ? (
             <span className={styles.distanceMeta} aria-label={`Distance: ${options.distanceText}`}>
               {options.distanceText}
+            </span>
+          ) : null}
+          {getRestaurantRatingLabel(place.rating) ? (
+            <span className={styles.ratingMeta} aria-label={`${place.rating} out of 5 stars`}>
+              {getRestaurantRatingLabel(place.rating)}
             </span>
           ) : null}
           {options.showCity ? (
@@ -4574,7 +4590,8 @@ export function PublicEatsPage({
                     longitude: location.longitude
                   })),
                   status: editingRestaurant.status,
-                  dislikedReason: editingRestaurant.dislikedReason
+                  dislikedReason: editingRestaurant.dislikedReason,
+                  rating: editingRestaurant.rating
                 }}
                 onDirtyChange={setEditDialogHasUnsavedChanges}
                 validationErrorMessage={rootEditErrorMessage}

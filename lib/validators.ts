@@ -106,7 +106,13 @@ export const restaurantInputSchema = z
       .min(1, 'Add at least one map location.')
       .max(50),
     status: z.enum(restaurantStatusEnum.enumValues),
-    dislikedReason: z.string().trim().optional()
+    dislikedReason: z.string().trim().optional(),
+    rating: z
+      .number()
+      .int('Rating must be a whole number.')
+      .min(1, 'Rating must be at least 1 star.')
+      .max(5, 'Rating must be at most 5 stars.')
+      .nullable()
   })
   .superRefine((value, ctx) => {
     if (value.status === 'disliked' && !value.dislikedReason) {

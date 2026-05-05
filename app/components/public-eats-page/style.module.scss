@@ -495,6 +495,96 @@
     width: auto;
   }
 
+  :global(.restaurant-form-rating-section) {
+    gap: 8px;
+  }
+
+  :global(.rating-picker) {
+    align-items: center;
+    background: color-mix(in srgb, var(--theme-on-primary) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    border-radius: 999px;
+    display: inline-flex;
+    gap: 12px;
+    justify-content: flex-start;
+    min-height: 48px;
+    padding: 6px 8px 6px 12px;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  :global(.rating-clear-button),
+  :global(.rating-star-button) {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  :global(.rating-clear-button) {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--theme-on-primary) 15%, transparent),
+        color-mix(in srgb, var(--theme-on-primary) 7%, transparent)
+      );
+    border: 1px solid color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+    border-radius: 999px;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
+      0 1px 2px color-mix(in srgb, #000 18%, transparent);
+    color: color-mix(in srgb, var(--theme-on-primary) 78%, transparent);
+    font-size: 14px;
+    font-weight: 800;
+    padding: 8px 12px;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  }
+
+  :global(.rating-clear-button-active) {
+    background: color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
+    border-color: color-mix(in srgb, var(--theme-on-primary) 42%, transparent);
+    color: var(--theme-on-primary);
+  }
+
+  :global(.rating-clear-button:hover),
+  :global(.rating-clear-button:focus-visible) {
+    background: color-mix(in srgb, var(--theme-on-primary) 20%, transparent);
+    border-color: color-mix(in srgb, var(--theme-on-primary) 48%, transparent);
+    color: var(--theme-on-primary);
+    transform: translateY(-1px);
+  }
+
+  :global(.rating-star-buttons) {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 1px;
+  }
+
+  :global(.rating-star-button) {
+    background: transparent;
+    color: color-mix(in srgb, var(--theme-on-primary) 28%, transparent);
+    font-size: 30px;
+    font-weight: 900;
+    height: 40px;
+    line-height: 1;
+    padding: 0 2px;
+    text-shadow: none;
+    transition: color 140ms ease, transform 140ms ease;
+    width: 34px;
+  }
+
+  :global(.rating-star-button:hover),
+  :global(.rating-star-button:focus-visible),
+  :global(.rating-star-button-filled) {
+    color: #f5b301;
+    text-shadow: 0 1px 0 color-mix(in srgb, #111827 18%, transparent);
+  }
+
+  :global(.rating-star-button:hover),
+  :global(.rating-star-button:focus-visible) {
+    transform: translateY(-1px) scale(1.08);
+  }
+
   :global(.area-picker) {
     background: color-mix(in srgb, var(--theme-on-primary) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--theme-on-primary) 18%, transparent);
@@ -2655,6 +2745,16 @@
   font-weight: 900;
   line-height: 1.15;
   margin-top: -1px;
+}
+
+.ratingMeta {
+  align-self: flex-start;
+  color: #f5b301;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: 0 1px 0 color-mix(in srgb, #111827 18%, transparent);
 }
 
 .compactStatusLabel {

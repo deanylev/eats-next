@@ -23,7 +23,8 @@ const baseRestaurantInput = {
     longitude: 144.97
   }],
   status: 'untried' as const,
-  dislikedReason: undefined
+  dislikedReason: undefined,
+  rating: null
 };
 
 test('parseAreas trims lines and removes empties', () => {
@@ -37,6 +38,14 @@ test('restaurantTypeInputSchema requires a real emoji', () => {
 
 test('restaurantInputSchema accepts a single-area restaurant with a Google Maps URL', () => {
   assert.equal(restaurantInputSchema.safeParse(baseRestaurantInput).success, true);
+});
+
+test('restaurantInputSchema accepts optional 1 to 5 star ratings', () => {
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: null }).success, true);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: 5 }).success, true);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: 0 }).success, false);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: 6 }).success, false);
+  assert.equal(restaurantInputSchema.safeParse({ ...baseRestaurantInput, rating: 4.5 }).success, false);
 });
 
 test('restaurantInputSchema accepts a single-area restaurant with a non-Google URL', () => {
