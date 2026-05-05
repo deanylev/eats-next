@@ -1,6 +1,6 @@
 'use client';
 
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { buildCitySelectGroups, CitySelect } from '@/app/components/city-select';
 
 type MealType = 'snack' | 'breakfast' | 'lunch' | 'dinner';
@@ -199,6 +199,8 @@ export function RestaurantFormFields({
   const [status, setStatus] = useState<RestaurantStatus>(defaults?.status ?? 'untried');
   const [ratingValue, setRatingValue] = useState<string>(defaults?.rating ? String(defaults.rating) : '');
   const [previewRatingValue, setPreviewRatingValue] = useState<string>('');
+  const ratingStarButtonsRef = useRef<HTMLDivElement | null>(null);
+  const isRatingPointerActiveRef = useRef(false);
   const [isLocationCreatorOpen, setIsLocationCreatorOpen] = useState<boolean>(false);
   const [newCountryName, setNewCountryName] = useState<string>('');
   const [selectedCountryIdForNewCity, setSelectedCountryIdForNewCity] = useState<string>(() => {
@@ -341,8 +343,75 @@ export function RestaurantFormFields({
   useEffect(() => {
     if (status === 'untried' && ratingValue.length > 0) {
       setRatingValue('');
+      setPreviewRatingValue('');
     }
   }, [ratingValue, status]);
+
+  const getRatingValueFromPointer = (event: PointerEvent<HTMLDivElement>): string | null => {
+    const ratingStarButtons = ratingStarButtonsRef.current;
+    if (!ratingStarButtons) {
+      return null;
+    }
+
+    const bounds = ratingStarButtons.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      return null;
+    }
+
+    const pointerX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
+    const halfStarUnits = Math.min(Math.max(Math.ceil((pointerX / bounds.width) * 10), 1), 10);
+
+    return String(halfStarUnits / 2);
+  };
+
+  const updateRatingFromPointer = (event: PointerEvent<HTMLDivElement>, commit: boolean): void => {
+    const nextRatingValue = getRatingValueFromPointer(event);
+    if (!nextRatingValue) {
+      return;
+    }
+
+    setPreviewRatingValue(nextRatingValue);
+    if (commit) {
+      setRatingValue(nextRatingValue);
+    }
+  };
+
+  const handleRatingPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
+    isRatingPointerActiveRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateRatingFromPointer(event, true);
+    event.preventDefault();
+  };
+
+  const handleRatingPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
+    if (!isRatingPointerActiveRef.current) {
+      return;
+    }
+
+    updateRatingFromPointer(event, true);
+    event.preventDefault();
+  };
+
+  const handleRatingPointerEnd = (event: PointerEvent<HTMLDivElement>): void => {
+    if (!isRatingPointerActiveRef.current) {
+      return;
+    }
+
+    updateRatingFromPointer(event, true);
+    isRatingPointerActiveRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+  };
+
+  const handleRatingPointerCancel = (event: PointerEvent<HTMLDivElement>): void => {
+    isRatingPointerActiveRef.current = false;
+    setPreviewRatingValue('');
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   useEffect(() => {
     if (!validationErrorMessage || !firstFieldErrorKey || typeof window === 'undefined') {
@@ -1324,11 +1393,26 @@ export function RestaurantFormFields({
               <button
                 type="button"
                 className={`rating-clear-button ${ratingValue.length === 0 ? 'rating-clear-button-active' : ''}`}
-                onClick={() => setRatingValue('')}
+                onClick={() => {
+                  setRatingValue('');
+                  setPreviewRatingValue('');
+                }}
               >
                 No rating
               </button>
-              <div className="rating-star-buttons" onMouseLeave={() => setPreviewRatingValue('')}>
+              <div
+                className="rating-star-buttons"
+                ref={ratingStarButtonsRef}
+                onMouseLeave={() => {
+                  if (!isRatingPointerActiveRef.current) {
+                    setPreviewRatingValue('');
+                  }
+                }}
+                onPointerCancel={handleRatingPointerCancel}
+                onPointerDown={handleRatingPointerDown}
+                onPointerMove={handleRatingPointerMove}
+                onPointerUp={handleRatingPointerEnd}
+              >
                 {[1, 2, 3, 4, 5].map((star) => {
                   const selectedRating = Number(previewRatingValue || ratingValue || '0');
                   const isFilled = selectedRating >= star;
@@ -1361,7 +1445,11 @@ export function RestaurantFormFields({
                             aria-checked={isSelected}
                             aria-label={`${rating} ${rating === 1 ? 'star' : 'stars'}`}
                             onBlur={() => setPreviewRatingValue('')}
-                            onClick={() => setRatingValue(ratingString)}
+                            onClick={(event) => {
+                              if (event.detail === 0) {
+                                setRatingValue(ratingString);
+                              }
+                            }}
                             onFocus={() => setPreviewRatingValue(ratingString)}
                             onMouseEnter={() => setPreviewRatingValue(ratingString)}
                           />
