@@ -118,6 +118,70 @@ test('searchGoogleMapsSuggestions maps Google autocomplete results into compact 
   }
 });
 
+test('searchGoogleMapsSuggestions can search all place types for origin selection', async () => {
+  const originalFetch = global.fetch;
+  const originalApiKey = process.env.GOOGLE_MAPS_API_KEY;
+  process.env.GOOGLE_MAPS_API_KEY = 'test-key';
+
+  global.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(input), 'https://places.googleapis.com/v1/places:autocomplete');
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      includedPrimaryTypes?: string[];
+      input?: string;
+    };
+    assert.equal(body.input, '123 Smith Street Melbourne Australia');
+    assert.equal(body.includedPrimaryTypes, undefined);
+
+    return new Response(
+      JSON.stringify({
+        suggestions: [
+          {
+            placePrediction: {
+              placeId: 'address-1',
+              structuredFormat: {
+                mainText: { text: '123 Smith Street' },
+                secondaryText: { text: 'Melbourne VIC, Australia' }
+              },
+              text: { text: '123 Smith Street, Melbourne VIC, Australia' }
+            }
+          }
+        ]
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+  }) as typeof fetch;
+
+  try {
+    const suggestions = await searchGoogleMapsSuggestions({
+      cityName: 'Melbourne',
+      countryName: 'Australia',
+      input: '123 Smith Street',
+      placeTypes: 'any'
+    });
+
+    assert.deepEqual(suggestions, [
+      {
+        fullText: '123 Smith Street, Melbourne VIC, Australia',
+        placeId: 'address-1',
+        primaryText: '123 Smith Street',
+        secondaryText: 'Melbourne VIC, Australia'
+      }
+    ]);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) {
+      delete process.env.GOOGLE_MAPS_API_KEY;
+    } else {
+      process.env.GOOGLE_MAPS_API_KEY = originalApiKey;
+    }
+  }
+});
+
 test('resolveGoogleMapsPlaceUrl returns the Google Maps URL from place details', async () => {
   const originalFetch = global.fetch;
   const originalApiKey = process.env.GOOGLE_MAPS_API_KEY;

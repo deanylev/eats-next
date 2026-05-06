@@ -220,7 +220,7 @@
   text-align: left;
   text-decoration: underline;
   -webkit-appearance: none;
-  width: fit-content;
+  width: 100%;
 }
 
 .body {
@@ -1332,6 +1332,7 @@
   gap: 14px 16px;
   grid-template-columns: repeat(12, minmax(0, 1fr));
 
+  input[type='search'],
   select {
     backdrop-filter: blur(10px);
     background: rgba(252, 246, 254, 0.88);
@@ -1446,6 +1447,115 @@
   --sorting-field-width: 11.5rem;
 }
 
+.startingPlaceField {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 4px;
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+
+  > label {
+    color: var(--theme-on-primary-soft);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+}
+
+.startingPlaceControl {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  flex: 0 1 100%;
+  min-width: 0;
+  width: 100%;
+
+  input {
+    background: rgba(252, 246, 254, 0.9);
+    border: 1px solid rgba(166, 139, 177, 0.75);
+    border-radius: 8px;
+    color: #180321;
+    flex: 1 1 auto;
+    font: inherit;
+    font-size: 14px;
+    min-height: 34px;
+    min-width: 0;
+    padding: 6px 10px;
+    max-width: 450px;
+    width: 100%;
+  }
+
+  button {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(166, 139, 177, 0.75);
+    border-radius: 8px;
+    color: #180321;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    min-height: 34px;
+    padding: 5px 9px;
+  }
+}
+
+.startingPlaceStatus {
+  color: var(--theme-on-primary-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.startingPlaceSuggestions {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(166, 139, 177, 0.75);
+  border-radius: 8px;
+  box-shadow: 0 18px 36px rgba(24, 3, 33, 0.16);
+  display: grid;
+  left: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 6px);
+  width: min(100vw - 32px, 34rem);
+  z-index: 20;
+
+  button {
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: #180321;
+    cursor: pointer;
+    display: grid;
+    font: inherit;
+    gap: 3px;
+    padding: 9px 10px;
+    text-align: left;
+  }
+
+  button:hover,
+  button:focus-visible {
+    background: rgba(166, 139, 177, 0.14);
+    outline: none;
+  }
+
+  span {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  small {
+    color: #5f5266;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+}
+
 @media only screen and (min-width: 701px) {
   .cityField {
     --sorting-field-width: 15rem;
@@ -1457,6 +1567,10 @@
 
   .categoryField {
     --sorting-field-width: 10rem;
+  }
+
+  .startingPlaceField {
+    width: 100%;
   }
 
   .viewModeGroup {

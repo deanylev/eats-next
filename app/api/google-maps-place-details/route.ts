@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { doesSessionMatchTenant } from '@/lib/admin-session';
-import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { resolveGoogleMapsPlaceUrl } from '@/lib/google-maps';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
 
@@ -20,12 +18,6 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch {
     return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
-  }
-
-  const tenant = await resolveRequestTenant();
-  const session = await getCurrentAdminSession();
-  if (!doesSessionMatchTenant(session, tenant)) {
-    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   }
 
   let body: unknown;

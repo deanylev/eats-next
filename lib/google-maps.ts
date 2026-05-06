@@ -2,6 +2,7 @@ type GoogleMapsAutocompleteRequest = {
   cityName?: string;
   countryName?: string;
   input: string;
+  placeTypes?: 'food' | 'any';
   sessionToken?: string;
 };
 
@@ -172,6 +173,7 @@ export const searchGoogleMapsSuggestions = async ({
   cityName,
   countryName,
   input,
+  placeTypes = 'food',
   sessionToken
 }: GoogleMapsAutocompleteRequest): Promise<GoogleMapsSuggestion[]> => {
   const apiKey = getGoogleMapsApiKey();
@@ -180,7 +182,7 @@ export const searchGoogleMapsSuggestions = async ({
     countryName,
     input
   });
-  const fetchSuggestions = async (includedPrimaryTypes: string[]): Promise<GoogleMapsSuggestion[]> => {
+  const fetchSuggestions = async (includedPrimaryTypes?: string[]): Promise<GoogleMapsSuggestion[]> => {
     const response = await fetch(googleMapsAutocompleteEndpoint, {
       method: 'POST',
       headers: {
@@ -190,7 +192,7 @@ export const searchGoogleMapsSuggestions = async ({
       },
       body: JSON.stringify({
         input: autocompleteInput,
-        includedPrimaryTypes,
+        ...(includedPrimaryTypes ? { includedPrimaryTypes } : {}),
         includeQueryPredictions: false,
         ...(sessionToken ? { sessionToken } : {})
       }),
@@ -222,10 +224,12 @@ export const searchGoogleMapsSuggestions = async ({
     });
   };
 
-  const suggestionGroups = await Promise.all([
-    fetchSuggestions(googleMapsIncludedPrimaryTypes),
-    fetchSuggestions(googleMapsSupplementalIncludedPrimaryTypes)
-  ]);
+  const suggestionGroups = placeTypes === 'any'
+    ? [await fetchSuggestions()]
+    : await Promise.all([
+        fetchSuggestions(googleMapsIncludedPrimaryTypes),
+        fetchSuggestions(googleMapsSupplementalIncludedPrimaryTypes)
+      ]);
   const suggestionsByPlaceId = new Map<string, GoogleMapsSuggestion>();
 
   for (const suggestion of suggestionGroups.flat()) {

@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { doesSessionMatchTenant } from '@/lib/admin-session';
 import { searchGoogleMapsSuggestions } from '@/lib/google-maps';
-import { getCurrentAdminSession, resolveRequestTenant } from '@/lib/request-context';
 import { assertValidRequestOrigin } from '@/lib/request-origin';
 
 const requestSchema = z.object({
   cityName: z.string().trim().optional(),
   countryName: z.string().trim().optional(),
   input: z.string().trim().min(2, 'Search must be at least 2 characters.'),
+  placeTypes: z.enum(['food', 'any']).optional(),
   sessionToken: z.string().trim().min(1).optional()
 });
 
@@ -22,12 +21,6 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch {
     return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
-  }
-
-  const tenant = await resolveRequestTenant();
-  const session = await getCurrentAdminSession();
-  if (!doesSessionMatchTenant(session, tenant)) {
-    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   }
 
   let body: unknown;

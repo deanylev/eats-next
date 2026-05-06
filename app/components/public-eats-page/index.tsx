@@ -31,6 +31,7 @@ import {
 } from '@/app/components/public-eats-page/utils';
 import { buildAreaSuggestionsByCity } from '@/lib/area-suggestions';
 import { clearFlashCookieClient, flashCookieNames } from '@/lib/flash-cookies';
+import type { GoogleMapsResolvedPlace, GoogleMapsSuggestion } from '@/lib/google-maps';
 import { buildThemeCssVariables, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from '@/lib/theme';
 import { isGoogleMapsUrl } from '@/lib/url';
 
@@ -281,6 +282,9 @@ type DraggedBoardCard = {
 type UserLocation = {
   latitude: number;
   longitude: number;
+};
+type StartingPlace = UserLocation & {
+  label: string;
 };
 type UserLocationFocusMode = 'always' | 'visible-area';
 type GoogleMapsWindow = Window & {
@@ -944,6 +948,13 @@ export function PublicEatsPage({
   const [boardDropTarget, setBoardDropTarget] = useState<BoardDropTarget | null>(null);
   const [isMovingBoardCard, startMovingBoardCardTransition] = useTransition();
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [startingPlace, setStartingPlace] = useState<StartingPlace | null>(null);
+  const [startingPlaceSearchValue, setStartingPlaceSearchValue] = useState('');
+  const [startingPlaceSuggestions, setStartingPlaceSuggestions] = useState<GoogleMapsSuggestion[]>([]);
+  const [selectedStartingPlaceSuggestion, setSelectedStartingPlaceSuggestion] = useState<GoogleMapsSuggestion | null>(null);
+  const [isSearchingStartingPlace, setIsSearchingStartingPlace] = useState(false);
+  const [isResolvingStartingPlace, setIsResolvingStartingPlace] = useState(false);
+  const [startingPlaceErrorMessage, setStartingPlaceErrorMessage] = useState<string | null>(null);
   const [isLocatingUser, setIsLocatingUser] = useState(false);
   const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
   const [mapLoadErrorMessage, setMapLoadErrorMessage] = useState<string | null>(null);
@@ -1025,6 +1036,7 @@ export function PublicEatsPage({
   const shouldFocusUserLocationRef = useRef(false);
   const userLocationFocusModeRef = useRef<UserLocationFocusMode>('always');
   const autoRequestedLocationContextRef = useRef<string | null>(null);
+  const startingPlaceSessionTokenRef = useRef<string>('');
   const filtersReady = hasInitializedFilters;
 
   const clearNewRestaurantQueryParam = useCallback((): void => {
@@ -1247,6 +1259,19 @@ export function PublicEatsPage({
 
   const isAllCitiesSelected = selectedCity === null;
   const hasResolvedCitySelection = isAllCitiesSelected || selectedCity.trim().length > 0;
+  const selectedCountryName = useMemo(() => {
+    if (!selectedCity) {
+      return hasMultipleCountries ? undefined : onlyCountryName ?? undefined;
+    }
+
+    for (const [countryName, cityMap] of citiesByCountry) {
+      if (cityMap.has(selectedCity)) {
+        return countryName;
+      }
+    }
+
+    return hasMultipleCountries ? undefined : onlyCountryName ?? undefined;
+  }, [citiesByCountry, hasMultipleCountries, onlyCountryName, selectedCity]);
   const filterCategory: CategoryFilter = viewMode === 'map' ? 'type' : category;
   const isCityGrouping = filterCategory === 'area' && isAllCitiesSelected;
   const categoryOptionAreaLabel = isAllCitiesSelected ? 'City' : 'Area';
@@ -1360,14 +1385,15 @@ export function PublicEatsPage({
 
   const headings = useMemo(() => {
     const values = new Set<string>();
+    const distanceOrigin = startingPlace ?? userLocation;
 
     if (filterCategory === 'distance') {
-      if (!userLocation) {
-        return ['Nearest to you'];
+      if (!distanceOrigin) {
+        return ['Nearest'];
       }
 
       for (const restaurant of mealFilteredRestaurants) {
-        values.add(getDistanceHeading(getRestaurantDistanceInKm(restaurant, userLocation)));
+        values.add(getDistanceHeading(getRestaurantDistanceInKm(restaurant, distanceOrigin)));
       }
 
       return sortDistanceHeadings([...values]);
@@ -1401,7 +1427,7 @@ export function PublicEatsPage({
     }
 
     return headingList.sort((a, b) => byAlpha(a, b));
-  }, [filterCategory, isAllCitiesSelected, mealFilteredRestaurants, selectedCity, userLocation]);
+  }, [filterCategory, isAllCitiesSelected, mealFilteredRestaurants, selectedCity, startingPlace, userLocation]);
 
   const controlsWalkthroughSteps = useMemo((): WalkthroughStep[] => {
     const steps: WalkthroughStep[] = [];
@@ -1881,6 +1907,7 @@ export function PublicEatsPage({
 
   const grouped = useMemo(() => {
     const map = new Map<string, PublicRestaurant[]>();
+    const distanceOrigin = startingPlace ?? userLocation;
 
     if (isSearchActive) {
       for (const restaurant of searchedRestaurants) {
@@ -1896,9 +1923,9 @@ export function PublicEatsPage({
     for (const restaurant of mealFilteredRestaurants) {
       const headingValues: string[] = [];
       if (filterCategory === 'distance') {
-        headingValues.push(userLocation
-          ? getDistanceHeading(getRestaurantDistanceInKm(restaurant, userLocation))
-          : 'Nearest to you');
+        headingValues.push(distanceOrigin
+          ? getDistanceHeading(getRestaurantDistanceInKm(restaurant, distanceOrigin))
+          : 'Nearest');
       }
 
       if (filterCategory === 'area') {
@@ -1949,7 +1976,7 @@ export function PublicEatsPage({
     }
 
     return new Map([...map.entries()].sort(([headingA], [headingB]) => byAlpha(headingA, headingB)));
-  }, [excluded, filterCategory, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity, userLocation]);
+  }, [excluded, filterCategory, isAllCitiesSelected, isSearchActive, mealFilteredRestaurants, searchedRestaurants, selectedCity, startingPlace, userLocation]);
   const boardCategory = useMemo(() => getBoardCategory(category, isAllCitiesSelected), [category, isAllCitiesSelected]);
   const boardRestaurants = useMemo(() => {
     if (isSearchActive) {
@@ -2035,6 +2062,7 @@ export function PublicEatsPage({
   }, [grouped, isSearchActive]);
   const effectiveViewMode: ViewMode =
     viewMode === 'kanban' && boardCategory !== null ? 'kanban' : viewMode === 'map' ? 'map' : 'list';
+  const activeDistanceOrigin = startingPlace ?? userLocation;
   const kanbanGridStyle = useMemo((): CSSProperties => {
     const columnCount = Math.max(visibleBoardStatuses.length, 1);
     const minColumnWidth = 252;
@@ -2866,13 +2894,131 @@ export function PublicEatsPage({
       }
     );
   }, []);
+
   useEffect(() => {
-    if (category !== 'distance' || userLocation || isLocatingUser) {
+    if (filterCategory !== 'distance') {
+      setStartingPlaceSuggestions([]);
+      setStartingPlaceErrorMessage(null);
+      return;
+    }
+
+    const trimmedSearch = startingPlaceSearchValue.trim();
+    if (trimmedSearch.length < 2 || selectedStartingPlaceSuggestion) {
+      setStartingPlaceSuggestions([]);
+      setIsSearchingStartingPlace(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const searchTimer = window.setTimeout(() => {
+      const sessionToken =
+        startingPlaceSessionTokenRef.current ||
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+      startingPlaceSessionTokenRef.current = sessionToken;
+      setIsSearchingStartingPlace(true);
+      setStartingPlaceErrorMessage(null);
+
+      void fetch('/api/google-maps-autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          cityName: selectedCity ?? undefined,
+          countryName: selectedCountryName,
+          input: trimmedSearch,
+          placeTypes: 'any',
+          sessionToken
+        }),
+        signal: controller.signal
+      })
+        .then(async (response) => {
+          const payload = (await response.json().catch(() => null)) as { suggestions?: GoogleMapsSuggestion[]; error?: string } | null;
+          if (!response.ok) {
+            throw new Error(payload?.error ?? 'Could not search Google Maps.');
+          }
+
+          setStartingPlaceSuggestions(payload?.suggestions ?? []);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+
+          setStartingPlaceSuggestions([]);
+          setStartingPlaceErrorMessage(error instanceof Error ? error.message : 'Could not search Google Maps.');
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsSearchingStartingPlace(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(searchTimer);
+      controller.abort();
+    };
+  }, [filterCategory, selectedCity, selectedCountryName, selectedStartingPlaceSuggestion, startingPlaceSearchValue]);
+
+  const selectStartingPlaceSuggestion = useCallback(async (suggestion: GoogleMapsSuggestion): Promise<void> => {
+    if (isResolvingStartingPlace) {
+      return;
+    }
+
+    setSelectedStartingPlaceSuggestion(suggestion);
+    setStartingPlaceSearchValue(suggestion.fullText || suggestion.primaryText);
+    setStartingPlaceSuggestions([]);
+    setStartingPlaceErrorMessage(null);
+    setIsResolvingStartingPlace(true);
+
+    try {
+      const response = await fetch('/api/google-maps-place-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: startingPlaceSessionTokenRef.current || undefined
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as (GoogleMapsResolvedPlace & { error?: string }) | null;
+      if (!response.ok || typeof payload?.latitude !== 'number' || typeof payload.longitude !== 'number') {
+        throw new Error(payload?.error ?? 'Google Maps did not return coordinates for that place.');
+      }
+
+      setStartingPlace({
+        label: payload.label || suggestion.primaryText,
+        latitude: payload.latitude,
+        longitude: payload.longitude
+      });
+      startingPlaceSessionTokenRef.current = '';
+    } catch (error) {
+      setSelectedStartingPlaceSuggestion(null);
+      setStartingPlace(null);
+      setStartingPlaceErrorMessage(error instanceof Error ? error.message : 'Could not use that starting place.');
+    } finally {
+      setIsResolvingStartingPlace(false);
+    }
+  }, [isResolvingStartingPlace]);
+
+  const clearStartingPlace = useCallback((): void => {
+    setStartingPlace(null);
+    setSelectedStartingPlaceSuggestion(null);
+    setStartingPlaceSearchValue('');
+    setStartingPlaceSuggestions([]);
+    setStartingPlaceErrorMessage(null);
+    startingPlaceSessionTokenRef.current = '';
+  }, []);
+
+  useEffect(() => {
+    if (category !== 'distance' || startingPlace || userLocation || isLocatingUser) {
       return;
     }
 
     requestUserLocation('visible-area');
-  }, [category, isLocatingUser, requestUserLocation, userLocation]);
+  }, [category, isLocatingUser, requestUserLocation, startingPlace, userLocation]);
   useEffect(() => {
     if (effectiveViewMode !== 'map' || isAllCitiesSelected || isSearchActive) {
       autoRequestedLocationContextRef.current = null;
@@ -4430,23 +4576,76 @@ export function PublicEatsPage({
                 {grouped.size === 0 ? (
                   renderNoResultsState('list')
                 ) : (
-                  [...grouped.entries()].map(([heading, places]) => (
-                    <Fragment key={heading}>
-                      <span className={styles.heading}>
-                        {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
-                        {category === 'rating'
-                          ? renderRatingHeading(heading)
-                          : category === 'recentlyAdded'
-                            ? getMonthHeadingLabel(heading)
-                            : heading}
-                      </span>
-                      {category === 'distance' && !userLocation ? (
-                        <div className={styles.inlineMapError}>
-                          Share your location to sort places by distance.
+                  <>
+                    {!isSearchActive && filterCategory === 'distance' ? (
+                      <div className={styles.startingPlaceField}>
+                        <label htmlFor="startingPlace">Nearest From:</label>
+                        <div className={styles.startingPlaceControl}>
+                          <input
+                            id="startingPlace"
+                            type="search"
+                            value={startingPlaceSearchValue}
+                            placeholder="Current Location"
+                            autoComplete="off"
+                            onChange={(event) => {
+                              setStartingPlaceSearchValue(event.target.value);
+                              setSelectedStartingPlaceSuggestion(null);
+                              if (startingPlace) {
+                                setStartingPlace(null);
+                              }
+                            }}
+                            onFocus={() => {
+                              if (startingPlaceSearchValue.trim().length >= 2) {
+                                setSelectedStartingPlaceSuggestion(null);
+                              }
+                            }}
+                          />
+                          <button type="button" onClick={clearStartingPlace}>
+                            Reset
+                          </button>
                         </div>
-                      ) : null}
-                      <div>
-                        {places
+                        {isSearchingStartingPlace || isResolvingStartingPlace ? (
+                          <div className={styles.startingPlaceStatus}>
+                            {isResolvingStartingPlace ? 'Using place...' : 'Searching Google Maps...'}
+                          </div>
+                        ) : null}
+                        {startingPlaceErrorMessage ? (
+                          <div className={styles.startingPlaceStatus}>{startingPlaceErrorMessage}</div>
+                        ) : null}
+                        {startingPlaceSuggestions.length > 0 ? (
+                          <div className={styles.startingPlaceSuggestions} role="listbox" aria-label="Starting place suggestions">
+                            {startingPlaceSuggestions.map((suggestion) => (
+                              <button
+                                key={suggestion.placeId}
+                                type="button"
+                                role="option"
+                                onClick={() => void selectStartingPlaceSuggestion(suggestion)}
+                              >
+                                <span>{suggestion.primaryText}</span>
+                                {suggestion.secondaryText ? <small>{suggestion.secondaryText}</small> : null}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {[...grouped.entries()].map(([heading, places]) => (
+                      <Fragment key={heading}>
+                        <span className={styles.heading}>
+                          {category === 'type' ? `${places[0]?.types.find((type) => type.name === heading)?.emoji ?? ''} ` : ''}
+                          {category === 'rating'
+                            ? renderRatingHeading(heading)
+                            : category === 'recentlyAdded'
+                              ? getMonthHeadingLabel(heading)
+                              : heading}
+                        </span>
+                        {category === 'distance' && !activeDistanceOrigin ? (
+                          <div className={styles.inlineMapError}>
+                            Share your location or choose a starting place to sort places by distance.
+                          </div>
+                        ) : null}
+                        <div>
+                          {places
                           .slice()
                           .sort((a, b) => {
                             if (category === 'recentlyAdded') {
@@ -4454,8 +4653,8 @@ export function PublicEatsPage({
                             }
 
                             if (category === 'distance') {
-                              const distanceA = getRestaurantDistanceInKm(a, userLocation);
-                              const distanceB = getRestaurantDistanceInKm(b, userLocation);
+                              const distanceA = getRestaurantDistanceInKm(a, activeDistanceOrigin);
+                              const distanceB = getRestaurantDistanceInKm(b, activeDistanceOrigin);
                               if (distanceA === null && distanceB === null) {
                                 return a.name.localeCompare(b.name);
                               }
@@ -4476,7 +4675,7 @@ export function PublicEatsPage({
                           .map((place) =>
                             renderRestaurantCard(place, {
                               distanceText: category === 'distance'
-                                ? formatDistance(getRestaurantDistanceInKm(place, userLocation))
+                                ? formatDistance(getRestaurantDistanceInKm(place, activeDistanceOrigin))
                                 : null,
                               keyPrefix: heading,
                               showCity: isAllCitiesSelected && !isCityGrouping,
@@ -4497,7 +4696,8 @@ export function PublicEatsPage({
                           )}
                       </div>
                     </Fragment>
-                  ))
+                    ))}
+                  </>
                 )}
               </div>
             )}
